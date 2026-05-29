@@ -1,0 +1,3370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ArcAscend</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #0f1419; --panel: #1a2129; --panel-2: #232c36;
+  --border: #2d3742; --text: #e6e9ed; --muted: #8b95a1;
+  --accent: #4f9eff; --won: #22c55e; --lost: #ef4444;
+  --open: #f59e0b; --warm: #fb923c; --purple: #a78bfa;
+  --shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+       background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+
+/* Header */
+header {
+  background: linear-gradient(135deg, #1a2129 0%, #232c36 100%);
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 14px;
+}
+.logo { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.logo-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  box-shadow: 0 0 14px var(--accent);
+}
+.subtitle { color: var(--muted); font-size: 11px; margin-top: 4px; letter-spacing: 0.5px; }
+
+/* Revenue Banner */
+.revenue-banner {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+}
+.rev-stat {
+  background: var(--panel-2); padding: 10px 16px;
+  border-radius: 10px; border: 1px solid var(--border);
+  min-width: 130px;
+}
+.rev-stat.highlight {
+  background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(34,197,94,0.05));
+  border-color: rgba(34,197,94,0.4);
+}
+.rev-stat.projection {
+  background: linear-gradient(135deg, rgba(79,158,255,0.15), rgba(79,158,255,0.05));
+  border-color: rgba(79,158,255,0.4);
+}
+.rev-stat-label {
+  color: var(--muted); font-size: 9px; text-transform: uppercase;
+  letter-spacing: 0.6px; font-weight: 600;
+}
+.rev-stat-value { font-size: 22px; font-weight: 800; margin-top: 4px; }
+.rev-stat-value.won { color: var(--won); }
+.rev-stat-value.accent { color: var(--accent); }
+
+.header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn-add {
+  background: var(--won); color: white; border: none;
+  padding: 10px 16px; border-radius: 8px; font-size: 13px;
+  font-weight: 600; cursor: pointer;
+}
+.btn-add:hover { filter: brightness(1.1); }
+.btn-settings {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  padding: 10px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+}
+.btn-settings:hover { border-color: var(--accent); }
+
+/* Nav */
+nav.tabs {
+  display: flex; background: var(--panel); border-bottom: 1px solid var(--border);
+  padding: 0 24px; gap: 4px; overflow-x: auto; flex-wrap: wrap;
+}
+.tab {
+  padding: 14px 16px; cursor: pointer; color: var(--muted);
+  font-weight: 500; border-bottom: 2px solid transparent;
+  transition: all 0.15s; white-space: nowrap;
+  display: flex; align-items: center; gap: 8px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab .count {
+  background: var(--panel-2); padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+}
+.tab.active .count { background: var(--accent); color: white; }
+.tab.custom-tab {
+  background: rgba(79,158,255,0.08); border: 1px solid rgba(79,158,255,0.25);
+  border-radius: 18px; padding: 8px 12px; margin: 6px 4px 6px 0; font-size: 12px;
+}
+.tab.custom-tab:hover { background: rgba(79,158,255,0.15); }
+.tab.custom-tab.active { background: var(--accent); color: white; }
+.tab-close {
+  background: transparent; border: none; color: inherit; cursor: pointer;
+  font-size: 12px; padding: 0 2px; opacity: 0.6; margin-left: 2px;
+}
+.tab-close:hover { opacity: 1; color: var(--lost); }
+
+/* Toolbar */
+.toolbar {
+  padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--border);
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+}
+.search-wrap { flex: 1; min-width: 240px; position: relative; }
+.search {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); padding: 9px 12px 9px 36px; border-radius: 8px;
+  font-size: 14px; outline: none;
+}
+.search:focus { border-color: var(--accent); }
+.search-icon {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted);
+}
+.filter-toggle {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  padding: 9px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.filter-toggle:hover { border-color: var(--accent); }
+.filter-toggle.has-filters {
+  background: rgba(79,158,255,0.12); border-color: var(--accent); color: var(--accent);
+}
+.filter-badge {
+  background: var(--accent); color: white; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 9px; margin-left: 2px;
+}
+.btn {
+  background: var(--accent); color: white; border: none;
+  padding: 9px 14px; border-radius: 8px; font-size: 13px;
+  font-weight: 500; cursor: pointer;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn-ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+.btn-save-tab {
+  background: var(--won); color: white; border: none;
+  padding: 9px 14px; border-radius: 8px; font-size: 13px;
+  font-weight: 600; cursor: pointer;
+}
+.btn-save-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.filter-panel {
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  padding: 0; max-height: 0; overflow: hidden;
+  transition: max-height 0.25s, padding 0.25s;
+}
+.filter-panel.open { padding: 16px 24px; max-height: 800px; overflow: visible; }
+.filter-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin-bottom: 12px;
+}
+.filter-group label {
+  display: block; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--muted); margin-bottom: 5px;
+}
+.filter-group select, .filter-group input {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 10px; border-radius: 6px;
+  font-size: 13px; font-family: inherit; outline: none;
+}
+.filter-bar {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding-top: 12px; border-top: 1px solid var(--border);
+}
+.active-filter-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.chip {
+  background: rgba(79,158,255,0.15); color: var(--accent);
+  border: 1px solid rgba(79,158,255,0.3); padding: 4px 10px;
+  border-radius: 14px; font-size: 11px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip-x { cursor: pointer; opacity: 0.6; font-weight: bold; }
+.chip-x:hover { opacity: 1; }
+
+/* Main */
+main { flex: 1; padding: 20px 24px; }
+.lead-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+.lead-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; cursor: pointer;
+  transition: all 0.15s; position: relative; overflow: hidden;
+}
+.lead-card:hover {
+  border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow);
+}
+.lead-card::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 4px; background: var(--muted);
+}
+.lead-card.won::before { background: var(--won); }
+.lead-card.lost::before { background: var(--lost); }
+.lead-card.open::before, .lead-card.pending::before { background: var(--open); }
+.lead-card.new::before { background: var(--accent); }
+.lead-card.active-client::before { background: linear-gradient(180deg, var(--won), var(--purple)); }
+.lead-card.priority { border-color: rgba(251, 191, 36, 0.5); }
+.lead-card.priority::after {
+  content: "⭐"; position: absolute; top: 12px; right: 12px;
+  font-size: 11px; opacity: 0.8;
+}
+.lead-header {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+}
+.lead-name { font-weight: 600; font-size: 15px; }
+.lead-date { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.badge {
+  font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap;
+}
+.badge.won { background: rgba(34,197,94,0.15); color: var(--won); border: 1px solid rgba(34,197,94,0.3); }
+.badge.lost { background: rgba(239,68,68,0.15); color: var(--lost); border: 1px solid rgba(239,68,68,0.3); }
+.badge.open, .badge.pending { background: rgba(245,158,11,0.15); color: var(--open); border: 1px solid rgba(245,158,11,0.3); }
+.badge.new { background: rgba(79,158,255,0.15); color: var(--accent); border: 1px solid rgba(79,158,255,0.3); }
+.badge.active-client {
+  background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(167,139,250,0.2));
+  color: var(--won); border: 1px solid rgba(34,197,94,0.4);
+}
+.lead-body { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.lead-meta {
+  display: flex; gap: 8px; margin-top: 10px; font-size: 11px;
+  color: var(--muted); flex-wrap: wrap;
+}
+.meta-chip { background: var(--panel-2); padding: 3px 8px; border-radius: 6px; }
+.billing-mini {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.billing-mini-stat { text-align: center; }
+.billing-mini-label {
+  font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px;
+}
+.billing-mini-value {
+  font-size: 16px; font-weight: 700; margin-top: 2px;
+}
+.billing-mini-value.total { color: var(--won); }
+.billing-mini-value.sess { color: var(--purple); }
+
+/* Star + task pip */
+.star-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+  font-size: 14px; display: inline-flex; align-items: center; justify-content: center;
+  transition: all 0.15s; flex-shrink: 0;
+}
+.star-btn:hover { border-color: #fbbf24; color: #fbbf24; transform: scale(1.1); }
+.star-btn.active { background: rgba(251, 191, 36, 0.15); border-color: #fbbf24; color: #fbbf24; }
+.task-pip {
+  position: absolute; top: 12px; right: 14px; background: var(--accent);
+  color: white; font-size: 10px; font-weight: 700; min-width: 18px; height: 18px;
+  padding: 0 5px; border-radius: 9px; display: inline-flex;
+  align-items: center; justify-content: center; z-index: 2;
+}
+.task-pip.overdue { background: var(--lost); }
+.task-pip.today { background: var(--open); }
+.lead-card.priority .task-pip { right: 38px; }
+
+.action-card {
+  background: var(--panel-2); border-left: 3px solid var(--accent);
+  padding: 10px 12px; border-radius: 6px; margin-top: 8px;
+  font-size: 13px; line-height: 1.5;
+}
+.action-card .action-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--accent); font-weight: 600; margin-bottom: 4px;
+}
+
+/* Modal */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100; padding: 20px;
+}
+.modal-bg.show { display: flex; }
+.modal {
+  background: var(--panel); border-radius: 12px; width: 100%;
+  max-width: 720px; max-height: 90vh; overflow-y: auto;
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.modal-head {
+  padding: 20px 24px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-start; justify-content: space-between;
+  position: sticky; top: 0; background: var(--panel); z-index: 5;
+}
+.modal-title { font-size: 20px; font-weight: 700; }
+.modal-close {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 16px;
+}
+.modal-body { padding: 20px 24px; }
+.section-title {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin: 18px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+.field-label {
+  font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 4px;
+}
+.field-value { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.field.full { grid-column: 1 / -1; }
+
+.notes-edit {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 12px; font-size: 13px;
+  font-family: inherit; resize: vertical; min-height: 80px; outline: none;
+}
+.notes-edit:focus { border-color: var(--accent); }
+
+.status-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.status-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  font-size: 12px; font-weight: 500;
+}
+.status-btn[data-s="Closed Won"].active { border-color: var(--won); background: rgba(34,197,94,0.15); color: var(--won); }
+.status-btn[data-s="Closed Lost"].active { border-color: var(--lost); background: rgba(239,68,68,0.15); color: var(--lost); }
+.status-btn[data-s="Open"].active, .status-btn[data-s="Pending"].active { border-color: var(--open); background: rgba(245,158,11,0.15); color: var(--open); }
+.status-btn[data-s="New"].active { border-color: var(--accent); background: rgba(79,158,255,0.15); color: var(--accent); }
+
+/* Billing section in modal */
+.billing-box {
+  background: linear-gradient(135deg, rgba(34,197,94,0.05), rgba(167,139,250,0.05));
+  border: 1px solid rgba(34,197,94,0.3); border-radius: 10px; padding: 14px;
+}
+.billing-toggle {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+}
+.billing-toggle input { width: 18px; height: 18px; cursor: pointer; }
+.billing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.billing-field label {
+  display: block; font-size: 11px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
+}
+.billing-field input, .billing-field select {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); padding: 9px 12px; border-radius: 8px;
+  font-size: 14px; font-family: inherit; outline: none;
+}
+.billing-total {
+  margin-top: 14px; padding: 12px; background: var(--panel);
+  border-radius: 8px; text-align: center;
+  border: 2px solid rgba(34,197,94,0.3);
+}
+.billing-total-label {
+  font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.billing-total-value {
+  font-size: 32px; font-weight: 800; color: var(--won); margin-top: 4px;
+}
+
+/* Reach out */
+.reachout-bar {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+}
+.service-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(34,197,94,0.12); color: var(--won);
+  border: 1px solid rgba(34,197,94,0.3); padding: 4px 10px;
+  border-radius: 14px; font-size: 11px; font-weight: 600;
+}
+.service-pill::before {
+  content: ""; width: 8px; height: 8px; background: var(--won);
+  border-radius: 50%; box-shadow: 0 0 6px var(--won);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.reach-actions {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+  gap: 10px; margin-bottom: 14px;
+}
+.reach-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 14px 8px; border-radius: 10px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  transition: all 0.15s; font-size: 12px; font-weight: 600;
+}
+.reach-btn:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: var(--shadow); }
+.reach-btn .ricon {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; background: var(--panel); border: 1px solid var(--border);
+}
+.reach-btn.call .ricon { background: rgba(34,197,94,0.15); color: var(--won); }
+.reach-btn.text .ricon { background: rgba(79,158,255,0.15); color: var(--accent); }
+.reach-btn.email .ricon { background: rgba(167,139,250,0.15); color: var(--purple); }
+.reach-btn.video .ricon { background: rgba(251,146,60,0.15); color: var(--warm); }
+.reach-btn.voicemail .ricon { background: rgba(245,158,11,0.15); color: var(--open); }
+
+.activity-log {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+}
+.activity-log-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--muted); margin-bottom: 8px;
+}
+.activity-row {
+  display: flex; align-items: center; gap: 10px; padding: 6px 0;
+  border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-icon {
+  width: 28px; height: 28px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
+}
+.activity-icon.call { background: rgba(34,197,94,0.15); color: var(--won); }
+.activity-icon.text { background: rgba(79,158,255,0.15); color: var(--accent); }
+.activity-icon.email { background: rgba(167,139,250,0.15); color: var(--purple); }
+.activity-icon.voicemail { background: rgba(245,158,11,0.15); color: var(--open); }
+.activity-icon.video { background: rgba(251,146,60,0.15); color: var(--warm); }
+.activity-body { flex: 1; }
+.activity-meta { color: var(--muted); font-size: 11px; }
+
+/* Dialer modal */
+.dialer { width: 100%; max-width: 380px; padding: 24px; text-align: center; margin: 0 auto; }
+.dialer-status {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--muted); margin-bottom: 12px;
+}
+.dialer-status.connected { color: var(--won); }
+.dialer-name { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.dialer-phone { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+.dialer-timer {
+  font-size: 32px; font-family: ui-monospace, monospace;
+  color: var(--won); margin: 18px 0;
+}
+.dialer-avatar {
+  width: 120px; height: 120px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 48px; font-weight: 700; color: white;
+  margin: 0 auto 18px; position: relative;
+}
+.dialer-avatar.ringing::before {
+  content: ""; position: absolute; inset: -8px; border-radius: 50%;
+  border: 2px solid var(--accent); animation: ring 1.5s infinite;
+}
+@keyframes ring {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+.dialer-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+.dialer-ctrl {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 12px 4px; border-radius: 12px; cursor: pointer;
+  font-size: 11px; font-weight: 500; display: flex;
+  flex-direction: column; align-items: center; gap: 4px;
+}
+.dialer-ctrl:hover { border-color: var(--accent); }
+.dialer-ctrl.active { background: rgba(79,158,255,0.15); border-color: var(--accent); color: var(--accent); }
+.dialer-end {
+  width: 70px; height: 70px; border-radius: 50%; background: var(--lost);
+  color: white; border: none; font-size: 28px; cursor: pointer;
+  margin: 18px auto 0; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(239,68,68,0.4);
+}
+
+/* SMS */
+.sms-thread {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px; max-height: 320px;
+  overflow-y: auto; margin-bottom: 12px;
+}
+.bubble {
+  max-width: 75%; padding: 9px 13px; border-radius: 18px;
+  margin-bottom: 6px; font-size: 13px; line-height: 1.4; word-wrap: break-word;
+}
+.bubble.incoming {
+  background: var(--panel); color: var(--text);
+  border-bottom-left-radius: 4px; margin-right: auto;
+}
+.bubble.outgoing {
+  background: var(--accent); color: white;
+  border-bottom-right-radius: 4px; margin-left: auto;
+}
+.sms-composer { display: flex; gap: 8px; }
+.sms-composer input {
+  flex: 1; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); padding: 11px 14px; border-radius: 20px;
+  font-size: 14px; outline: none; font-family: inherit;
+}
+.sms-send {
+  background: var(--accent); color: white; border: none;
+  width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 18px;
+}
+
+/* Email */
+.email-form { display: flex; flex-direction: column; gap: 10px; }
+.email-form input, .email-form textarea, .email-form select {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 10px 12px; border-radius: 8px; font-size: 13px; outline: none; font-family: inherit;
+}
+.email-form textarea { min-height: 180px; resize: vertical; }
+.email-form .label-row { display: flex; align-items: center; gap: 8px; }
+.email-form .label-row label { font-size: 11px; color: var(--muted); width: 60px; text-transform: uppercase; letter-spacing: 0.5px; }
+.email-form .label-row input, .email-form .label-row select { flex: 1; }
+.demo-banner {
+  background: rgba(251,146,60,0.1); border: 1px solid rgba(251,146,60,0.3);
+  color: var(--warm); padding: 8px 12px; border-radius: 8px;
+  font-size: 11px; margin-top: 14px;
+}
+
+/* Tasks */
+.task-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent); border-radius: 8px;
+  margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+}
+.task-row.overdue { border-left-color: var(--lost); }
+.task-row.today { border-left-color: var(--open); }
+.task-row.done { opacity: 0.5; border-left-color: var(--muted); }
+.task-row.done .task-text { text-decoration: line-through; }
+.task-check {
+  width: 18px; height: 18px; border: 2px solid var(--muted);
+  border-radius: 4px; cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center; color: var(--won);
+  font-size: 13px; flex-shrink: 0; background: transparent;
+}
+.task-check.checked { background: var(--won); border-color: var(--won); }
+.task-body { flex: 1; min-width: 0; }
+.task-text { font-size: 13px; }
+.task-meta {
+  font-size: 11px; color: var(--muted); margin-top: 2px;
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.task-due {
+  font-weight: 600; padding: 2px 8px; border-radius: 10px;
+  font-size: 10px; text-transform: uppercase;
+}
+.task-due.overdue { background: rgba(239,68,68,0.15); color: var(--lost); }
+.task-due.today { background: rgba(245,158,11,0.15); color: var(--open); }
+.task-due.tomorrow { background: rgba(79,158,255,0.15); color: var(--accent); }
+.task-presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.task-preset {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  font-size: 12px; font-weight: 500;
+}
+.task-preset:hover { border-color: var(--accent); background: rgba(79,158,255,0.08); }
+.task-form { display: grid; grid-template-columns: 1fr 130px auto; gap: 8px; margin-top: 8px; }
+.task-form input {
+  background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); padding: 9px 10px; border-radius: 6px;
+  font-size: 13px; outline: none; font-family: inherit;
+}
+.task-form button {
+  background: var(--accent); color: white; border: none;
+  padding: 0 14px; border-radius: 6px; font-size: 13px;
+  font-weight: 500; cursor: pointer;
+}
+.task-group-title {
+  display: flex; align-items: center; gap: 8px; font-size: 14px;
+  font-weight: 600; margin: 18px 0 10px;
+}
+.task-group-title:first-child { margin-top: 0; }
+.task-group-count {
+  background: var(--panel-2); color: var(--muted); padding: 2px 8px;
+  border-radius: 10px; font-size: 11px; font-weight: 600;
+}
+
+/* Page header */
+.page-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 18px; flex-wrap: wrap; gap: 12px;
+}
+.page-title { font-size: 20px; font-weight: 700; }
+.page-subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.demo-pill {
+  display: inline-block; background: rgba(251,146,60,0.15);
+  color: var(--warm); border: 1px solid rgba(251,146,60,0.3);
+  padding: 3px 10px; border-radius: 12px; font-size: 10px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  margin-left: 8px;
+}
+
+/* Campaign / Bucket grid */
+.campaign-grid, .bucket-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+.campaign-card, .bucket-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 18px; cursor: pointer; transition: all 0.15s; position: relative;
+}
+.campaign-card:hover, .bucket-card:hover {
+  border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow);
+}
+.campaign-card::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 4px; background: var(--accent);
+}
+.campaign-card.active::before { background: var(--won); }
+.campaign-card.paused::before { background: var(--muted); }
+.campaign-card.draft::before { background: var(--warm); }
+.campaign-name { font-weight: 700; font-size: 15px; }
+.campaign-trigger { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.campaign-channels { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.channel-pill {
+  background: var(--panel-2); border: 1px solid var(--border);
+  padding: 3px 10px; border-radius: 12px; font-size: 11px;
+}
+.channel-pill.email { color: var(--purple); }
+.channel-pill.sms { color: var(--won); }
+.campaign-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.cstat-label { font-size: 9px; color: var(--muted); text-transform: uppercase; }
+.cstat-value { font-size: 16px; font-weight: 700; margin-top: 2px; }
+.bucket-icon {
+  width: 40px; height: 40px; border-radius: 10px; background: var(--panel-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; margin-bottom: 10px;
+}
+.bucket-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.bucket-desc { color: var(--muted); font-size: 12px; line-height: 1.5; min-height: 36px; }
+.bucket-count-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.bucket-count { font-size: 24px; font-weight: 800; color: var(--accent); }
+.bucket-count-label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+.bucket-actions { display: flex; gap: 4px; }
+.bucket-action {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px;
+}
+.bucket-action:hover { border-color: var(--accent); color: var(--accent); }
+.bucket-action.delete:hover { border-color: var(--lost); color: var(--lost); }
+
+/* Form */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.form-row.full { grid-template-columns: 1fr; }
+.form-field label {
+  display: block; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--muted); margin-bottom: 4px;
+}
+.form-field input, .form-field select, .form-field textarea {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); padding: 9px 12px; border-radius: 8px;
+  font-size: 14px; font-family: inherit; outline: none;
+}
+.form-field textarea { resize: vertical; min-height: 72px; }
+.form-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+.btn-danger {
+  background: var(--lost); color: white; border: none;
+  padding: 9px 14px; border-radius: 8px; font-size: 13px;
+  font-weight: 500; cursor: pointer;
+}
+
+/* Drop zone */
+.drop-zone {
+  border: 3px dashed var(--border); border-radius: 14px;
+  padding: 40px 20px; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: var(--panel); margin-bottom: 18px;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--accent); background: rgba(79,158,255,0.05); transform: scale(1.01);
+}
+.drop-zone.dragover { background: rgba(79,158,255,0.12); }
+.drop-zone-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.7; }
+.drop-zone-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.drop-zone-sub { color: var(--muted); font-size: 13px; }
+
+.toast {
+  position: fixed; top: 20px; right: 20px;
+  background: var(--won); color: white;
+  padding: 14px 20px; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  z-index: 200; max-width: 360px;
+  display: flex; align-items: center; gap: 10px;
+  animation: slideIn 0.3s;
+}
+.toast.error { background: var(--lost); }
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.btn-save {
+  background: var(--accent); color: white; border: none;
+  padding: 10px 18px; border-radius: 8px; font-size: 13px;
+  font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: all 0.2s;
+}
+.btn-save:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.btn-save.saved { background: var(--won); }
+.btn-save.saved::before { content: "✓"; font-size: 14px; }
+.save-indicator {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--muted); margin-top: 4px;
+}
+.save-indicator .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--won);
+  box-shadow: 0 0 6px var(--won);
+  animation: savedPulse 2s infinite;
+}
+@keyframes savedPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.save-indicator.unsaved .dot { background: var(--warm); box-shadow: 0 0 6px var(--warm); }
+.save-indicator.unsaved { color: var(--warm); }
+
+.empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+.help-box {
+  background: rgba(79,158,255,0.08); border: 1px solid rgba(79,158,255,0.3);
+  padding: 12px 14px; border-radius: 8px; font-size: 12px;
+  line-height: 1.6; margin-bottom: 12px;
+}
+.help-box code {
+  background: var(--panel-2); padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .field-grid { grid-template-columns: 1fr; }
+  .form-row { grid-template-columns: 1fr; }
+  .billing-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div>
+    <div class="logo"><span class="logo-dot"></span>ArcAscend</div>
+    <div class="save-indicator" id="save-indicator"><span class="dot"></span><span id="last-saved-text">All changes saved</span></div>
+  </div>
+  <div class="revenue-banner" id="revenue-banner"></div>
+  <div class="header-actions">
+    <button class="btn-save" id="save-btn" title="All changes auto-save. Click to confirm + see timestamp.">💾 Save</button>
+    <button class="btn-add" id="add-lead-btn">+ Add Lead</button>
+    <button class="btn-settings" id="tabs-btn">✏️ Edit Tabs</button>
+    <button class="btn-settings" id="settings-btn">⚙ Settings</button>
+    <div class="profile-menu-wrap" style="position:relative;display:inline-block;">
+  <button class="btn-settings" id="profile-btn" style="background:linear-gradient(135deg,#4f9eff,#a78bfa);color:white;border:none;width:36px;height:36px;border-radius:50%;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Profile">👤</button>
+  <div id="profile-dropdown" style="display:none;position:absolute;right:0;top:44px;background:#1a2129;border:1px solid #2d3742;border-radius:12px;min-width:200px;box-shadow:0 8px 32px rgba(0,0,0,0.4);z-index:9999;overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid #2d3742;">
+      <div style="font-size:12px;color:#8b95a1;">Logged in as</div>
+      <div id="profile-email" style="font-size:13px;color:#e6e9ed;font-weight:600;margin-top:2px;">trainer@arcascend.com</div>
+    </div>
+    <div onclick="openSettings()" style="padding:12px 16px;cursor:pointer;color:#e6e9ed;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">⚙️ Settings</div>
+    <div onclick="showAbout()" style="padding:12px 16px;cursor:pointer;color:#e6e9ed;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">ℹ️ About ArcAscend</div>
+    <div style="border-top:1px solid #2d3742;"></div>
+    <div onclick="logOut()" style="padding:12px 16px;cursor:pointer;color:#ef4444;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">🚪 Log Out</div>
+  </div>
+</div>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <div class="tab active" data-tab="all">⋯ All Leads <span class="count" id="c-all">0</span></div>
+  <div class="tab" data-tab="clients">💼 Active Clients <span class="count" id="c-clients">0</span></div>
+  <div class="tab" data-tab="priority">⭐ Priority <span class="count" id="c-priority">0</span></div>
+  <div class="tab" data-tab="tasks">📅 Tasks <span class="count" id="c-tasks">0</span></div>
+  <div class="tab" data-tab="campaigns">🚀 Campaigns <span class="count" id="c-campaigns">0</span></div>
+  <div class="tab" data-tab="buckets">🎯 Buckets <span class="count" id="c-buckets">0</span></div>
+  <div class="tab" data-tab="sync">🔄 Sync <span class="count" id="c-sync">0</span></div>
+  <div class="tab" data-tab="won">✓ Closed Won <span class="count" id="c-won">0</span></div>
+  <div class="tab" data-tab="remaining">○ Pipeline <span class="count" id="c-remaining">0</span></div>
+  <div class="tab" data-tab="notes">📝 With Notes <span class="count" id="c-notes">0</span></div>
+</nav>
+
+<div class="toolbar">
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input class="search" id="search" placeholder="Search by name, phone, goal, notes...">
+  </div>
+  <select class="filter-toggle" id="sort-by" style="cursor:pointer;" title="Sort leads">
+    <option value="">↕ Sort: Default</option>
+    <option value="name-az">A → Z (name)</option>
+    <option value="name-za">Z → A (name)</option>
+    <option value="date-new">Date: Newest first</option>
+    <option value="date-old">Date: Oldest first</option>
+    <option value="viewed">Recently viewed</option>
+  </select>
+  <button class="filter-toggle" id="filter-toggle">⚙ Filters<span class="filter-badge" id="filter-badge" style="display:none;">0</span></button>
+  <button class="btn-save-tab" id="save-tab-btn" disabled>+ Save as Tab</button>
+</div>
+<div id="bulk-actions-bar" style="display:none;align-items:center;gap:8px;padding:8px 24px;background:rgba(239,68,68,0.08);border-bottom:1px solid rgba(239,68,68,0.2);">
+  <input type="checkbox" id="select-all-cb" style="width:16px;height:16px;cursor:pointer;accent-color:#ef4444;" title="Select All">
+  <label for="select-all-cb" style="font-size:13px;color:#e6e9ed;cursor:pointer;user-select:none;">Select All</label>
+  <span id="selected-count" style="font-size:12px;color:#8b95a1;margin-left:4px;">0 selected</span>
+  <button onclick="deleteSelected()" style="margin-left:auto;background:#ef4444;color:white;border:none;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">🗑 Delete Selected</button>
+  <button onclick="cancelSelection()" style="background:#232c36;color:#e6e9ed;border:1px solid #2d3742;padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;">Cancel</button>
+</div>
+
+<div class="filter-panel" id="filter-panel">
+  <div class="filter-grid">
+    <div class="filter-group"><label>Level</label><select id="f-level"><option value="">Any</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
+    <div class="filter-group"><label>Timeline</label><select id="f-timeline"><option value="">Any</option><option value="6+">6+ months</option><option value="3-6">3-6 months</option><option value="2-3">2-3 months</option><option value="4-6 weeks">4-6 weeks</option></select></div>
+    <div class="filter-group"><label>Status</label><select id="f-status"><option value="">Any</option><option>New</option><option>Open</option><option>Pending</option><option>Closed Won</option><option>Closed Lost</option></select></div>
+    <div class="filter-group"><label>Active Client</label><select id="f-active"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+    <div class="filter-group"><label>Goal contains</label><input id="f-goal" placeholder="e.g. athleticism"></div>
+    <div class="filter-group"><label>Needs / Why Now</label><input id="f-why" placeholder="e.g. accountability"></div>
+    <div class="filter-group"><label>Availability</label><select id="f-availability"><option value="">Any</option><option>Morning</option><option>Midday</option><option>Afternoon</option><option>Evening</option></select></div>
+    <div class="filter-group"><label>Has Open Task</label><select id="f-hastask"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+    <div class="filter-group"><label>Priority Pinned</label><select id="f-priority"><option value="">Any</option><option value="yes">⭐ Pinned</option><option value="no">Not pinned</option></select></div>
+    <div class="filter-group"><label>Has Notes</label><select id="f-notes"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+  </div>
+  <div class="filter-bar">
+    <div class="active-filter-chips" id="active-chips"></div>
+    <button class="btn btn-ghost" id="clear-filters">Clear All</button>
+  </div>
+</div>
+
+<main id="main"></main>
+
+</div>
+
+<!-- Modals -->
+<div class="modal-bg" id="modal"><div class="modal" id="modal-content"></div></div>
+<div class="modal-bg" id="reach-modal"><div class="modal" id="reach-content" style="max-width:520px;"></div></div>
+<div class="modal-bg" id="campaign-modal"><div class="modal" id="campaign-content"></div></div>
+
+<div class="modal-bg" id="add-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">+ Add New Lead</div>
+      <button class="modal-close" onclick="closeAdd()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="add-form">
+        <div class="form-row">
+          <div class="form-field"><label>Name *</label><input name="name" required></div>
+          <div class="form-field"><label>Phone</label><input name="phone"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-field"><label>Date</label><input name="date" id="add-date"></div>
+          <div class="form-field"><label>Status</label><select name="status"><option>New</option><option>Open</option><option>Pending</option><option>Closed Won</option><option>Closed Lost</option></select></div>
+        </div>
+        <div class="form-row full"><div class="form-field"><label>Goal</label><input name="goal"></div></div>
+        <div class="form-row">
+          <div class="form-field"><label>Level</label><select name="level"><option value="">—</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
+          <div class="form-field"><label>Timeline</label><select name="timeline"><option value="">—</option><option>4-6 weeks</option><option>2-3 months</option><option>3-6 months</option><option>6+ months</option></select></div>
+        </div>
+        <div class="form-row full"><div class="form-field"><label>Notes</label><textarea name="notes"></textarea></div></div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="closeAdd()">Cancel</button>
+          <button type="submit" class="btn-add">Add Lead</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="settings-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">⚙ Settings</div>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="section-title">💰 Monthly Goal</div>
+      <div class="help-box">Set your target monthly revenue. Progress shows in the top banner.</div>
+      <div class="form-field">
+        <label>Monthly Revenue Goal ($)</label>
+        <input type="number" id="monthly-goal" placeholder="e.g. 8000" min="0">
+      </div>
+      <button class="btn" id="save-goal-btn" style="margin-top:10px;">Save Goal</button>
+
+      <div class="section-title">📅 Calendar Integration</div>
+      <div class="help-box">Export scheduled tasks as .ics file — works with Apple, Google, Outlook.</div>
+      <button class="btn" id="ics-export-btn">📤 Export Tasks as .ics</button>
+
+      <div class="section-title">💾 Backup &amp; Share</div>
+      <div class="help-box">
+        <b style="color:var(--accent);">📦 Export</b> downloads a single JSON file with all your data (leads, billing, tasks, notes, settings). Send this file to share your CRM state — recipient opens ArcAscend and uses <b>Import</b> to load it. Also useful for backups and moving to a new device.
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        <button class="btn" id="export-data-btn" style="background:var(--accent);">📦 Export All Data</button>
+        <label class="btn" style="cursor:pointer;background:var(--purple);">
+          📥 Import Data File
+          <input type="file" id="import-data-file" accept=".json,application/json" style="display:none;">
+        </label>
+      </div>
+      <div class="help-box" style="background:rgba(251,146,60,0.06);border-color:rgba(251,146,60,0.25);color:var(--text);">
+        <b style="color:var(--warm);">⚠ Important:</b> Sharing the Netlify URL alone does NOT share your data. The URL shares the app; data lives in each user's browser. For true live multi-user sharing (everyone sees the same data in real-time), you need the Supabase backend setup — see <i>Supabase_Migration_Guide.pdf</i>.
+      </div>
+
+      <div class="section-title">Recovery</div>
+      <div class="help-box">Reset clears every lead, task, bucket, and campaign back to empty. Confirms first.</div>
+      <button class="btn-danger" id="reset-btn">🗑 Reset All Data</button>
+
+      <div id="settings-status" style="margin-top:14px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="tabs-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">✏️ Edit Tabs</div>
+      <button class="modal-close" onclick="closeTabsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="help-box">Toggle which tabs show in the navigation bar. Turn off the ones you don't use.</div>
+      <div id="tabs-toggle-list"></div>
+
+      <div class="section-title">➕ Create Your Own Tabs</div>
+      <div class="help-box" style="background:rgba(34,197,94,0.06);border-color:rgba(34,197,94,0.25);">
+        To build a custom tab: close this, click <b>⚙ Filters</b> in the toolbar, pick your conditions (e.g. Status = Closed Won + Active Client = Yes), then click the green <b>+ Save as Tab</b> button. Name it and it appears in the nav. You can manage custom tabs from the 🎯 Buckets tab (Pin/Unpin) or click the ✕ on the tab itself.
+      </div>
+
+      <div class="form-actions">
+        <button class="btn" onclick="closeTabsModal()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="bucket-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="bk-title">Create Bucket</div>
+      <button class="modal-close" onclick="closeBk()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-field"><label>Name</label><input id="bk-name"></div>
+        <div class="form-field"><label>Icon</label><input id="bk-icon" value="🎯"></div>
+      </div>
+      <div class="form-row full"><div class="form-field"><label>Description</label><input id="bk-desc"></div></div>
+      <div class="section-title">Filters</div>
+      <div class="filter-grid">
+        <div class="filter-group"><label>Level</label><select id="bk-level"><option value="">Any</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
+        <div class="filter-group"><label>Status</label><select id="bk-status"><option value="">Any</option><option>New</option><option>Open</option><option>Pending</option><option>Closed Won</option><option>Closed Lost</option></select></div>
+        <div class="filter-group"><label>Active Client</label><select id="bk-active"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+        <div class="filter-group"><label>Goal contains</label><input id="bk-goal"></div>
+        <div class="filter-group"><label>Why Now contains</label><input id="bk-why"></div>
+        <div class="filter-group"><label>Timeline contains</label><input id="bk-timeline" placeholder="e.g. 6+"></div>
+      </div>
+      <div class="action-card" style="margin-top:14px;">
+        <div class="action-label">📊 Live Preview</div>
+        <span id="bk-preview" style="font-size:18px;font-weight:700;color:var(--accent);">0</span> leads match
+      </div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" id="bk-pin"><label for="bk-pin">📌 Pin as tab in navigation</label>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="closeBk()">Cancel</button>
+        <button class="btn" id="bk-save">Save Bucket</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==========================================================
+// DATA
+// ==========================================================
+var STORAGE_KEY = "arcascend_data";
+var BUCKETS_KEY = "arcascend_buckets";
+var CAMPAIGNS_KEY = "arcascend_campaigns";
+var GOAL_KEY = "arcascend_goal";
+var SHEET_URL_KEY = "arcascend_sheet_url";
+var AUTO_SYNC_KEY = "arcascend_auto_sync";
+var POLL_INT_KEY = "arcascend_poll_interval";
+
+var LEADS = [];
+var BUCKETS = [];
+var CAMPAIGNS = [];
+var monthlyGoal = 0;
+
+// ==========================================================
+// HELPERS
+// ==========================================================
+function $(id) { return document.getElementById(id); }
+function uuid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function leadKey(L) {
+  return ((L.name||"").trim().toLowerCase()) + "|" + ((L.phone||"").replace(/\D/g,""));
+}
+function statusClass(s) {
+  s = (s||"").toLowerCase();
+  if (s.indexOf("won") >= 0) return "won";
+  if (s.indexOf("lost") >= 0) return "lost";
+  if (s.indexOf("pending") >= 0) return "pending";
+  if (s.indexOf("open") >= 0) return "open";
+  return "new";
+}
+function todayStr() { return new Date().toISOString().slice(0,10); }
+function addDays(d, n) {
+  var date = d ? new Date(d+"T00:00:00") : new Date();
+  date.setDate(date.getDate()+n);
+  return date.toISOString().slice(0,10);
+}
+function formatTaskDate(d) {
+  if (!d) return "";
+  var t = todayStr();
+  if (d === t) return "Today";
+  if (d === addDays(t,1)) return "Tomorrow";
+  if (d === addDays(t,-1)) return "Yesterday";
+  return new Date(d+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
+}
+function dueBucket(d) {
+  if (!d) return "upcoming";
+  var t = todayStr();
+  if (d < t) return "overdue";
+  if (d === t) return "today";
+  if (d === addDays(t,1)) return "tomorrow";
+  if (d <= addDays(t,7)) return "thisweek";
+  return "upcoming";
+}
+function timeAgo(iso) {
+  var d = new Date(iso), diff = (Date.now()-d.getTime())/1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff/60) + " min ago";
+  if (diff < 86400) return Math.floor(diff/3600) + "h ago";
+  if (diff < 86400*7) return Math.floor(diff/86400) + "d ago";
+  return d.toLocaleDateString();
+}
+function fmt$(n) {
+  return "$" + (n || 0).toLocaleString();
+}
+
+// ==========================================================
+// BILLING HELPERS
+// ==========================================================
+function ensureBilling(L) {
+  if (!L.billing) L.billing = { active: false, sessions: 0, rate: 0, package: "", paid: false };
+  if (L.billing.paid === undefined) L.billing.paid = false;
+  return L.billing;
+}
+function leadTotal(L) {
+  var b = ensureBilling(L);
+  return (b.sessions || 0) * (b.rate || 0);
+}
+function activeClients() {
+  return LEADS.filter(function(L){ return L.billing && L.billing.active; });
+}
+function totalRevenue() {
+  var t = 0;
+  activeClients().forEach(function(L){ t += leadTotal(L); });
+  return t;
+}
+function totalPaid() {
+  var t = 0;
+  activeClients().forEach(function(L){ if (L.billing.paid) t += leadTotal(L); });
+  return t;
+}
+function totalOutstanding() {
+  return totalRevenue() - totalPaid();
+}
+
+// ==========================================================
+// TASKS
+// ==========================================================
+function leadTasks(L) {
+  if (!Array.isArray(L.tasks)) L.tasks = [];
+  return L.tasks;
+}
+function openTaskCount(L) {
+  return leadTasks(L).filter(function(t){ return !t.completed; }).length;
+}
+function nextOpenTask(L) {
+  var open = leadTasks(L).filter(function(t){ return !t.completed; });
+  open.sort(function(a,b){ return (a.dueDate||"") < (b.dueDate||"") ? -1 : 1; });
+  return open[0];
+}
+function addTask(L, type, dueDate, note) {
+  leadTasks(L).push({ id: uuid(), type: type, dueDate: dueDate, note: note||"", completed: false });
+  saveState();
+}
+
+// ==========================================================
+// ACTIVITY
+// ==========================================================
+function activityList(L) {
+  if (!Array.isArray(L.activity)) L.activity = [];
+  return L.activity;
+}
+function logActivity(L, kind, summary) {
+  activityList(L).unshift({ kind: kind, summary: summary, at: new Date().toISOString() });
+  if (L.activity.length > 20) L.activity = L.activity.slice(0,20);
+  saveState();
+}
+
+// ==========================================================
+// PERSISTENCE
+// ==========================================================
+var LAST_SAVED_KEY = "arcascend_last_saved";
+var lastSavedAt = null;
+
+// ==========================================
+// SUPABASE CONNECTION & SYNC
+// ==========================================
+var SUPABASE_URL = 'https://udzfpeztwgsynjhwjwic.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkemZwZXp0d2dzeW5qaHdqd2ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2OTcwOTcsImV4cCI6MjA5NTI3MzA5N30.Eke_HxZtww3zVekkPMDydT90NkVWSltJjA2fr40oquQ';
+var currentUser = null;
+var currentGymId = null;
+
+// Check if user is logged in
+async function checkAuth() {
+  var token = localStorage.getItem('arcascend_token');
+  var userId = localStorage.getItem('arcascend_user_id');
+  if (!token || !userId) {
+    window.location.href = 'login.html';
+    return false;
+  }
+  currentUser = { 
+    id: userId,
+    email: localStorage.getItem('arcascend_user_email')
+  };
+  return true;
+}
+// Save leads to Supabase
+async function saveToSupabase() {
+  var token = localStorage.getItem('arcascend_token');
+  if (!token || !currentUser) return;
+  try {
+    await fetch(SUPABASE_URL + '/rest/v1/leads?user_id=eq.' + currentUser.id, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!LEADS.length) return;
+    var rows = LEADS.map(function(L) {
+      return {
+        user_id: currentUser.id,
+        name: L.name || '',
+        phone: L.phone || '',
+        email: L.email || '',
+        goal: L.goal || '',
+        status: L.status || 'New',
+        data: JSON.stringify(L)
+      };
+    });
+    await fetch(SUPABASE_URL + '/rest/v1/leads', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(rows)
+    });
+  } catch(e) {
+    console.log('Supabase save error:', e);
+  }
+}
+
+// Load leads from Supabase
+async function loadFromSupabase() {
+  var token = localStorage.getItem('arcascend_token');
+  if (!token || !currentUser) return false;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/leads?user_id=eq.' + currentUser.id + '&order=created_at.desc', {
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_KEY
+      }
+    });
+    var rows = await res.json();
+    if (Array.isArray(rows) && rows.length > 0) {
+      LEADS = rows.map(function(r) {
+        try { return JSON.parse(r.data); } catch(e) { return r; }
+      });
+      return true;
+    }
+    return false;
+  } catch(e) {
+    return false;
+  }
+}
+// ==========================================
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
+    saveToSupabase();
+    lastSavedAt = Date.now();
+    localStorage.setItem(LAST_SAVED_KEY, String(lastSavedAt));
+    updateSavedIndicator();
+  } catch(e) {
+    var el = $("save-indicator");
+    if (el) {
+      el.classList.add("unsaved");
+      $("last-saved-text").textContent = "⚠ Save failed: " + e.message;
+    }
+  }
+}
+
+function updateSavedIndicator() {
+  var el = $("last-saved-text");
+  if (!el) return;
+  if (!lastSavedAt) {
+    el.textContent = "All changes saved";
+    return;
+  }
+  var diff = Math.floor((Date.now() - lastSavedAt) / 1000);
+  var msg;
+  if (diff < 5) msg = "✓ Just saved";
+  else if (diff < 60) msg = "Saved " + diff + "s ago";
+  else if (diff < 3600) msg = "Saved " + Math.floor(diff/60) + " min ago";
+  else if (diff < 86400) msg = "Saved " + Math.floor(diff/3600) + "h ago";
+  else msg = "Saved " + new Date(lastSavedAt).toLocaleString();
+  el.textContent = msg;
+  var indicator = $("save-indicator");
+  if (indicator) indicator.classList.remove("unsaved");
+}
+
+// Live update of the timestamp every 10 seconds
+setInterval(updateSavedIndicator, 10000);
+function loadState() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) LEADS = parsed;
+    }
+  } catch(e) {}
+}
+function saveBuckets() { try { localStorage.setItem(BUCKETS_KEY, JSON.stringify(BUCKETS)); } catch(e) {} }
+function loadBuckets() {
+  try { var raw = localStorage.getItem(BUCKETS_KEY); if (raw) BUCKETS = JSON.parse(raw); } catch(e) {}
+  if (!BUCKETS.length) {
+    BUCKETS = [
+      { id: uuid(), name: "Active Clients", icon: "💎", desc: "All paying clients", rule: { active: "yes" }, pinAsTab: false },
+      { id: uuid(), name: "Closed Won", icon: "🏆", desc: "Won deals — upsell candidates", rule: { status: "Closed Won" }, pinAsTab: false },
+      { id: uuid(), name: "Needs Accountability", icon: "📣", desc: "Mentioned structure or accountability", rule: { why: "accountab" }, pinAsTab: false },
+      { id: uuid(), name: "Long-Game Athletes", icon: "🏃", desc: "6+ month timeline, athleticism focus", rule: { timeline: "6+", goal: "Athleticism" }, pinAsTab: false },
+    ];
+    saveBuckets();
+  }
+}
+function saveCampaigns() { try { localStorage.setItem(CAMPAIGNS_KEY, JSON.stringify(CAMPAIGNS)); } catch(e) {} }
+function loadCampaigns() {
+  try { var raw = localStorage.getItem(CAMPAIGNS_KEY); if (raw) CAMPAIGNS = JSON.parse(raw); } catch(e) {}
+  if (!CAMPAIGNS.length) {
+    CAMPAIGNS = [
+      { id: uuid(), name: "New Lead Welcome", trigger: "Auto on new form submission", status: "active",
+        channels: ["sms","email"], steps: 4, stats: { sent: 0, opened: 0, replied: 0, booked: 0 },
+        desc: "Engage new inbounds within minutes of their form submission.",
+        sequence: [
+          { when: "1hr after", channel: "SMS", body: "Hey {{name}}! Thanks for filling out the form. I'll reach out tomorrow to find time to chat." },
+          { when: "2hr after", channel: "Email", subject: "Welcome — quick intro", body: "Hey {{name}},\\n\\nReally glad you filled out the form. Talk soon!\\n\\n— Mario" },
+          { when: "Day 1", channel: "SMS", body: "Morning {{name}}! Ready to chat about your fitness goals?" },
+          { when: "Day 3", channel: "SMS", body: "Hey {{name}}, still interested? Reply STOP to opt out." },
+        ]},
+      { id: uuid(), name: "Hot Lead → Close", trigger: "Manual", status: "active",
+        channels: ["sms","email"], steps: 3, stats: { sent: 0, opened: 0, replied: 0, booked: 0 },
+        desc: "For leads who've shown clear buying signals.",
+        sequence: [
+          { when: "Day 0", channel: "SMS", body: "Hey {{name}}, ready to lock in your first session? Calendar: [link]" },
+          { when: "Day 2", channel: "Email", subject: "Quick follow-up", body: "Hey {{name}}, ready to start? [Book here]" },
+          { when: "Day 5", channel: "SMS", body: "{{name}}, sharing a quick client win — still interested?" },
+        ]},
+      { id: uuid(), name: "Win-back: Closed Lost", trigger: "30 days after lost", status: "active",
+        channels: ["email","sms"], steps: 2, stats: { sent: 0, opened: 0, replied: 0, booked: 0 },
+        desc: "Re-engage past nos after life events or pay raises.",
+        sequence: [
+          { when: "Day 0", channel: "Email", subject: "Checking in", body: "Hey {{name}}, just checking in. Hope things are going well." },
+          { when: "Day 14", channel: "SMS", body: "Hey {{name}}, 50% off first month new client special. Interested?" },
+        ]},
+      { id: uuid(), name: "Ghosted Reminder", trigger: "7 days no response", status: "paused",
+        channels: ["sms"], steps: 2, stats: { sent: 0, opened: 0, replied: 0, booked: 0 },
+        desc: "Soft re-engagement for consult no-shows.",
+        sequence: [
+          { when: "Day 0", channel: "SMS", body: "Hey {{name}}, lost track of you. Still interested?" },
+          { when: "Day 4", channel: "SMS", body: "No worries if not — happy to keep your info on file." },
+        ]},
+    ];
+    saveCampaigns();
+  }
+}
+function loadGoal() {
+  var v = localStorage.getItem(GOAL_KEY);
+  monthlyGoal = v ? Number(v) : 0;
+}
+
+// ==========================================================
+// FILTER STATE
+// ==========================================================
+var activeTab = "all";
+var searchQ = "";
+var sortBy = "";
+
+// Built-in tabs (all except "all" can be hidden)
+var TAB_DEFS = [
+  { id: "all", label: "All Leads", icon: "⋯", locked: true },
+  { id: "clients", label: "Active Clients", icon: "💼" },
+  { id: "priority", label: "Priority", icon: "⭐" },
+  { id: "tasks", label: "Tasks", icon: "📅" },
+  { id: "campaigns", label: "Campaigns", icon: "🚀" },
+  { id: "buckets", label: "Buckets", icon: "🎯" },
+  { id: "sync", label: "Sync", icon: "🔄" },
+  { id: "won", label: "Closed Won", icon: "✓" },
+  { id: "remaining", label: "Pipeline", icon: "○" },
+  { id: "notes", label: "With Notes", icon: "📝" }
+];
+var HIDDEN_TABS_KEY = "arcascend_hidden_tabs";
+var hiddenTabs = [];
+function loadHiddenTabs() {
+  var raw = localStorage.getItem(HIDDEN_TABS_KEY);
+  if (raw === null) {
+    // First run: hide Pipeline by default (per user request)
+    hiddenTabs = ["remaining"];
+    localStorage.setItem(HIDDEN_TABS_KEY, JSON.stringify(hiddenTabs));
+  } else {
+    try { hiddenTabs = JSON.parse(raw) || []; } catch(e) { hiddenTabs = []; }
+  }
+}
+function saveHiddenTabs() {
+  localStorage.setItem(HIDDEN_TABS_KEY, JSON.stringify(hiddenTabs));
+}
+function applyTabVisibility() {
+  TAB_DEFS.forEach(function(t){
+    var el = document.querySelector('.tab[data-tab="' + t.id + '"]');
+    if (!el) return;
+    el.style.display = (hiddenTabs.indexOf(t.id) >= 0) ? "none" : "";
+  });
+  // If the active tab got hidden, fall back to All Leads
+  if (hiddenTabs.indexOf(activeTab) >= 0) {
+    document.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("active"); });
+    var allTab = document.querySelector('.tab[data-tab="all"]');
+    if (allTab) allTab.classList.add("active");
+    activeTab = "all";
+  }
+}
+function openTabsModal() {
+  var list = $("tabs-toggle-list");
+  list.innerHTML = TAB_DEFS.map(function(t){
+    var hidden = hiddenTabs.indexOf(t.id) >= 0;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;">' +
+      '<div style="font-size:14px;">' + t.icon + ' ' + t.label + (t.locked ? ' <span style="font-size:10px;color:var(--muted);">(home — always shown)</span>' : '') + '</div>' +
+      (t.locked
+        ? '<span style="font-size:11px;color:var(--muted);">Locked</span>'
+        : '<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">' +
+            '<input type="checkbox" data-tabtoggle="' + t.id + '" ' + (hidden ? "" : "checked") + ' style="width:16px;height:16px;cursor:pointer;">' +
+            (hidden ? '<span style="color:var(--muted);">Hidden</span>' : '<span style="color:var(--won);">Shown</span>') +
+          '</label>') +
+    '</div>';
+  }).join("");
+  list.querySelectorAll("[data-tabtoggle]").forEach(function(cb){
+    cb.addEventListener("change", function(){
+      var id = cb.dataset.tabtoggle;
+      if (cb.checked) {
+        hiddenTabs = hiddenTabs.filter(function(x){ return x !== id; });
+      } else {
+        if (hiddenTabs.indexOf(id) < 0) hiddenTabs.push(id);
+      }
+      saveHiddenTabs();
+      applyTabVisibility();
+      renderMain();
+      openTabsModal(); // refresh labels
+    });
+  });
+  $("tabs-modal").classList.add("show");
+}
+function closeTabsModal() { $("tabs-modal").classList.remove("show"); }
+var F = {
+  level: "", timeline: "", status: "", active: "",
+  goal: "", why: "", availability: "",
+  hastask: "", priority: "", notes: ""
+};
+
+// Parse a lead's profile date (handles MM/DD/YYYY, M/D/YY, ISO, timestamps)
+function parseLeadDate(L) {
+  var d = (L.date || "").trim();
+  if (!d) return 0;
+  var m = d.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) {
+    var year = parseInt(m[3]);
+    if (year < 100) year += 2000;
+    return new Date(year, parseInt(m[1]) - 1, parseInt(m[2])).getTime();
+  }
+  var t = Date.parse(d);
+  return isNaN(t) ? 0 : t;
+}
+
+function sortLeads(arr) {
+  var a = arr.slice();
+  if (sortBy === "name-az") {
+    a.sort(function(x, y){ return (x.name||"").toLowerCase() < (y.name||"").toLowerCase() ? -1 : 1; });
+  } else if (sortBy === "name-za") {
+    a.sort(function(x, y){ return (x.name||"").toLowerCase() > (y.name||"").toLowerCase() ? -1 : 1; });
+  } else if (sortBy === "date-new") {
+    a.sort(function(x, y){ return parseLeadDate(y) - parseLeadDate(x); });
+  } else if (sortBy === "date-old") {
+    a.sort(function(x, y){
+      var dx = parseLeadDate(x), dy = parseLeadDate(y);
+      // Push undated leads to the end
+      if (!dx) return 1; if (!dy) return -1;
+      return dx - dy;
+    });
+  } else if (sortBy === "viewed") {
+    a.sort(function(x, y){ return (y.lastViewed||0) - (x.lastViewed||0); });
+  }
+  return a;
+}
+
+// ==========================================================
+// FILTERING
+// ==========================================================
+function filterLeads(arr) {
+  return arr.filter(function(L){
+    if (F.level && L.level !== F.level) return false;
+    if (F.timeline && (L.timeline||"").indexOf(F.timeline) < 0) return false;
+    if (F.status && L.status !== F.status) return false;
+    if (F.active) {
+      var a = L.billing && L.billing.active;
+      if (F.active === "yes" && !a) return false;
+      if (F.active === "no" && a) return false;
+    }
+    if (F.goal && (L.goal||"").toLowerCase().indexOf(F.goal.toLowerCase()) < 0) return false;
+    if (F.why && (L.whyNow||"").toLowerCase().indexOf(F.why.toLowerCase()) < 0) return false;
+    if (F.availability && (L.availability||"").toLowerCase().indexOf(F.availability.toLowerCase()) < 0) return false;
+    if (F.hastask) {
+      var h = openTaskCount(L) > 0;
+      if (F.hastask === "yes" && !h) return false;
+      if (F.hastask === "no" && h) return false;
+    }
+    if (F.priority) {
+      if (F.priority === "yes" && !L.priority) return false;
+      if (F.priority === "no" && L.priority) return false;
+    }
+    if (F.notes) {
+      var has = !!(L.notes && L.notes.trim());
+      if (F.notes === "yes" && !has) return false;
+      if (F.notes === "no" && has) return false;
+    }
+    if (searchQ) {
+      var q = searchQ.toLowerCase();
+      var hay = (L.name+" "+L.phone+" "+L.goal+" "+L.notes+" "+L.outcomes+" "+L.whyNow+" "+(L.other||"")).toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+}
+function bucketFor(L) {
+  var s = (L.status||"").toLowerCase();
+  if (s.indexOf("won") >= 0) return "won";
+  if (s.indexOf("lost") >= 0) return "lost";
+  return "remaining";
+}
+function leadsInBucket(b) {
+  return LEADS.filter(function(L){
+    var r = b.rule || {};
+    if (r.level && L.level !== r.level) return false;
+    if (r.status && L.status !== r.status) return false;
+    if (r.active === "yes" && !(L.billing && L.billing.active)) return false;
+    if (r.active === "no" && (L.billing && L.billing.active)) return false;
+    if (r.goal && (L.goal||"").toLowerCase().indexOf(r.goal.toLowerCase()) < 0) return false;
+    if (r.why && (L.whyNow||"").toLowerCase().indexOf(r.why.toLowerCase()) < 0) return false;
+    if (r.timeline && (L.timeline||"").indexOf(r.timeline) < 0) return false;
+    return true;
+  });
+}
+
+// ==========================================================
+// CSV / EXCEL PARSING
+// ==========================================================
+function parseCSV(text) {
+  var first = text.split(/\r?\n/)[0] || "";
+  var delim = first.split("\t").length > first.split(",").length ? "\t" : ",";
+  var rows = [], row = [], field = "", inQ = false;
+  for (var i = 0; i < text.length; i++) {
+    var c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else field += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === delim) { row.push(field); field = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (field !== "" || row.length) { row.push(field); rows.push(row); }
+        row = []; field = "";
+        if (c === "\r" && text[i+1] === "\n") i++;
+      } else field += c;
+    }
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(c){ return String(c).trim(); }); });
+}
+
+function rowToLead(headers, row) {
+  var matched = {};
+  function get() {
+    for (var i = 0; i < arguments.length; i++) {
+      var k = String(arguments[i]).toLowerCase();
+      for (var j = 0; j < headers.length; j++) {
+        if (matched[j]) continue;
+        if (String(headers[j]).toLowerCase().indexOf(k) >= 0) {
+          matched[j] = true;
+          return row[j] ? String(row[j]).trim() : "";
+        }
+      }
+    }
+    return "";
+  }
+
+  // PHONE first (so "client phone" matches phone, not name)
+  var phone = get("phone", "mobile number", "cell phone", "cell number");
+  // Then NAME with broad synonyms — Client, Customer, Contact, etc.
+  var name = get("full name", "first name", "client name", "customer name", "name", "client", "customer", "contact", "person", "lead", "member");
+  // Status
+  var statusRaw = get("deal outcome", "outcome", "status", "stage") || "New";
+  // Other recognized fields
+  var date = get("timestamp", "date joined", "joined", "signed up", "start date", "date");
+  var goal = get("fitness goal", "goals", "goal", "objective");
+  var level = get("fitness level", "level", "experience");
+  var timeline = get("timeline", "duration", "time frame");
+  var style = get("preferred training style", "training style", "style", "format");
+  var injuries = get("injuries", "injur", "health", "medical");
+  var availability = get("availability", "schedule");
+  var whyNow = get("why is now", "why now", "invest in", "reason");
+  var outcomes = get("specific outcomes", "outcomes", "results");
+  var other = get("anything else", "support", "comments", "additional");
+  var notes = get("consultation notes", "notes", "remarks");
+
+  // FALLBACK: if no name was matched, use the first non-matched non-empty column
+  if (!name) {
+    for (var i = 0; i < row.length; i++) {
+      if (!matched[i] && row[i] && String(row[i]).trim()) {
+        name = String(row[i]).trim();
+        matched[i] = true;
+        break;
+      }
+    }
+  }
+
+  // Normalize status
+  var status = statusRaw;
+  var sl = String(status).toLowerCase();
+  if (sl.indexOf("won") >= 0) status = "Closed Won";
+  else if (sl.indexOf("lost") >= 0) status = "Closed Lost";
+  else if (sl.indexOf("pending") >= 0) status = "Pending";
+  else if (sl.indexOf("open") >= 0) status = "Open";
+
+  var lead = {
+    date: date,
+    name: name,
+    phone: phone,
+    goal: goal,
+    level: level,
+    timeline: timeline,
+    style: style,
+    injuries: injuries,
+    availability: availability,
+    whyNow: whyNow,
+    outcomes: outcomes,
+    other: other,
+    notes: notes,
+    status: status
+  };
+
+  // Everything unmatched with content → notes
+  var extras = [];
+  for (var j = 0; j < headers.length; j++) {
+    if (!matched[j] && row[j] && String(row[j]).trim()) {
+      var label = String(headers[j] || "").trim();
+      if (!label) label = "Column " + (j + 1);
+      extras.push(label + ": " + String(row[j]).trim());
+    }
+  }
+  if (extras.length) {
+    var sep = lead.notes ? "\n\n--- Additional fields ---\n" : "";
+    lead.notes = (lead.notes || "") + sep + extras.join("\n");
+  }
+  return lead;
+}
+
+function importRows(rows) {
+  if (!rows || rows.length < 2) throw new Error("No data rows. Did you include the header row?");
+  var headers = rows[0];
+  var added = 0, updated = 0, skipped = 0;
+  for (var i = 1; i < rows.length; i++) {
+    var lead = rowToLead(headers, rows[i]);
+    if (!lead.name) { skipped++; continue; }
+    var key = leadKey(lead);
+    var existing = LEADS.find(function(L){ return leadKey(L) === key; });
+    if (existing) {
+      ["goal","level","timeline","style","injuries","availability","whyNow","outcomes","other"].forEach(function(f){
+        if (!existing[f] && lead[f]) existing[f] = lead[f];
+      });
+      if (!existing.notes && lead.notes) existing.notes = lead.notes;
+      if ((!existing.status || existing.status === "New") && lead.status && lead.status !== "New") {
+        existing.status = lead.status;
+      }
+      updated++;
+    } else {
+      LEADS.unshift(lead);
+      added++;
+    }
+  }
+  saveState();
+  renderAll();
+  return { added: added, updated: updated, skipped: skipped, total: rows.length - 1 };
+}
+
+function importCsvText(text) {
+  return importRows(parseCSV(text));
+}
+
+function importExcelFile(file, callback) {
+  if (typeof XLSX === "undefined") {
+    callback(null, new Error("Excel library failed to load. Try saving as CSV instead."));
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var workbook = XLSX.read(data, { type: "array" });
+      var first = workbook.SheetNames[0];
+      var sheet = workbook.Sheets[first];
+      var rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      // Filter empty rows
+      rows = rows.filter(function(r){ return r.some(function(c){ return String(c).trim(); }); });
+      callback(rows, null);
+    } catch (err) { callback(null, err); }
+  };
+  reader.onerror = function() { callback(null, new Error("Could not read file.")); };
+  reader.readAsArrayBuffer(file);
+}
+
+// ==========================================================
+// RENDER: REVENUE BANNER + COUNTS
+// ==========================================================
+function renderRevenueBanner() {
+  var rev = totalRevenue();
+  var paid = totalPaid();
+  var outstanding = rev - paid;
+  var count = activeClients().length;
+  var goalProgress = monthlyGoal > 0 ? Math.round((rev / monthlyGoal) * 100) : null;
+
+  $("revenue-banner").innerHTML =
+    '<div class="rev-stat projection">' +
+      '<div class="rev-stat-label">Monthly Projection</div>' +
+      '<div class="rev-stat-value accent">' + fmt$(rev) + '</div>' +
+    '</div>' +
+    '<div class="rev-stat highlight">' +
+      '<div class="rev-stat-label">Paid So Far</div>' +
+      '<div class="rev-stat-value won">' + fmt$(paid) + '</div>' +
+    '</div>' +
+    '<div class="rev-stat" style="' + (outstanding > 0 ? 'border-color:rgba(245,158,11,0.4);' : '') + '">' +
+      '<div class="rev-stat-label">Outstanding</div>' +
+      '<div class="rev-stat-value" style="color:' + (outstanding > 0 ? 'var(--open)' : 'var(--muted)') + ';">' + fmt$(outstanding) + '</div>' +
+    '</div>' +
+    '<div class="rev-stat">' +
+      '<div class="rev-stat-label">Active Clients</div>' +
+      '<div class="rev-stat-value">' + count + '</div>' +
+    '</div>' +
+    (goalProgress !== null ?
+      '<div class="rev-stat" style="' + (goalProgress >= 100 ? 'border-color:rgba(34,197,94,0.5);' : '') + '">' +
+        '<div class="rev-stat-label">Goal Progress</div>' +
+        '<div class="rev-stat-value' + (goalProgress >= 100 ? ' won' : '') + '">' + goalProgress + '%</div>' +
+      '</div>'
+    : '');
+}
+
+function renderTabCounts() {
+  $("c-all").textContent = LEADS.length;
+  $("c-clients").textContent = activeClients().length;
+  $("c-priority").textContent = LEADS.filter(function(L){ return L.priority; }).length;
+  $("c-won").textContent = LEADS.filter(function(L){ return bucketFor(L) === "won"; }).length;
+  $("c-remaining").textContent = LEADS.filter(function(L){ return bucketFor(L) === "remaining"; }).length;
+  $("c-notes").textContent = LEADS.filter(function(L){ return L.notes && L.notes.trim(); }).length;
+  var tasks = 0;
+  LEADS.forEach(function(L){ tasks += openTaskCount(L); });
+  $("c-tasks").textContent = tasks;
+  $("c-campaigns").textContent = CAMPAIGNS.filter(function(c){ return c.status === "active"; }).length;
+  $("c-buckets").textContent = BUCKETS.length;
+  var syncN = (localStorage.getItem(SHEET_URL_KEY) ? 1 : 0) + (localStorage.getItem(AUTO_SYNC_KEY) === "1" ? 1 : 0);
+  $("c-sync").textContent = syncN;
+}
+
+// ==========================================================
+// LEAD CARD
+// ==========================================================
+function leadCard(L) {
+  var b = ensureBilling(L);
+  var sc = b.active ? "active-client" : statusClass(L.status);
+  var cls = sc + (L.priority ? " priority" : "");
+  var goalShort = (L.goal||"").split(",").slice(0,2).map(function(g){ return g.trim(); }).join(" · ");
+  var safeName = (L.name||"").replace(/"/g,'&quot;');
+  var taskCount = openTaskCount(L);
+  var nt = nextOpenTask(L);
+  var pipB = nt ? dueBucket(nt.dueDate) : "";
+  var pipCls = pipB === "overdue" ? "overdue" : (pipB === "today" ? "today" : "");
+  var pip = taskCount > 0 ? '<span class="task-pip ' + pipCls + '">' + taskCount + '</span>' : '';
+
+  var statusBadge = b.active
+    ? '<span class="badge active-client">💎 Active Client</span>'
+    : '<span class="badge ' + statusClass(L.status) + '">' + (L.status || "New") + '</span>';
+
+  var billingBlock = b.active ?
+    '<div class="billing-mini">' +
+      '<div class="billing-mini-stat"><div class="billing-mini-label">Sessions</div><div class="billing-mini-value sess">' + (b.sessions || 0) + '</div></div>' +
+      '<div class="billing-mini-stat"><div class="billing-mini-label">Rate</div><div class="billing-mini-value">' + fmt$(b.rate || 0) + '</div></div>' +
+      '<div class="billing-mini-stat"><div class="billing-mini-label">Total</div><div class="billing-mini-value total">' + fmt$(leadTotal(L)) + '</div></div>' +
+    '</div>' : '';
+
+  var nextBlock = nt ?
+    '<div class="action-card" style="border-left-color:' + (pipB === "overdue" ? "var(--lost)" : pipB === "today" ? "var(--open)" : "var(--accent)") + ';">' +
+      '<div class="action-label">📅 Next: ' + nt.type + (nt.dueDate ? ' · ' + formatTaskDate(nt.dueDate) : '') + '</div>' +
+      (nt.note || '<em>No note</em>') +
+    '</div>' : '';
+
+  return '<div class="lead-card ' + cls + '" data-name="' + safeName + '">' +
+    pip +
+    '<div class="lead-header">' +
+      '<div style="display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0;">' +
+        '<button class="star-btn ' + (L.priority ? "active" : "") + '" data-star="' + safeName + '">' + (L.priority ? "★" : "☆") + '</button>' +
+        '<div style="min-width:0;">' +
+          '<div class="lead-name">' + L.name + '</div>' +
+          '<div class="lead-date">' + (L.date || "") + (L.phone ? " · " + L.phone : "") + '</div>' +
+        '</div>' +
+      '</div>' +
+      statusBadge +
+    '</div>' +
+    '<div class="lead-body">' + (goalShort || '<em>No goals listed</em>') + '</div>' +
+    nextBlock +
+    '<div class="lead-meta">' +
+      (L.level ? '<span class="meta-chip">' + L.level + '</span>' : '') +
+      (L.timeline ? '<span class="meta-chip">' + L.timeline + '</span>' : '') +
+      (b.active && b.package ? '<span class="meta-chip">' + b.package + '</span>' : '') +
+      (b.active ? '<span class="meta-chip" style="' + (b.paid ? 'background:rgba(34,197,94,0.15);color:var(--won);' : 'background:rgba(245,158,11,0.15);color:var(--open);') + '">' + (b.paid ? '✓ Paid' : '○ Unpaid') + '</span>' : '') +
+      (L.consultStatus ? '<span class="meta-chip" style="background:rgba(167,139,250,0.15);color:var(--purple);">' + consultIcon(L.consultStatus) + ' ' + L.consultStatus + '</span>' : '') +
+    '</div>' +
+    billingBlock +
+  '</div>';
+}
+
+function consultIcon(s) {
+  if (s === "Complete") return "✅";
+  if (s === "Not Complete") return "⬜";
+  if (s === "Reschedule") return "🔄";
+  if (s === "Follow Up") return "📌";
+  if (s === "No Show") return "🚫";
+  return "";
+}
+
+function wireCards() {
+  document.querySelectorAll(".lead-card").forEach(function(c){
+    c.addEventListener("click", function(){ openLead(c.dataset.name); });
+  });
+  document.querySelectorAll(".star-btn").forEach(function(b){
+    b.addEventListener("click", function(e){
+      e.stopPropagation();
+      var L = LEADS.find(function(x){ return x.name === b.dataset.star; });
+      if (!L) return;
+      L.priority = !L.priority;
+      saveState();
+      renderAll();
+    });
+  });
+   document.querySelectorAll('.lead-card').forEach(function(c) {
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'lead-checkbox';
+    cb.style.cssText = 'position:absolute;top:10px;right:10px;width:16px;height:16px;cursor:pointer;accent-color:#ef4444;z-index:10;display:none;';
+    cb.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var name = decodeURIComponent(c.dataset.name);
+      if (cb.checked) {
+        selectedLeads.add(name);
+      } else {
+        selectedLeads.delete(name);
+      }
+      updateBulkBar();
+    });
+    c.style.position = 'relative';
+    c.appendChild(cb);
+    c.addEventListener('mouseenter', function() { cb.style.display = 'block'; });
+    c.addEventListener('mouseleave', function() { if (!cb.checked) cb.style.display = 'none'; });
+    if (selectedLeads.has(decodeURIComponent(c.dataset.name))) {
+      cb.checked = true;
+      cb.style.display = 'block';
+    }
+  });
+}
+
+// ==========================================================
+// CUSTOM TABS (pinned buckets)
+// ==========================================================
+function renderCustomTabs() {
+  document.querySelectorAll(".tab.custom-tab,.tab-divider").forEach(function(e){ e.remove(); });
+  var nav = $("tabs");
+  var pinned = BUCKETS.filter(function(b){ return b.pinAsTab; });
+  if (!pinned.length) return;
+  var div = document.createElement("div");
+  div.style.cssText = "width:1px;background:var(--border);margin:8px;";
+  div.className = "tab-divider";
+  nav.appendChild(div);
+  pinned.forEach(function(b){
+    var t = document.createElement("div");
+    t.className = "tab custom-tab" + (activeTab === "custom-" + b.id ? " active" : "");
+    t.dataset.tab = "custom-" + b.id;
+    var cnt = leadsInBucket(b).length;
+    t.innerHTML = '<span>' + b.icon + ' ' + b.name + '</span><span class="count">' + cnt + '</span><button class="tab-close" data-unpin="' + b.id + '">✕</button>';
+    t.addEventListener("click", function(e){
+      if (e.target.closest(".tab-close")) return;
+      document.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("active"); });
+      t.classList.add("active");
+      activeTab = "custom-" + b.id;
+      renderMain();
+    });
+    t.querySelector(".tab-close").addEventListener("click", function(e){
+      e.stopPropagation();
+      b.pinAsTab = false;
+      saveBuckets();
+      if (activeTab === "custom-" + b.id) activeTab = "all";
+      renderAll();
+    });
+    nav.appendChild(t);
+  });
+}
+
+// ==========================================================
+// MAIN RENDER
+// ==========================================================
+function emptyState(icon, msg) {
+  return '<div class="empty"><div class="empty-icon">' + icon + '</div>' + msg + '</div>';
+}
+
+function welcomeState() {
+  return '<div class="empty" style="padding:80px 20px;">' +
+    '<div class="empty-icon">👋</div>' +
+    '<div style="font-size:22px;color:var(--text);font-weight:700;margin-bottom:8px;">Welcome to ArcAscend</div>' +
+    '<div style="margin-bottom:24px;font-size:14px;">Get your leads into the system to start tracking revenue.</div>' +
+    '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">' +
+      '<button onclick="goToTab(\'sync\')" class="btn" style="padding:14px 24px;font-size:14px;">🔄 Import from CSV / Excel / Sheets</button>' +
+      '<button onclick="openAdd()" class="btn btn-ghost" style="padding:14px 24px;font-size:14px;">+ Add Lead Manually</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function goToTab(name) {
+  document.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("active"); });
+  var t = document.querySelector('.tab[data-tab="' + name + '"]');
+  if (t) t.classList.add("active");
+  activeTab = name;
+  renderMain();
+}
+
+function renderMain() {
+  var main = $("main");
+
+  if (activeTab && activeTab.indexOf("custom-") === 0) {
+    var bid = activeTab.slice("custom-".length);
+    var b = BUCKETS.find(function(x){ return x.id === bid; });
+    if (!b) { activeTab = "all"; return renderMain(); }
+    var leads = sortLeads(filterLeads(leadsInBucket(b)));
+    main.innerHTML =
+      '<div class="page-header"><div>' +
+        '<div class="page-title">' + b.icon + ' ' + b.name + ' <span class="demo-pill" style="background:rgba(79,158,255,0.15);color:var(--accent);border-color:rgba(79,158,255,0.3);">' + leads.length + ' leads</span></div>' +
+        '<div class="page-subtitle">' + (b.desc || "Custom segment") + '</div>' +
+      '</div></div>' +
+      (leads.length ? '<div class="lead-grid">' + leads.map(leadCard).join("") + '</div>' : emptyState("🎯", "No leads match."));
+    wireCards();
+    return;
+  }
+
+  if (activeTab === "clients") { renderClientsTab(); return; }
+  if (activeTab === "tasks") { renderTasksTab(); return; }
+  if (activeTab === "campaigns") { renderCampaignsTab(); return; }
+  if (activeTab === "buckets") { renderBucketsTab(); return; }
+  if (activeTab === "sync") { renderSyncTab(); return; }
+
+  // Standard list tabs
+  var pool = LEADS;
+  if (activeTab === "won") pool = LEADS.filter(function(L){ return bucketFor(L) === "won"; });
+  else if (activeTab === "remaining") pool = LEADS.filter(function(L){ return bucketFor(L) === "remaining"; });
+  else if (activeTab === "priority") pool = LEADS.filter(function(L){ return L.priority; });
+  else if (activeTab === "notes") pool = LEADS.filter(function(L){ return L.notes && L.notes.trim(); });
+
+  var leads = sortLeads(filterLeads(pool));
+
+  if (LEADS.length === 0 && activeTab === "all") {
+    main.innerHTML = welcomeState();
+    return;
+  }
+
+  main.innerHTML = leads.length
+    ? '<div class="lead-grid">' + leads.map(leadCard).join("") + '</div>'
+    : emptyState("📋", "No leads match the current filters.");
+  wireCards();
+}
+
+// ==========================================================
+// ACTIVE CLIENTS TAB
+// ==========================================================
+function renderClientsTab() {
+  var main = $("main");
+  var clients = sortLeads(filterLeads(activeClients()));
+  var notSetUp = LEADS.filter(function(L){
+    return (L.status || "").toLowerCase().indexOf("won") >= 0 && !(L.billing && L.billing.active);
+  });
+
+  var totalRev = 0, totalSess = 0, paidRev = 0, paidCount = 0;
+  clients.forEach(function(L){
+    totalRev += leadTotal(L);
+    totalSess += (L.billing.sessions || 0);
+    if (L.billing.paid) { paidRev += leadTotal(L); paidCount++; }
+  });
+  var outstandingRev = totalRev - paidRev;
+  var avg = clients.length ? Math.round(totalRev / clients.length) : 0;
+
+  var grid = clients.map(leadCard).join("");
+  var promoteGrid = notSetUp.length ? notSetUp.slice(0, 20).map(function(L){
+    var safeName = L.name.replace(/"/g,'&quot;');
+    return '<div class="lead-card open" data-name="' + safeName + '">' +
+      '<div class="lead-header">' +
+        '<div><div class="lead-name">' + L.name + '</div>' +
+        '<div class="lead-date">' + (L.phone || "") + '</div></div>' +
+        '<span class="badge open">Won · Not Set Up</span>' +
+      '</div>' +
+      '<div style="color:var(--muted);font-size:12px;margin-top:10px;">Add session count and rate to start tracking.</div>' +
+      '<button class="btn" style="width:100%;margin-top:10px;font-size:12px;padding:8px;" data-setup="' + safeName + '">💼 Set Up as Client</button>' +
+    '</div>';
+  }).join("") : "";
+
+  main.innerHTML =
+    '<div class="page-header"><div>' +
+      '<div class="page-title">💼 Active Clients</div>' +
+      '<div class="page-subtitle">Live revenue tracking. Click any client to update billing.</div>' +
+    '</div></div>' +
+
+    // Hero revenue panel
+    '<div style="background:linear-gradient(135deg,rgba(34,197,94,0.1),rgba(167,139,250,0.05));border:1px solid rgba(34,197,94,0.4);border-radius:14px;padding:24px;margin-bottom:24px;">' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px;">' +
+        '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Monthly Projection</div>' +
+          '<div style="font-size:36px;font-weight:800;color:var(--accent);">' + fmt$(totalRev) + '</div></div>' +
+        '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Paid So Far</div>' +
+          '<div style="font-size:36px;font-weight:800;color:var(--won);">' + fmt$(paidRev) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">' + paidCount + ' of ' + clients.length + ' clients paid</div></div>' +
+        '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Outstanding</div>' +
+          '<div style="font-size:36px;font-weight:800;color:' + (outstandingRev > 0 ? 'var(--open)' : 'var(--muted)') + ';">' + fmt$(outstandingRev) + '</div></div>' +
+        '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Active Clients</div>' +
+          '<div style="font-size:36px;font-weight:800;">' + clients.length + '</div></div>' +
+        '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Sessions Sold</div>' +
+          '<div style="font-size:36px;font-weight:800;color:var(--purple);">' + totalSess + '</div></div>' +
+        (monthlyGoal > 0 ?
+          '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Goal Progress</div>' +
+            '<div style="font-size:36px;font-weight:800;color:' + (totalRev >= monthlyGoal ? 'var(--won)' : 'var(--warm)') + ';">' + Math.round((totalRev / monthlyGoal) * 100) + '%</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:2px;">of ' + fmt$(monthlyGoal) + '</div></div>'
+        : '') +
+      '</div>' +
+    '</div>' +
+
+    (clients.length ? '<div style="font-size:14px;font-weight:600;margin-bottom:12px;">Active Clients (' + clients.length + ')</div><div class="lead-grid">' + grid + '</div>' : '') +
+    (notSetUp.length ? '<div style="font-size:14px;font-weight:600;margin:24px 0 12px;">Closed Won · Ready to Set Up (' + notSetUp.length + ')</div><div class="lead-grid">' + promoteGrid + '</div>' : '') +
+    (clients.length === 0 && notSetUp.length === 0 ?
+      '<div class="empty"><div class="empty-icon">💼</div>' +
+      '<div style="font-size:16px;color:var(--text);margin-bottom:8px;">No clients yet</div>' +
+      'Close a deal (mark a lead as <b>Closed Won</b>), then open the lead and toggle <b>Active Client</b> in the Billing section to start tracking revenue.</div>'
+    : '');
+
+  wireCards();
+  document.querySelectorAll("[data-setup]").forEach(function(b){
+    b.addEventListener("click", function(e){
+      e.stopPropagation();
+      openLead(b.dataset.setup);
+    });
+  });
+}
+
+// ==========================================================
+// TASKS TAB
+// ==========================================================
+function renderTasksTab() {
+  var main = $("main");
+  var allT = [];
+  LEADS.forEach(function(L){
+    leadTasks(L).forEach(function(t){ allT.push({ t: t, L: L }); });
+  });
+  var groups = { overdue: [], today: [], tomorrow: [], thisweek: [], upcoming: [], done: [] };
+  allT.forEach(function(it){
+    if (it.t.completed) groups.done.push(it);
+    else groups[dueBucket(it.t.dueDate)].push(it);
+  });
+  Object.keys(groups).forEach(function(k){
+    groups[k].sort(function(a,b){ return (a.t.dueDate||"") < (b.t.dueDate||"") ? -1 : 1; });
+  });
+
+  function tr(it) {
+    var bb = dueBucket(it.t.dueDate);
+    var cls = it.t.completed ? "done" : bb;
+    var safeName = it.L.name.replace(/"/g,'&quot;');
+    return '<div class="task-row ' + cls + '" data-task-lead="' + safeName + '">' +
+      '<button class="task-check ' + (it.t.completed?"checked":"") + '" data-task-toggle="' + it.t.id + '" data-task-leadname="' + safeName + '">' + (it.t.completed?"✓":"") + '</button>' +
+      '<div class="task-body"><div class="task-text"><b>' + it.t.type + '</b> · ' + it.L.name + (it.t.note?" — "+it.t.note:"") + '</div>' +
+      '<div class="task-meta"><span class="task-due ' + bb + '">' + (it.t.dueDate?formatTaskDate(it.t.dueDate):"No date") + '</span>' +
+      (it.L.phone?'<span>📞 '+it.L.phone+'</span>':'') + '<span>' + it.L.status + '</span></div></div>' +
+    '</div>';
+  }
+
+  var total = groups.overdue.length + groups.today.length + groups.tomorrow.length + groups.thisweek.length + groups.upcoming.length;
+  if (total === 0 && groups.done.length === 0) {
+    main.innerHTML = emptyState("📅", "No tasks yet. Open any lead and use the Reach Out Tomorrow or Book Follow-up presets to schedule next steps.");
+    return;
+  }
+  function sec(label, icon, arr) {
+    if (!arr.length) return "";
+    return '<div class="task-group-title">' + icon + ' ' + label + '<span class="task-group-count">' + arr.length + '</span></div>' + arr.map(tr).join("");
+  }
+  main.innerHTML =
+    sec("Overdue", "🔴", groups.overdue) +
+    sec("Today", "🟡", groups.today) +
+    sec("Tomorrow", "🟢", groups.tomorrow) +
+    sec("This Week", "📅", groups.thisweek) +
+    sec("Upcoming", "📆", groups.upcoming) +
+    (groups.done.length ? '<div class="task-group-title" style="margin-top:30px;color:var(--muted);">✓ Completed<span class="task-group-count">' + groups.done.length + '</span></div>' + groups.done.map(tr).join("") : "");
+
+  main.querySelectorAll(".task-row").forEach(function(el){
+    el.addEventListener("click", function(){ openLead(el.dataset.taskLead); });
+  });
+  main.querySelectorAll(".task-check").forEach(function(b){
+    b.addEventListener("click", function(e){
+      e.stopPropagation();
+      var L = LEADS.find(function(x){ return x.name === b.dataset.taskLeadname; });
+      if (!L) return;
+      var t = leadTasks(L).find(function(x){ return x.id === b.dataset.taskToggle; });
+      if (!t) return;
+      t.completed = !t.completed;
+      saveState(); renderAll();
+    });
+  });
+}
+
+// ==========================================================
+// CAMPAIGNS TAB
+// ==========================================================
+function renderCampaignsTab() {
+  var main = $("main");
+  var cards = CAMPAIGNS.map(function(c){
+    var hasEmail = c.channels.indexOf("email") >= 0;
+    var hasSms = c.channels.indexOf("sms") >= 0;
+    return '<div class="campaign-card ' + c.status + '" data-cid="' + c.id + '">' +
+      '<div class="campaign-name">' + c.name + '</div>' +
+      '<div class="campaign-trigger">⚡ ' + c.trigger + '</div>' +
+      '<div class="campaign-channels">' +
+        (hasSms ? '<span class="channel-pill sms">📱 SMS</span>' : '') +
+        (hasEmail ? '<span class="channel-pill email">✉ Email</span>' : '') +
+        '<span class="channel-pill">' + c.steps + ' steps</span>' +
+      '</div>' +
+      '<div class="campaign-stats">' +
+        '<div><div class="cstat-label">Sent</div><div class="cstat-value">' + c.stats.sent + '</div></div>' +
+        '<div><div class="cstat-label">Open</div><div class="cstat-value">' + (c.stats.sent ? Math.round(c.stats.opened/c.stats.sent*100) : 0) + '%</div></div>' +
+        '<div><div class="cstat-label">Reply</div><div class="cstat-value">' + (c.stats.sent ? Math.round(c.stats.replied/c.stats.sent*100) : 0) + '%</div></div>' +
+        '<div><div class="cstat-label">Booked</div><div class="cstat-value">' + c.stats.booked + '</div></div>' +
+      '</div></div>';
+  }).join("");
+  main.innerHTML =
+    '<div class="page-header"><div>' +
+      '<div class="page-title">🚀 Campaigns <span class="demo-pill">Demo Preview</span></div>' +
+      '<div class="page-subtitle">Automated sequences. Sending requires backend wiring (Twilio/SendGrid).</div>' +
+    '</div></div>' +
+    '<div class="campaign-grid">' + cards + '</div>';
+
+  main.querySelectorAll(".campaign-card").forEach(function(el){
+    el.addEventListener("click", function(){ openCampaign(el.dataset.cid); });
+  });
+}
+
+function openCampaign(id) {
+  var c = CAMPAIGNS.find(function(x){ return x.id === id; });
+  if (!c) return;
+  var steps = (c.sequence || []).map(function(s, i){
+    var body = s.body.replace(/\{\{(\w+)\}\}/g, '<span style="background:rgba(79,158,255,0.15);color:var(--accent);padding:1px 6px;border-radius:4px;font-size:12px;">{{$1}}</span>');
+    return '<div style="display:flex;gap:14px;padding:14px 0;border-left:2px solid var(--border);margin-left:16px;padding-left:20px;position:relative;">' +
+      '<div style="position:absolute;left:-14px;top:14px;background:var(--panel);border:2px solid var(--accent);color:var(--accent);width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">' + (i+1) + '</div>' +
+      '<div style="flex:1;"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">' + s.channel + ' · ' + s.when + (s.subject?' · Subject: <b style="color:var(--text);">'+s.subject+'</b>':'') + '</div>' +
+      '<div style="background:var(--panel-2);border:1px solid var(--border);padding:12px;border-radius:8px;white-space:pre-wrap;font-size:13px;line-height:1.6;">' + body + '</div></div></div>';
+  }).join("");
+
+  $("campaign-content").innerHTML =
+    '<div class="modal-head">' +
+      '<div><div class="modal-title">' + c.name + '</div>' +
+      '<div style="color:var(--muted);font-size:12px;margin-top:2px;">⚡ ' + c.trigger + '</div></div>' +
+      '<button class="modal-close" onclick="closeCampaign()">✕</button>' +
+    '</div>' +
+    '<div class="modal-body">' +
+      '<p style="color:var(--muted);font-size:13px;">' + c.desc + '</p>' +
+      '<div class="section-title">Sequence (' + (c.sequence || []).length + ' steps)</div>' +
+      steps +
+    '</div>';
+  $("campaign-modal").classList.add("show");
+}
+function closeCampaign() { $("campaign-modal").classList.remove("show"); }
+
+// ==========================================================
+// BUCKETS TAB
+// ==========================================================
+function renderBucketsTab() {
+  var main = $("main");
+  var cards = BUCKETS.map(function(b){
+    var cnt = leadsInBucket(b).length;
+    return '<div class="bucket-card" data-bid="' + b.id + '">' +
+      '<div class="bucket-icon">' + b.icon + '</div>' +
+      '<div class="bucket-name">' + b.name + '</div>' +
+      '<div class="bucket-desc">' + (b.desc || "") + '</div>' +
+      '<div class="bucket-count-row"><div>' +
+        '<div class="bucket-count">' + cnt + '</div>' +
+        '<div class="bucket-count-label">leads match</div>' +
+      '</div><div class="bucket-actions">' +
+        '<button class="bucket-action" data-pin="' + b.id + '">' + (b.pinAsTab?"📌 Pinned":"📌 Pin") + '</button>' +
+        '<button class="bucket-action" data-editbk="' + b.id + '">Edit</button>' +
+        '<button class="bucket-action delete" data-delbk="' + b.id + '">Del</button>' +
+      '</div></div></div>';
+  }).join("");
+  main.innerHTML =
+    '<div class="page-header"><div>' +
+      '<div class="page-title">🎯 Lead Buckets</div>' +
+      '<div class="page-subtitle">Filter the pipeline by any combination. Pin any bucket as a nav tab.</div>' +
+    '</div><button class="btn" id="new-bk">+ Create Bucket</button></div>' +
+    '<div class="bucket-grid">' + cards + '</div>';
+
+  $("new-bk").addEventListener("click", function(){ openBk(); });
+  main.querySelectorAll(".bucket-card").forEach(function(el){
+    el.addEventListener("click", function(e){
+      if (e.target.closest(".bucket-action")) return;
+      activeTab = "custom-" + el.dataset.bid;
+      renderAll();
+    });
+  });
+  main.querySelectorAll("[data-editbk]").forEach(function(b){
+    b.addEventListener("click", function(e){ e.stopPropagation(); openBk(b.dataset.editbk); });
+  });
+  main.querySelectorAll("[data-pin]").forEach(function(b){
+    b.addEventListener("click", function(e){
+      e.stopPropagation();
+      var bk = BUCKETS.find(function(x){ return x.id === b.dataset.pin; });
+      if (!bk) return;
+      bk.pinAsTab = !bk.pinAsTab;
+      saveBuckets(); renderAll();
+    });
+  });
+  main.querySelectorAll("[data-delbk]").forEach(function(b){
+    b.addEventListener("click", function(e){
+      e.stopPropagation();
+      if (!confirm("Delete this bucket?")) return;
+      BUCKETS = BUCKETS.filter(function(x){ return x.id !== b.dataset.delbk; });
+      saveBuckets(); renderAll();
+    });
+  });
+}
+
+// ==========================================================
+// SYNC TAB
+// ==========================================================
+function renderSyncTab() {
+  var main = $("main");
+  var sheetUrl = localStorage.getItem(SHEET_URL_KEY) || "";
+  var autoOn = localStorage.getItem(AUTO_SYNC_KEY) === "1";
+  var pollInt = localStorage.getItem(POLL_INT_KEY) || "300";
+
+  main.innerHTML =
+    '<div class="page-header"><div>' +
+      '<div class="page-title">🔄 Sync &amp; Import</div>' +
+      '<div class="page-subtitle">Drop a CSV or Excel file, paste from a spreadsheet, or auto-sync from Google Sheets.</div>' +
+    '</div></div>' +
+
+    '<div class="drop-zone" id="drop-zone">' +
+      '<div class="drop-zone-icon">📂</div>' +
+      '<div class="drop-zone-title">Drag &amp; drop your CSV or Excel file here</div>' +
+      '<div class="drop-zone-sub">or click to browse · accepts .csv, .xlsx, .xls, .tsv</div>' +
+      '<input type="file" id="sync-file" accept=".csv,.xlsx,.xls,.tsv,.txt" style="display:none;">' +
+    '</div>' +
+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">' +
+      '<span class="service-pill" style="background:' + (sheetUrl?"rgba(34,197,94,0.12)":"rgba(245,158,11,0.12)") + ';color:' + (sheetUrl?"var(--won)":"var(--open)") + ';border-color:' + (sheetUrl?"rgba(34,197,94,0.3)":"rgba(245,158,11,0.3)") + ';padding:8px 14px;font-size:13px;">' +
+        '📊 Google Sheets · ' + (sheetUrl ? (autoOn ? "Auto-syncing" : "Connected") : "Not connected") +
+      '</span>' +
+      '<span class="service-pill" style="background:rgba(34,197,94,0.12);color:var(--won);border-color:rgba(34,197,94,0.3);padding:8px 14px;font-size:13px;">📊 Excel (.xlsx) · Ready</span>' +
+      '<span class="service-pill" style="background:rgba(167,139,250,0.12);color:var(--purple);border-color:rgba(167,139,250,0.3);padding:8px 14px;font-size:13px;">📝 Google Forms · Via Sheets</span>' +
+    '</div>' +
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;">' +
+
+      // Paste card
+      '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;border-left:4px solid var(--won);">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">' +
+          '<div style="font-size:24px;">📋</div>' +
+          '<div style="font-size:16px;font-weight:700;">Paste from Spreadsheet</div>' +
+        '</div>' +
+        '<div style="color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:14px;">Copy from your Sheet (<code style="background:var(--panel-2);padding:1px 4px;border-radius:3px;">⌘/Ctrl+A</code>, then <code style="background:var(--panel-2);padding:1px 4px;border-radius:3px;">⌘/Ctrl+C</code>), paste below.</div>' +
+        '<textarea id="sync-paste" placeholder="Paste here..." style="width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px;font-size:12px;font-family:inherit;min-height:80px;outline:none;margin-bottom:10px;"></textarea>' +
+        '<button class="btn" id="sync-paste-btn" style="width:100%;">📋 Import Pasted Data</button>' +
+      '</div>' +
+
+      // Live Sheets sync card
+      '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;border-left:4px solid var(--accent);">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">' +
+          '<div style="font-size:24px;">⚡</div>' +
+          '<div style="font-size:16px;font-weight:700;">Live Google Sheets Sync</div>' +
+        '</div>' +
+        '<div style="color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:14px;">Auto-poll your published-CSV URL. <i>Only works when hosted (Netlify), not from a local file.</i></div>' +
+        '<input id="sync-url" placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv" value="' + sheetUrl + '" style="width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:8px;font-size:12px;font-family:inherit;outline:none;margin-bottom:10px;">' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+          '<button class="btn" id="sync-now">⟳ Sync Now</button>' +
+          '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">' +
+            '<input type="checkbox" id="sync-auto" ' + (autoOn?"checked":"") + ' style="width:16px;height:16px;cursor:pointer;">' +
+            '<span>Auto every</span>' +
+            '<select id="sync-int" style="background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:6px;font-size:12px;">' +
+              '<option value="60" ' + (pollInt==="60"?"selected":"") + '>1 min</option>' +
+              '<option value="300" ' + (pollInt==="300"?"selected":"") + '>5 min</option>' +
+              '<option value="900" ' + (pollInt==="900"?"selected":"") + '>15 min</option>' +
+            '</select>' +
+          '</label>' +
+        '</div>' +
+      '</div>' +
+
+    '</div>' +
+
+    '<div style="margin-top:24px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;">' +
+      '<div style="font-size:14px;font-weight:600;margin-bottom:12px;">📊 Sync Activity</div>' +
+      '<div id="sync-status"><div style="color:var(--muted);font-size:13px;">Drop a file above, paste data, or set up live Google Sheets sync.</div></div>' +
+    '</div>' +
+
+    '<div style="margin-top:18px;background:rgba(79,158,255,0.06);border:1px solid rgba(79,158,255,0.3);border-radius:8px;padding:14px;font-size:12px;line-height:1.6;">' +
+      '<b style="color:var(--accent);">💡 Only Name is required</b><br>' +
+      'Drop a CSV or Excel with any columns — as long as there\'s a name, the lead imports. Phone, goal, level, timeline, etc. are all optional. Any column the importer doesn\'t recognize gets appended to that lead\'s Consultation Notes as <code>Column Name: value</code>. Auto-mapped fields:<br><br>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;font-size:11px;">' +
+        '<div>🔒 <b>Full Name</b> (only required)</div>' +
+        '<div>• Phone / Phone Number</div>' +
+        '<div>• Timestamp / Date</div>' +
+        '<div>• Fitness Goal / Goal</div>' +
+        '<div>• Fitness Level / Level</div>' +
+        '<div>• Timeline</div>' +
+        '<div>• Training Style</div>' +
+        '<div>• Injuries / Health</div>' +
+        '<div>• Availability</div>' +
+        '<div>• Why now</div>' +
+        '<div>• Specific outcomes</div>' +
+        '<div>• Consultation Notes</div>' +
+        '<div>• Deal Outcome / Status</div>' +
+      '</div>' +
+    '</div>';
+
+  // Wire it up
+  var dz = $("drop-zone");
+  var fi = $("sync-file");
+  dz.addEventListener("click", function(){ fi.click(); });
+  dz.addEventListener("dragover", function(e){ e.preventDefault(); dz.classList.add("dragover"); });
+  dz.addEventListener("dragleave", function(){ dz.classList.remove("dragover"); });
+  dz.addEventListener("drop", function(e){
+    e.preventDefault();
+    dz.classList.remove("dragover");
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) handleSyncFile(e.dataTransfer.files[0]);
+  });
+  fi.addEventListener("change", function(e){
+    if (e.target.files[0]) handleSyncFile(e.target.files[0]);
+    e.target.value = "";
+  });
+  $("sync-paste-btn").addEventListener("click", function(){
+    var text = $("sync-paste").value.trim();
+    if (!text) { syncStatus("Paste spreadsheet content first.", "error"); return; }
+    handleSyncImport(text, "pasted data");
+    $("sync-paste").value = "";
+  });
+  $("sync-now").addEventListener("click", function(){ urlSyncNow(false); });
+  $("sync-auto").addEventListener("change", function(e){
+    if (e.target.checked) {
+      if (!$("sync-url").value.trim()) {
+        syncStatus("Paste a Google Sheets URL first.", "error");
+        e.target.checked = false;
+        return;
+      }
+      startPolling();
+      syncStatus("✓ Auto-sync ON · every " + ($("sync-int").value/60|0) + " min", "success");
+    } else {
+      stopPolling();
+      syncStatus("Auto-sync OFF");
+    }
+    renderTabCounts();
+  });
+  $("sync-int").addEventListener("change", function(){
+    if ($("sync-auto").checked) startPolling();
+  });
+}
+
+function handleSyncFile(file) {
+  var name = file.name.toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    importExcelFile(file, function(rows, err){
+      if (err) { syncStatus("Excel import failed: " + err.message, "error"); return; }
+      try {
+        var r = importRows(rows);
+        afterSyncImport(r, file.name);
+      } catch(e) { syncStatus("Import failed: " + e.message, "error"); }
+    });
+  } else {
+    var reader = new FileReader();
+    reader.onload = function(ev){ handleSyncImport(ev.target.result, file.name); };
+    reader.onerror = function(){ syncStatus("Could not read file.", "error"); };
+    reader.readAsText(file);
+  }
+}
+
+function handleSyncImport(text, sourceLabel) {
+  try {
+    var r = importCsvText(text);
+    afterSyncImport(r, sourceLabel);
+  } catch(err) {
+    syncStatus("Import failed: " + err.message, "error");
+    showToast("Import failed: " + err.message, "error");
+  }
+}
+
+function afterSyncImport(r, sourceLabel) {
+  syncStatus(
+    '<div style="font-size:14px;font-weight:600;color:var(--won);margin-bottom:8px;">✓ Imported ' + r.added + ' new lead' + (r.added===1?'':'s') + ' · ' + r.updated + ' updated' + (r.skipped ? ' · <span style="color:var(--warm);">' + r.skipped + ' skipped (no name)</span>' : '') + '</div>' +
+    '<div style="font-size:12px;color:var(--muted);">Source: ' + sourceLabel + ' · Total leads now: ' + LEADS.length + '</div>',
+    "success"
+  );
+  showToast("✓ " + r.added + " lead" + (r.added===1?"":"s") + " imported! Switching to All Leads...", "success");
+  setTimeout(function(){ goToTab("all"); }, 800);
+}
+
+function syncStatus(msg, kind) {
+  var color = kind === "success" ? "var(--won)" : kind === "error" ? "var(--lost)" : "var(--muted)";
+  var el = $("sync-status");
+  if (!el) return;
+  el.innerHTML = '<div style="color:' + color + ';font-size:13px;padding:10px;background:var(--panel-2);border-radius:6px;border-left:3px solid ' + color + ';">' + msg + '</div>';
+}
+
+function showToast(msg, kind) {
+  var existing = document.querySelector(".toast");
+  if (existing) existing.remove();
+  var t = document.createElement("div");
+  t.className = "toast" + (kind === "error" ? " error" : "");
+  t.innerHTML = '<span style="font-size:18px;">' + (kind==="error"?"⚠️":"✓") + '</span><span>' + msg + '</span>';
+  document.body.appendChild(t);
+  setTimeout(function(){
+    t.style.opacity = "0";
+    t.style.transition = "opacity 0.3s";
+    setTimeout(function(){ t.remove(); }, 300);
+  }, 4000);
+}
+
+var pollTimer = null;
+function urlSyncNow(silent) {
+  var url = $("sync-url").value.trim();
+  if (!url) { if (!silent) syncStatus("Paste a Google Sheets URL first.", "error"); return; }
+  localStorage.setItem(SHEET_URL_KEY, url);
+  if (!silent) syncStatus("⏳ Fetching from Google Sheets...");
+  fetch(url, { mode: "cors" })
+    .then(function(resp){ if (!resp.ok) throw new Error("HTTP "+resp.status); return resp.text(); })
+    .then(function(text){
+      var r = importCsvText(text);
+      var when = new Date().toLocaleTimeString();
+      syncStatus("✓ Synced " + when + " — " + r.added + " new, " + r.updated + " updated.", "success");
+      renderTabCounts();
+    })
+    .catch(function(err){
+      if (silent) return;
+      syncStatus("Sync failed: " + err.message + ". URL sync only works when the CRM is hosted (Netlify). Use file upload or paste locally.", "error");
+    });
+}
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  var seconds = parseInt($("sync-int").value || "300");
+  pollTimer = setInterval(function(){ urlSyncNow(true); }, seconds * 1000);
+  localStorage.setItem(AUTO_SYNC_KEY, "1");
+  localStorage.setItem(POLL_INT_KEY, String(seconds));
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  localStorage.setItem(AUTO_SYNC_KEY, "0");
+}
+
+// ==========================================================
+// LEAD MODAL
+// ==========================================================
+function renderActivityLog(L) {
+  var acts = activityList(L);
+  if (!acts.length) {
+    return '<div class="activity-log"><div class="activity-log-title">Recent Activity</div>' +
+      '<div style="color:var(--muted);font-size:12px;text-align:center;padding:8px 0;">No activity yet. Use the buttons above to log calls/texts/emails.</div></div>';
+  }
+  var rows = acts.slice(0, 6).map(function(a){
+    var ico = a.kind === "call" ? "📞" : a.kind === "text" ? "💬" : a.kind === "email" ? "✉️" : a.kind === "video" ? "🎥" : "🎙";
+    return '<div class="activity-row"><div class="activity-icon ' + a.kind + '">' + ico + '</div>' +
+      '<div class="activity-body">' + a.summary + '</div>' +
+      '<div class="activity-meta">' + timeAgo(a.at) + '</div></div>';
+  }).join("");
+  return '<div class="activity-log"><div class="activity-log-title">Recent Activity (' + acts.length + ')</div>' + rows + '</div>';
+}
+
+function renderTasksForLead(L) {
+  var tasks = leadTasks(L);
+  if (!tasks.length) return '<div style="color:var(--muted);font-size:13px;padding:8px 0;">No tasks scheduled yet — use the quick buttons below.</div>';
+  var sorted = tasks.slice().sort(function(a, b){
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    return (a.dueDate||"") < (b.dueDate||"") ? -1 : 1;
+  });
+  return sorted.map(function(t){
+    var bb = dueBucket(t.dueDate);
+    var cls = t.completed ? "done" : bb;
+    return '<div class="task-row ' + cls + '">' +
+      '<button class="task-check ' + (t.completed?"checked":"") + '" data-mt="' + t.id + '">' + (t.completed?"✓":"") + '</button>' +
+      '<div class="task-body"><div class="task-text"><b>' + t.type + '</b>' + (t.note?" — "+t.note:"") + '</div>' +
+      '<div class="task-meta"><span class="task-due ' + bb + '">' + (t.dueDate?formatTaskDate(t.dueDate):"No date") + '</span></div></div>' +
+      '<button data-md="' + t.id + '" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;">✕</button>' +
+    '</div>';
+  }).join("");
+}
+
+function openLead(name) {
+  var L = LEADS.find(function(x){ return x.name === name; });
+  if (!L) return;
+  L.lastViewed = Date.now();
+  saveState();
+  var b = ensureBilling(L);
+  var statuses = ["Closed Won","Open","Pending","Closed Lost","New"];
+  var sb = statuses.map(function(s){ return '<button class="status-btn ' + (s===L.status?"active":"") + '" data-s="' + s + '">' + s + '</button>'; }).join("");
+
+  $("modal-content").innerHTML =
+    '<div class="modal-head">' +
+      '<div style="display:flex;gap:12px;align-items:flex-start;">' +
+        '<button class="star-btn ' + (L.priority?"active":"") + '" id="m-star">' + (L.priority?"★":"☆") + '</button>' +
+        '<div>' +
+          '<div class="modal-title">' + L.name + (b.active ? ' <span class="badge active-client" style="margin-left:6px;">💎 ACTIVE</span>' : '') + '</div>' +
+          '<div style="color:var(--muted);font-size:12px;margin-top:4px;">' + (L.date||"") + (L.phone?" · "+L.phone:"") + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<button class="modal-close" onclick="closeLead()">✕</button>' +
+    '</div>' +
+    '<div class="modal-body">' +
+
+      '<div class="reachout-bar"><div class="section-title" style="margin:0;border:none;padding:0;">📞 Reach Out</div><span class="service-pill">RingDNA · Demo</span></div>' +
+      '<div class="reach-actions">' +
+        '<button class="reach-btn call" data-r="call"><div class="ricon">📞</div>Call</button>' +
+        '<button class="reach-btn text" data-r="text"><div class="ricon">💬</div>Text</button>' +
+        '<button class="reach-btn email" data-r="email"><div class="ricon">✉️</div>Email</button>' +
+        '<button class="reach-btn video" data-r="video"><div class="ricon">🎥</div>Video</button>' +
+        '<button class="reach-btn voicemail" data-r="voicemail"><div class="ricon">🎙</div>VM</button>' +
+      '</div>' +
+      renderActivityLog(L) +
+
+      (L.priority ? '<div class="section-title">📌 Priority Note</div><textarea class="notes-edit" id="m-pnote">' + (L.priorityNote||"") + '</textarea>' : '') +
+
+      '<div class="section-title">💰 Billing &amp; Sessions</div>' +
+      '<div class="billing-box">' +
+        '<div class="billing-toggle">' +
+          '<input type="checkbox" id="b-active" ' + (b.active?"checked":"") + '>' +
+          '<label for="b-active" style="font-weight:600;cursor:pointer;">Mark as Active Client (counts toward monthly revenue)</label>' +
+        '</div>' +
+        '<div class="billing-grid">' +
+          '<div class="billing-field"><label>Sessions Purchased</label><input type="number" id="b-sessions" value="' + (b.sessions||0) + '" min="0"></div>' +
+          '<div class="billing-field"><label>Session Price ($)</label><input type="number" id="b-rate" value="' + (b.rate||0) + '" min="0"></div>' +
+          '<div class="billing-field"><label>Package</label>' +
+            '<select id="b-package">' +
+              '<option value="" ' + (!b.package?"selected":"") + '>—</option>' +
+              '<option ' + (b.package==="1x/week"?"selected":"") + '>1x/week</option>' +
+              '<option ' + (b.package==="2x/week"?"selected":"") + '>2x/week</option>' +
+              '<option ' + (b.package==="3x/week"?"selected":"") + '>3x/week</option>' +
+              '<option ' + (b.package==="Drop-in"?"selected":"") + '>Drop-in</option>' +
+              '<option ' + (b.package==="Online Only"?"selected":"") + '>Online Only</option>' +
+              '<option ' + (b.package==="In-person + Online"?"selected":"") + '>In-person + Online</option>' +
+            '</select></div>' +
+        '</div>' +
+        '<div class="billing-total">' +
+          '<div class="billing-total-label">Total This Month</div>' +
+          '<div class="billing-total-value" id="b-total">' + fmt$(leadTotal(L)) + '</div>' +
+        '</div>' +
+        '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (b.paid?"rgba(34,197,94,0.12)":"var(--panel)") + ';border:1px solid ' + (b.paid?"rgba(34,197,94,0.4)":"var(--border)") + ';">' +
+          '<input type="checkbox" id="b-paid" ' + (b.paid?"checked":"") + '>' +
+          '<label for="b-paid" style="font-weight:600;cursor:pointer;color:' + (b.paid?"var(--won)":"var(--text)") + ';">' + (b.paid?"✓ Paid for this month":"Mark as Paid for this month") + '</label>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="section-title">Deal Status</div>' +
+      '<div class="status-row" id="m-status">' + sb + '</div>' +
+
+      '<div class="section-title">Profile <span style="font-weight:400;color:var(--muted);font-size:11px;text-transform:none;letter-spacing:0;">— click any field to edit, auto-saves on blur</span></div>' +
+      '<div class="field-grid">' +
+        '<div class="form-field"><label>Name</label><input id="p-name" value="' + (L.name||"").replace(/"/g,"&quot;") + '"></div>' +
+        '<div class="form-field"><label>Phone</label><input id="p-phone" value="' + (L.phone||"").replace(/"/g,"&quot;") + '"></div>' +
+        '<div class="form-field"><label>Date</label><input id="p-date" value="' + (L.date||"").replace(/"/g,"&quot;") + '"></div>' +
+        '<div class="form-field"><label>Level</label>' +
+          '<select id="p-level">' +
+            '<option value="" ' + (!L.level?"selected":"") + '>—</option>' +
+            '<option ' + (L.level==="Beginner"?"selected":"") + '>Beginner</option>' +
+            '<option ' + (L.level==="Intermediate"?"selected":"") + '>Intermediate</option>' +
+            '<option ' + (L.level==="Advanced"?"selected":"") + '>Advanced</option>' +
+          '</select></div>' +
+        '<div class="form-field" style="grid-column:1/-1;"><label>Goal</label><input id="p-goal" value="' + (L.goal||"").replace(/"/g,"&quot;") + '"></div>' +
+        '<div class="form-field"><label>Timeline</label>' +
+          '<select id="p-timeline">' +
+            '<option value="" ' + (!L.timeline?"selected":"") + '>—</option>' +
+            '<option ' + (L.timeline==="4-6 weeks"?"selected":"") + '>4-6 weeks</option>' +
+            '<option ' + (L.timeline==="2-3 months"?"selected":"") + '>2-3 months</option>' +
+            '<option ' + (L.timeline==="3-6 months"?"selected":"") + '>3-6 months</option>' +
+            '<option ' + (L.timeline==="6+ months"?"selected":"") + '>6+ months</option>' +
+            '<option ' + (L.timeline && ["4-6 weeks","2-3 months","3-6 months","6+ months"].indexOf(L.timeline)<0?"selected":"") + '>' + (L.timeline && ["4-6 weeks","2-3 months","3-6 months","6+ months"].indexOf(L.timeline)<0 ? L.timeline : "Other") + '</option>' +
+          '</select></div>' +
+        '<div class="form-field"><label>Training Style</label><input id="p-style" value="' + (L.style||"").replace(/"/g,"&quot;") + '"></div>' +
+        '<div class="form-field" style="grid-column:1/-1;"><label>Availability</label><input id="p-availability" value="' + (L.availability||"").replace(/"/g,"&quot;") + '"></div>' +
+        '<div class="form-field" style="grid-column:1/-1;"><label>Injuries / Health</label><input id="p-injuries" value="' + (L.injuries||"").replace(/"/g,"&quot;") + '"></div>' +
+        '<div class="form-field" style="grid-column:1/-1;"><label>Why Now</label><textarea id="p-whyNow" style="min-height:60px;">' + (L.whyNow||"") + '</textarea></div>' +
+        '<div class="form-field" style="grid-column:1/-1;"><label>Desired Outcomes</label><textarea id="p-outcomes" style="min-height:60px;">' + (L.outcomes||"") + '</textarea></div>' +
+        '<div class="form-field" style="grid-column:1/-1;"><label>Other</label><textarea id="p-other" style="min-height:60px;">' + (L.other||"") + '</textarea></div>' +
+      '</div>' +
+
+      '<div class="section-title">Consultation</div>' +
+      '<div class="form-field" style="margin-bottom:12px;">' +
+        '<label>Consultation Status</label>' +
+        '<select id="m-consult">' +
+          '<option value="" ' + (!L.consultStatus?"selected":"") + '>— Set status —</option>' +
+          '<option value="Complete" ' + (L.consultStatus==="Complete"?"selected":"") + '>✅ Complete</option>' +
+          '<option value="Not Complete" ' + (L.consultStatus==="Not Complete"?"selected":"") + '>⬜ Not Complete</option>' +
+          '<option value="Reschedule" ' + (L.consultStatus==="Reschedule"?"selected":"") + '>🔄 Reschedule</option>' +
+          '<option value="Follow Up" ' + (L.consultStatus==="Follow Up"?"selected":"") + '>📌 Follow Up</option>' +
+          '<option value="No Show" ' + (L.consultStatus==="No Show"?"selected":"") + '>🚫 No Show</option>' +
+        '</select>' +
+      '</div>' +
+      '<label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;">Notes</label>' +
+      '<textarea class="notes-edit" id="m-notes" placeholder="Add notes...">' + (L.notes||"") + '</textarea>' +
+
+      '<div class="section-title">📅 Tasks &amp; Follow-ups</div>' +
+      '<div id="m-tasks">' + renderTasksForLead(L) + '</div>' +
+      '<div class="task-presets">' +
+        '<button class="task-preset" data-p="reachout">📞 Reach Out Tomorrow</button>' +
+        '<button class="task-preset" data-p="followup">📅 Book Follow-up Next Week</button>' +
+        '<button class="task-preset" data-p="text">✉️ Send Text Today</button>' +
+      '</div>' +
+      '<div class="task-form">' +
+        '<input id="m-tnote" placeholder="Custom task note">' +
+        '<input id="m-tdate" type="date" value="' + addDays(todayStr(),1) + '">' +
+        '<button id="m-tadd">+ Add</button>' +
+      '</div>' +
+
+      '<div class="section-title" style="color:var(--lost);border-color:var(--lost);margin-top:30px;">⚠ Danger Zone</div>' +
+      '<div style="color:var(--muted);font-size:12px;margin-bottom:10px;">Permanently remove this lead and all their tasks, notes, billing, and activity. This cannot be undone.</div>' +
+      '<button class="btn-danger" id="delete-lead-btn" style="width:100%;">🗑 Delete This Lead</button>' +
+    '</div>';
+
+  $("modal").classList.add("show");
+
+  // Wire up modal events
+  $("m-star").addEventListener("click", function(){
+    L.priority = !L.priority; saveState(); renderAll(); openLead(name);
+  });
+  $("m-status").querySelectorAll(".status-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      L.status = btn.dataset.s; saveState(); renderAll(); openLead(name);
+    });
+  });
+  $("m-notes").addEventListener("blur", function(e){ L.notes = e.target.value; saveState(); renderAll(); });
+  if ($("m-pnote")) $("m-pnote").addEventListener("blur", function(e){ L.priorityNote = e.target.value; saveState(); renderAll(); });
+  $("m-consult").addEventListener("change", function(e){ L.consultStatus = e.target.value; saveState(); renderAll(); });
+
+  // Editable profile fields — auto-save on blur (text inputs) or change (selects)
+  var profileFields = [
+    {id:"p-name", key:"name", evt:"blur"},
+    {id:"p-phone", key:"phone", evt:"blur"},
+    {id:"p-date", key:"date", evt:"blur"},
+    {id:"p-level", key:"level", evt:"change"},
+    {id:"p-goal", key:"goal", evt:"blur"},
+    {id:"p-timeline", key:"timeline", evt:"change"},
+    {id:"p-style", key:"style", evt:"blur"},
+    {id:"p-availability", key:"availability", evt:"blur"},
+    {id:"p-injuries", key:"injuries", evt:"blur"},
+    {id:"p-whyNow", key:"whyNow", evt:"blur"},
+    {id:"p-outcomes", key:"outcomes", evt:"blur"},
+    {id:"p-other", key:"other", evt:"blur"}
+  ];
+  profileFields.forEach(function(f){
+    var el = $(f.id);
+    if (!el) return;
+    el.addEventListener(f.evt, function(e){
+      var newVal = e.target.value;
+      if (L[f.key] === newVal) return;
+      L[f.key] = newVal;
+      saveState();
+      // Update header title live if name changed
+      if (f.key === "name" || f.key === "phone") {
+        var titleEl = document.querySelector("#modal-content .modal-title");
+        if (titleEl && f.key === "name") {
+          var badge = titleEl.querySelector(".badge");
+          titleEl.firstChild.textContent = newVal + " ";
+          if (badge) titleEl.appendChild(badge);
+        }
+        var subEl = document.querySelector("#modal-content .modal-head div[style*='font-size:12px']");
+        // Just re-render — simpler than surgical updates
+      }
+      renderRevenueBanner();
+      renderTabCounts();
+    });
+  });
+
+  // Delete lead
+  $("delete-lead-btn").addEventListener("click", function(){
+    if (!confirm("Permanently delete \"" + L.name + "\"? This cannot be undone.")) return;
+    LEADS = LEADS.filter(function(x){ return x !== L; });
+    saveState();
+    closeLead();
+    renderAll();
+    showToast("🗑 Lead deleted: " + L.name, "error");
+  });
+
+  function updateTotal() {
+    var s = parseInt($("b-sessions").value || "0");
+    var r = parseInt($("b-rate").value || "0");
+    $("b-total").textContent = fmt$(s * r);
+  }
+  $("b-active").addEventListener("change", function(e){
+    b.active = e.target.checked;
+    saveState(); renderAll();
+    updateTotal();
+  });
+  $("b-sessions").addEventListener("input", function(e){
+    b.sessions = parseInt(e.target.value || "0");
+    updateTotal();
+    saveState();
+    renderRevenueBanner();
+    renderTabCounts();
+  });
+  $("b-rate").addEventListener("input", function(e){
+    b.rate = parseInt(e.target.value || "0");
+    updateTotal();
+    saveState();
+    renderRevenueBanner();
+    renderTabCounts();
+  });
+  $("b-package").addEventListener("change", function(e){
+    b.package = e.target.value;
+    saveState(); renderAll();
+  });
+  $("b-paid").addEventListener("change", function(e){
+    b.paid = e.target.checked;
+    saveState();
+    renderRevenueBanner();
+    // Live-update the paid row styling + label
+    var row = $("b-paid-row");
+    var lbl = row.querySelector("label");
+    if (b.paid) {
+      row.style.background = "rgba(34,197,94,0.12)";
+      row.style.borderColor = "rgba(34,197,94,0.4)";
+      lbl.style.color = "var(--won)";
+      lbl.textContent = "✓ Paid for this month";
+    } else {
+      row.style.background = "var(--panel)";
+      row.style.borderColor = "var(--border)";
+      lbl.style.color = "var(--text)";
+      lbl.textContent = "Mark as Paid for this month";
+    }
+  });
+
+  document.querySelectorAll("[data-r]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var a = btn.dataset.r;
+      if (a === "call") doCall(L);
+      else if (a === "text") doText(L);
+      else if (a === "email") doEmail(L);
+      else if (a === "video") doVideo(L);
+      else if (a === "voicemail") doVM(L);
+    });
+  });
+
+  document.querySelectorAll("[data-p]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var p = btn.dataset.p;
+      if (p === "reachout") addTask(L, "Reach Out", addDays(todayStr(),1), "");
+      else if (p === "followup") addTask(L, "Book Follow-up", addDays(todayStr(),7), "");
+      else if (p === "text") addTask(L, "Send Text", todayStr(), "");
+      renderAll(); openLead(name);
+    });
+  });
+  $("m-tadd").addEventListener("click", function(){
+    var note = $("m-tnote").value.trim();
+    var d = $("m-tdate").value;
+    if (!note && !d) return;
+    addTask(L, note ? "Task" : "Reminder", d, note);
+    renderAll(); openLead(name);
+  });
+  document.querySelectorAll("[data-mt]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var t = leadTasks(L).find(function(x){ return x.id === btn.dataset.mt; });
+      if (!t) return;
+      t.completed = !t.completed;
+      saveState(); renderAll(); openLead(name);
+    });
+  });
+  document.querySelectorAll("[data-md]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      L.tasks = leadTasks(L).filter(function(x){ return x.id !== btn.dataset.md; });
+      saveState(); renderAll(); openLead(name);
+    });
+  });
+}
+
+function closeLead() { $("modal").classList.remove("show"); }
+
+// ==========================================================
+// REACH OUT (Call / Text / Email / Video / Voicemail)
+// ==========================================================
+var callTimer = null;
+function showReach(html) { $("reach-content").innerHTML = html; $("reach-modal").classList.add("show"); }
+function closeReach() { $("reach-modal").classList.remove("show"); if (callTimer) { clearInterval(callTimer); callTimer = null; } }
+
+function doCall(L) {
+  showReach(
+    '<div class="modal-head"><div class="modal-title">📞 Active Call</div><button class="modal-close" onclick="closeReach()">✕</button></div>' +
+    '<div class="modal-body"><div class="dialer">' +
+    '<div class="dialer-status" id="d-status">Calling...</div>' +
+    '<div class="dialer-avatar ringing" id="d-avatar">' + L.name.charAt(0).toUpperCase() + '</div>' +
+    '<div class="dialer-name">' + L.name + '</div>' +
+    '<div class="dialer-phone">' + (L.phone||"No phone") + '</div>' +
+    '<div class="dialer-timer" id="d-timer" style="visibility:hidden;">00:00</div>' +
+    '<div class="dialer-controls">' +
+      '<button class="dialer-ctrl">🔇<br>Mute</button>' +
+      '<button class="dialer-ctrl">⌨️<br>Keypad</button>' +
+      '<button class="dialer-ctrl">🔊<br>Speaker</button>' +
+      '<button class="dialer-ctrl">⏸<br>Hold</button>' +
+      '<button class="dialer-ctrl">⏺<br>Record</button>' +
+      '<button class="dialer-ctrl">↪<br>Transfer</button>' +
+    '</div>' +
+    '<button class="dialer-end" id="d-end">📞</button>' +
+    '<div class="demo-banner">⚠️ Demo mode — wire up Twilio/RingDNA after backend.</div>' +
+    '</div></div>'
+  );
+  var secs = 0;
+  setTimeout(function(){
+    if (!$("d-status")) return;
+    $("d-status").textContent = "Connected";
+    $("d-status").classList.add("connected");
+    $("d-avatar").classList.remove("ringing");
+    $("d-timer").style.visibility = "visible";
+    callTimer = setInterval(function(){
+      secs++;
+      var m = String(Math.floor(secs/60)).padStart(2,"0");
+      var s = String(secs%60).padStart(2,"0");
+      if ($("d-timer")) $("d-timer").textContent = m + ":" + s;
+    }, 1000);
+  }, 1500);
+  $("d-end").addEventListener("click", function(){
+    var dur = $("d-timer").textContent;
+    logActivity(L, "call", secs > 0 ? "Outbound call · " + dur : "Outbound call · no answer");
+    closeReach(); openLead(L.name);
+  });
+  document.querySelectorAll(".dialer-ctrl").forEach(function(btn){
+    btn.addEventListener("click", function(){ btn.classList.toggle("active"); });
+  });
+}
+
+function doText(L) {
+  if (!Array.isArray(L.smsThread)) L.smsThread = [];
+  function render() {
+    return L.smsThread.length
+      ? L.smsThread.map(function(m){ return '<div class="bubble ' + (m.from==="me"?"outgoing":"incoming") + '">' + m.body + '</div>'; }).join("")
+      : '<div style="color:var(--muted);text-align:center;padding:30px 0;font-size:12px;">No messages yet. Send the first one.</div>';
+  }
+  showReach(
+    '<div class="modal-head"><div><div class="modal-title">💬 ' + L.name + '</div><div style="color:var(--muted);font-size:12px;">' + (L.phone||"No phone") + '</div></div><button class="modal-close" onclick="closeReach()">✕</button></div>' +
+    '<div class="modal-body">' +
+    '<div class="sms-thread" id="sms-t">' + render() + '</div>' +
+    '<div class="sms-composer"><input id="sms-in" placeholder="Type a message..."><button class="sms-send" id="sms-go">➤</button></div>' +
+    '<div class="demo-banner">⚠️ Demo mode — wire up Twilio for real SMS.</div>' +
+    '</div>'
+  );
+  function send() {
+    var v = $("sms-in").value.trim();
+    if (!v) return;
+    L.smsThread.push({ from: "me", body: v, at: new Date().toISOString() });
+    saveState();
+    $("sms-t").innerHTML = render();
+    $("sms-in").value = "";
+    $("sms-t").scrollTop = $("sms-t").scrollHeight;
+    logActivity(L, "text", 'SMS: "' + v.slice(0,50) + (v.length>50?"…":"") + '"');
+  }
+  $("sms-go").addEventListener("click", send);
+  $("sms-in").addEventListener("keydown", function(e){ if (e.key === "Enter") send(); });
+  $("sms-in").focus();
+}
+
+function doEmail(L) {
+  var to = (L.name||"").toLowerCase().replace(/[^a-z]+/g,".").replace(/^\.|\.$/g,"") + "@gmail.com";
+  showReach(
+    '<div class="modal-head"><div class="modal-title">✉️ New Email</div><button class="modal-close" onclick="closeReach()">✕</button></div>' +
+    '<div class="modal-body"><div class="email-form">' +
+    '<div class="label-row"><label>From</label><input value="mario@yourdomain.com" readonly></div>' +
+    '<div class="label-row"><label>To</label><input id="e-to" value="' + to + '"></div>' +
+    '<div class="label-row"><label>Subject</label><input id="e-subj"></div>' +
+    '<div class="label-row"><label>Template</label><select id="e-tpl"><option value="">— Pick one —</option><option value="welcome">Welcome</option><option value="followup">Post-consult follow-up</option><option value="booking">Booking confirmation</option><option value="checkin">Check-in</option></select></div>' +
+    '<textarea id="e-body" placeholder="Write your message..."></textarea>' +
+    '<div style="display:flex;justify-content:flex-end;"><button class="btn" id="e-send">Send Email</button></div>' +
+    '<div class="demo-banner">⚠️ Demo mode — wire up SendGrid/Resend for real sending.</div>' +
+    '</div></div>'
+  );
+  $("e-tpl").addEventListener("change", function(e){
+    var first = L.name.split(" ")[0];
+    var tpls = {
+      welcome: { s: "Welcome to your fitness journey, " + first, b: "Hey " + first + ",\n\nThanks for filling out the form. I'll text you tomorrow to set up your first session.\n\n— Mario" },
+      followup: { s: "Quick follow-up", b: "Hey " + first + ",\n\nWanted to follow up. Ready to lock in your first session?\n\n— Mario" },
+      booking: { s: "Confirming your first session", b: "Hey " + first + ",\n\nConfirming your first session. See you then!\n\n— Mario" },
+      checkin: { s: "How's it going, " + first + "?", b: "Hey " + first + ",\n\nQuick check-in. How's everything going? Any roadblocks?\n\n— Mario" }
+    };
+    var t = tpls[e.target.value];
+    if (t) { $("e-subj").value = t.s; $("e-body").value = t.b; }
+  });
+  $("e-send").addEventListener("click", function(){
+    var subj = $("e-subj").value.trim() || "(no subject)";
+    if (!$("e-body").value.trim()) { alert("Add a message body."); return; }
+    logActivity(L, "email", 'Email: "' + subj + '"');
+    closeReach(); openLead(L.name);
+  });
+}
+
+function doVideo(L) {
+  showReach(
+    '<div class="modal-head"><div class="modal-title">🎥 Video Call</div><button class="modal-close" onclick="closeReach()">✕</button></div>' +
+    '<div class="modal-body" style="text-align:center;">' +
+    '<div class="dialer-avatar" style="background:linear-gradient(135deg,#fb923c,#a78bfa);">' + L.name.charAt(0).toUpperCase() + '</div>' +
+    '<div style="font-size:18px;font-weight:600;margin-top:14px;">' + L.name + '</div>' +
+    '<div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ready to start?</div>' +
+    '<button class="btn" id="v-go">Start Video Call</button>' +
+    '<div class="demo-banner">⚠️ Demo — would launch Zoom in production.</div>' +
+    '</div>'
+  );
+  $("v-go").addEventListener("click", function(){
+    logActivity(L, "video", "Video session scheduled");
+    closeReach(); openLead(L.name);
+  });
+}
+
+function doVM(L) {
+  showReach(
+    '<div class="modal-head"><div class="modal-title">🎙 Voicemail Drop</div><button class="modal-close" onclick="closeReach()">✕</button></div>' +
+    '<div class="modal-body">' +
+    '<p style="color:var(--muted);font-size:13px;">Pre-recorded voicemail drop without ringing.</p>' +
+    '<select id="vm-t" style="width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px;font-family:inherit;">' +
+    '<option>Welcome (0:32)</option><option>Following up (0:45)</option><option>Win-back (0:28)</option>' +
+    '</select>' +
+    '<button class="btn" id="vm-go" style="width:100%;">Drop Voicemail</button>' +
+    '<div class="demo-banner">⚠️ Demo — wire up Slybroadcast/Twilio.</div>' +
+    '</div>'
+  );
+  $("vm-go").addEventListener("click", function(){
+    logActivity(L, "voicemail", "VM dropped: " + $("vm-t").value);
+    closeReach(); openLead(L.name);
+  });
+}
+
+// ==========================================================
+// BUCKET MODAL
+// ==========================================================
+var editingBucket = null;
+function openBk(id) {
+  editingBucket = id || null;
+  var b = id ? BUCKETS.find(function(x){ return x.id === id; }) : null;
+  $("bk-title").textContent = b ? "Edit Bucket" : "Create Bucket";
+  $("bk-name").value = b ? b.name : "";
+  $("bk-icon").value = b ? b.icon : "🎯";
+  $("bk-desc").value = b ? (b.desc||"") : "";
+  var r = b ? (b.rule||{}) : {};
+  $("bk-level").value = r.level || "";
+  $("bk-status").value = r.status || "";
+  $("bk-active").value = r.active || "";
+  $("bk-goal").value = r.goal || "";
+  $("bk-why").value = r.why || "";
+  $("bk-timeline").value = r.timeline || "";
+  $("bk-pin").checked = b ? !!b.pinAsTab : false;
+  updateBkPreview();
+  $("bucket-modal").classList.add("show");
+}
+function closeBk() { $("bucket-modal").classList.remove("show"); }
+function getBkRule() {
+  var r = {};
+  if ($("bk-level").value) r.level = $("bk-level").value;
+  if ($("bk-status").value) r.status = $("bk-status").value;
+  if ($("bk-active").value) r.active = $("bk-active").value;
+  if ($("bk-goal").value) r.goal = $("bk-goal").value;
+  if ($("bk-why").value) r.why = $("bk-why").value;
+  if ($("bk-timeline").value) r.timeline = $("bk-timeline").value;
+  return r;
+}
+function updateBkPreview() {
+  $("bk-preview").textContent = leadsInBucket({ rule: getBkRule() }).length;
+}
+
+// ==========================================================
+// ADD LEAD / SETTINGS MODALS
+// ==========================================================
+function openAdd() {
+  $("add-modal").classList.add("show");
+  $("add-date").value = new Date().toLocaleDateString("en-US");
+}
+function closeAdd() { $("add-modal").classList.remove("show"); }
+function openSettings() {
+  $("monthly-goal").value = monthlyGoal || "";
+  $("settings-modal").classList.add("show");
+}
+function closeSettings() { $("settings-modal").classList.remove("show"); }
+
+// ==========================================================
+// FILTER UI
+// ==========================================================
+function activeFilterCount() {
+  var n = 0;
+  Object.keys(F).forEach(function(k){ if (F[k]) n++; });
+  return n;
+}
+function refreshFilterUI() {
+  var n = activeFilterCount();
+  var badge = $("filter-badge");
+  badge.textContent = n;
+  badge.style.display = n ? "inline-flex" : "none";
+  $("filter-toggle").classList.toggle("has-filters", n > 0);
+  $("save-tab-btn").disabled = n === 0;
+  var chips = $("active-chips");
+  var items = Object.keys(F).filter(function(k){ return F[k]; });
+  chips.innerHTML = items.length
+    ? items.map(function(k){ return '<span class="chip">' + k + ': ' + F[k] + ' <span class="chip-x" data-cf="' + k + '">✕</span></span>'; }).join("")
+    : '<span style="color:var(--muted);font-size:12px;">No filters</span>';
+  chips.querySelectorAll("[data-cf]").forEach(function(el){
+    el.addEventListener("click", function(){
+      var k = el.dataset.cf;
+      F[k] = "";
+      var inp = $("f-" + k); if (inp) inp.value = "";
+      refreshFilterUI(); renderMain();
+    });
+  });
+}
+
+// ==========================================================
+// .ICS EXPORT
+// ==========================================================
+function buildICS() {
+  var lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//ArcAscend//EN","CALSCALE:GREGORIAN","X-WR-CALNAME:ArcAscend Tasks"];
+  var count = 0;
+  function pad(n) { return String(n).padStart(2,"0"); }
+  var d = new Date();
+  var stamp = d.getUTCFullYear() + pad(d.getUTCMonth()+1) + pad(d.getUTCDate()) + "T" + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + "Z";
+  LEADS.forEach(function(L){
+    leadTasks(L).forEach(function(t){
+      if (t.completed || !t.dueDate) return;
+      var start = t.dueDate.replace(/-/g,"");
+      var dt = new Date(t.dueDate + "T00:00:00");
+      dt.setDate(dt.getDate()+1);
+      var end = dt.getFullYear() + pad(dt.getMonth()+1) + pad(dt.getDate());
+      function esc(s){ return (s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n"); }
+      lines.push("BEGIN:VEVENT");
+      lines.push("UID:" + t.id + "@arcascend");
+      lines.push("DTSTAMP:" + stamp);
+      lines.push("DTSTART;VALUE=DATE:" + start);
+      lines.push("DTEND;VALUE=DATE:" + end);
+      lines.push("SUMMARY:" + esc(t.type + " — " + L.name));
+      var desc = [];
+      if (t.note) desc.push(t.note);
+      if (L.phone) desc.push("Phone: " + L.phone);
+      if (desc.length) lines.push("DESCRIPTION:" + esc(desc.join("\n")));
+      lines.push("END:VEVENT");
+      count++;
+    });
+  });
+  lines.push("END:VCALENDAR");
+  return { ics: lines.join("\r\n"), count: count };
+}
+
+// ==========================================================
+// RENDER ALL
+// ==========================================================
+function renderAll() {
+  renderRevenueBanner();
+  renderTabCounts();
+  renderCustomTabs();
+  renderMain();
+}
+
+// ==========================================================
+// INIT
+// ==========================================================
+// ── Profile Menu ──────────────────────────────────────
+// ── Bulk Select & Delete ──────────────────────────────
+var selectedLeads = new Set();
+
+function updateBulkBar() {
+  var bar = document.getElementById('bulk-actions-bar');
+  var count = document.getElementById('selected-count');
+  var selectAllCb = document.getElementById('select-all-cb');
+  if (selectedLeads.size > 0) {
+    bar.style.display = 'flex';
+    count.textContent = selectedLeads.size + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+  var allCards = document.querySelectorAll('.lead-card');
+  selectAllCb.checked = allCards.length > 0 && selectedLeads.size === allCards.length;
+}
+
+function cancelSelection() {
+  selectedLeads.clear();
+  document.querySelectorAll('.lead-checkbox').forEach(function(cb) {
+    cb.checked = false;
+  });
+  updateBulkBar();
+}
+
+function deleteSelected() {
+  if (selectedLeads.size === 0) return;
+  if (!confirm('Delete ' + selectedLeads.size + ' lead(s)? This cannot be undone.')) return;
+  LEADS = LEADS.filter(function(L) {
+    return !selectedLeads.has(L.name);
+  });
+  selectedLeads.clear();
+  saveState();
+  saveToSupabase();
+  renderAll();
+  updateBulkBar();
+}
+
+function initBulkSelect() {
+  var selectAllCb = document.getElementById('select-all-cb');
+  selectAllCb.addEventListener('change', function() {
+    var allCards = document.querySelectorAll('.lead-card');
+    if (this.checked) {
+      allCards.forEach(function(card) {
+        var name = card.dataset.name;
+        if (name) selectedLeads.add(decodeURIComponent(name));
+        var cb = card.querySelector('.lead-checkbox');
+        if (cb) cb.checked = true;
+      });
+    } else {
+      cancelSelection();
+    }
+    updateBulkBar();
+  });
+}
+// ──────────────────────────────────────────────────────
+function initProfileMenu() {
+  var btn = document.getElementById('profile-btn');
+  var dropdown = document.getElementById('profile-dropdown');
+  var emailEl = document.getElementById('profile-email');
+  
+  // Show logged in email
+  var email = localStorage.getItem('arcascend_user_email') || 'trainer@arcascend.com';
+  if (emailEl) emailEl.textContent = email;
+
+  // Toggle dropdown
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    var isOpen = dropdown.style.display === 'block';
+    dropdown.style.display = isOpen ? 'none' : 'block';
+  });
+
+  // Close when clicking outside
+  document.addEventListener('click', function() {
+    dropdown.style.display = 'none';
+  });
+}
+
+function logOut() {
+  localStorage.removeItem('arcascend_token');
+  localStorage.removeItem('arcascend_user_id');
+  localStorage.removeItem('arcascend_user_email');
+  window.location.href = 'login.html';
+}
+
+function showAbout() {
+  alert('ArcAscend v1.0\nCRM built for Personal Trainers & Gyms.\n\nBuilt with ❤️ for fitness professionals.');
+}
+// ──────────────────────────────────────────────────────
+function initApp() {
+  if (location.search.indexOf("reset") >= 0 || location.hash.indexOf("reset") >= 0) {
+    Object.keys(localStorage).filter(function(k){ return k.indexOf("arcascend") === 0; }).forEach(function(k){ localStorage.removeItem(k); });
+    location.href = location.pathname;
+    return;
+  }
+
+  loadState();
+  checkAuth().then(function(loggedIn) {
+    if (loggedIn) {
+      loadFromSupabase().then(function(loaded) {
+        if (!loaded) loadState();
+        loadBuckets();
+        loadCampaigns();
+        loadGoal();
+        loadHiddenTabs();
+        applyTabVisibility();
+        renderAll();
+        initProfileMenu();
+        initBulkSelect();
+      });
+    }
+  });
+
+  // Edit Tabs button
+  $("tabs-btn").addEventListener("click", openTabsModal);
+  $("tabs-modal").addEventListener("click", function(e){ if (e.target.id === "tabs-modal") closeTabsModal(); });
+
+  // Restore last-saved timestamp from storage
+  var savedTs = localStorage.getItem(LAST_SAVED_KEY);
+  if (savedTs) lastSavedAt = parseInt(savedTs);
+  updateSavedIndicator();
+
+  // Save button
+  $("save-btn").addEventListener("click", function(){
+    saveState();
+    var b = $("save-btn");
+    b.classList.add("saved");
+    b.innerHTML = "Saved";
+    showToast("✓ All changes saved to your browser", "success");
+    setTimeout(function(){
+      b.classList.remove("saved");
+      b.innerHTML = "💾 Save";
+    }, 2000);
+  });
+
+  // Restore polling
+  var savedUrl = localStorage.getItem(SHEET_URL_KEY);
+  // polling is set up when user lands on sync tab
+
+  // Wire tab clicks
+  document.querySelectorAll(".tab[data-tab]").forEach(function(t){
+    t.addEventListener("click", function(){
+      document.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("active"); });
+      t.classList.add("active");
+      activeTab = t.dataset.tab;
+      renderMain();
+    });
+  });
+
+  // Search
+  $("search").addEventListener("input", function(e){ searchQ = e.target.value; renderMain(); });
+
+  // Sort
+  $("sort-by").addEventListener("change", function(e){ sortBy = e.target.value; renderMain(); });
+
+  // Filter panel
+  ["level","timeline","status","active","goal","why","availability","hastask","priority","notes"].forEach(function(k){
+    var el = $("f-" + k);
+    if (!el) return;
+    el.addEventListener("input", function(e){ F[k] = e.target.value; refreshFilterUI(); renderMain(); });
+    el.addEventListener("change", function(e){ F[k] = e.target.value; refreshFilterUI(); renderMain(); });
+  });
+  $("filter-toggle").addEventListener("click", function(){ $("filter-panel").classList.toggle("open"); });
+  $("clear-filters").addEventListener("click", function(){
+    Object.keys(F).forEach(function(k){ F[k] = ""; var el = $("f-" + k); if (el) el.value = ""; });
+    refreshFilterUI(); renderMain();
+  });
+
+  // Save as tab
+  $("save-tab-btn").addEventListener("click", function(){
+    var name = prompt("Name this new tab:");
+    if (!name) return;
+    var icon = prompt("Icon emoji:", "🎯") || "🎯";
+    var rule = {};
+    if (F.level) rule.level = F.level;
+    if (F.status) rule.status = F.status;
+    if (F.active) rule.active = F.active;
+    if (F.goal) rule.goal = F.goal;
+    if (F.why) rule.why = F.why;
+    if (F.timeline) rule.timeline = F.timeline;
+    BUCKETS.push({ id: uuid(), name: name, icon: icon, desc: "Saved filter", rule: rule, pinAsTab: true });
+    saveBuckets();
+    renderAll();
+  });
+
+  // Add Lead
+  $("add-lead-btn").addEventListener("click", openAdd);
+  $("add-modal").addEventListener("click", function(e){ if (e.target.id === "add-modal") closeAdd(); });
+  $("add-form").addEventListener("submit", function(e){
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var L = {
+      date: fd.get("date") || new Date().toLocaleDateString("en-US"),
+      name: fd.get("name").trim(),
+      phone: (fd.get("phone")||"").trim(),
+      goal: fd.get("goal")||"",
+      level: fd.get("level")||"",
+      timeline: fd.get("timeline")||"",
+      style: "", injuries: "", availability: "", whyNow: "", outcomes: "", other: "",
+      notes: fd.get("notes")||"",
+      status: fd.get("status")||"New",
+      billing: { active: false, sessions: 0, rate: 0, package: "" }
+    };
+    if (!L.name) return;
+    LEADS.unshift(L);
+    saveState(); renderAll(); closeAdd();
+    setTimeout(function(){ openLead(L.name); }, 100);
+  });
+
+  // Settings
+  $("settings-btn").addEventListener("click", openSettings);
+  $("settings-modal").addEventListener("click", function(e){ if (e.target.id === "settings-modal") closeSettings(); });
+  $("save-goal-btn").addEventListener("click", function(){
+    var v = parseFloat($("monthly-goal").value || "0");
+    monthlyGoal = isNaN(v) ? 0 : v;
+    localStorage.setItem(GOAL_KEY, String(monthlyGoal));
+    $("settings-status").innerHTML = '<div style="color:var(--won);font-size:12px;">✓ Goal saved: ' + fmt$(monthlyGoal) + '</div>';
+    renderRevenueBanner();
+  });
+  $("ics-export-btn").addEventListener("click", function(){
+    var r = buildICS();
+    if (r.count === 0) {
+      $("settings-status").innerHTML = '<div style="color:var(--lost);font-size:12px;">No tasks to export. Schedule some first.</div>';
+      return;
+    }
+    var blob = new Blob([r.ics], { type: "text/calendar" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "arcascend_tasks.ics";
+    a.click();
+    URL.revokeObjectURL(url);
+    $("settings-status").innerHTML = '<div style="color:var(--won);font-size:12px;">✓ Exported ' + r.count + ' tasks.</div>';
+  });
+  $("reset-btn").addEventListener("click", function(){
+    if (!confirm("Reset all data? This wipes everything (leads, buckets, campaigns, settings).")) return;
+    Object.keys(localStorage).filter(function(k){ return k.indexOf("arcascend") === 0; }).forEach(function(k){ localStorage.removeItem(k); });
+    location.reload();
+  });
+
+  // Export all data as JSON
+  $("export-data-btn").addEventListener("click", function(){
+    var data = {
+      version: "1.0",
+      app: "ArcAscend",
+      exported_at: new Date().toISOString(),
+      leads: LEADS,
+      buckets: BUCKETS,
+      campaigns: CAMPAIGNS,
+      monthlyGoal: monthlyGoal
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var today = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = "arcascend-export-" + today + ".json";
+    a.click();
+    URL.revokeObjectURL(url);
+    $("settings-status").innerHTML = '<div style="color:var(--won);font-size:12px;">✓ Exported ' + LEADS.length + ' leads + ' + BUCKETS.length + ' buckets + settings. File downloaded.</div>';
+    showToast("📦 Exported " + LEADS.length + " leads to file", "success");
+  });
+
+  // Import JSON data file
+  $("import-data-file").addEventListener("change", function(e){
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      try {
+        var parsed = JSON.parse(ev.target.result);
+        if (!parsed || (parsed.app && parsed.app !== "ArcAscend")) {
+          throw new Error("Not a valid ArcAscend export file");
+        }
+        var summary =
+          "Import this file?\n\n" +
+          "• " + (parsed.leads ? parsed.leads.length : 0) + " leads\n" +
+          "• " + (parsed.buckets ? parsed.buckets.length : 0) + " buckets\n" +
+          "• " + (parsed.campaigns ? parsed.campaigns.length : 0) + " campaigns\n" +
+          "• Monthly goal: $" + (parsed.monthlyGoal || 0) + "\n\n" +
+          "Exported: " + (parsed.exported_at || "unknown") + "\n\n" +
+          "Choose:\n" +
+          "OK = REPLACE all current data with the imported data\n" +
+          "Cancel = MERGE imported leads into your existing data";
+        var doReplace = confirm(summary);
+        if (Array.isArray(parsed.leads)) {
+          if (doReplace) {
+            LEADS = parsed.leads;
+          } else {
+            // Merge by name+phone — new leads added, existing updated
+            var existingByKey = {};
+            LEADS.forEach(function(L){ existingByKey[leadKey(L)] = L; });
+            var added = 0, updated = 0;
+            parsed.leads.forEach(function(imported){
+              var k = leadKey(imported);
+              if (existingByKey[k]) {
+                Object.assign(existingByKey[k], imported);
+                updated++;
+              } else {
+                LEADS.unshift(imported);
+                added++;
+              }
+            });
+            $("settings-status").innerHTML = '<div style="color:var(--won);font-size:12px;">✓ Merged: ' + added + ' new, ' + updated + ' updated. Total leads: ' + LEADS.length + '</div>';
+          }
+        }
+        if (doReplace && Array.isArray(parsed.buckets)) BUCKETS = parsed.buckets;
+        if (doReplace && Array.isArray(parsed.campaigns)) CAMPAIGNS = parsed.campaigns;
+        if (doReplace && typeof parsed.monthlyGoal === "number") {
+          monthlyGoal = parsed.monthlyGoal;
+          localStorage.setItem(GOAL_KEY, String(monthlyGoal));
+        }
+        saveState();
+        saveBuckets();
+        saveCampaigns();
+        renderAll();
+        showToast("✓ Imported successfully", "success");
+        if (doReplace) {
+          $("settings-status").innerHTML = '<div style="color:var(--won);font-size:12px;">✓ Replaced all data. Total leads: ' + LEADS.length + '</div>';
+        }
+      } catch(err) {
+        $("settings-status").innerHTML = '<div style="color:var(--lost);font-size:12px;">⚠ Import failed: ' + err.message + '</div>';
+        showToast("Import failed: " + err.message, "error");
+      }
+    };
+    reader.onerror = function(){
+      $("settings-status").innerHTML = '<div style="color:var(--lost);font-size:12px;">⚠ Could not read file</div>';
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  });
+
+  // Other modals close on backdrop click
+  $("modal").addEventListener("click", function(e){ if (e.target.id === "modal") closeLead(); });
+  $("reach-modal").addEventListener("click", function(e){ if (e.target.id === "reach-modal") closeReach(); });
+  $("campaign-modal").addEventListener("click", function(e){ if (e.target.id === "campaign-modal") closeCampaign(); });
+  $("bucket-modal").addEventListener("click", function(e){ if (e.target.id === "bucket-modal") closeBk(); });
+
+  // Bucket modal events
+  ["bk-level","bk-status","bk-active","bk-goal","bk-why","bk-timeline"].forEach(function(id){
+    var el = $(id);
+    if (el) {
+      el.addEventListener("input", updateBkPreview);
+      el.addEventListener("change", updateBkPreview);
+    }
+  });
+  $("bk-save").addEventListener("click", function(){
+    var name = $("bk-name").value.trim();
+    if (!name) { alert("Name required"); return; }
+    var data = {
+      name: name,
+      icon: $("bk-icon").value.trim() || "🎯",
+      desc: $("bk-desc").value.trim(),
+      rule: getBkRule(),
+      pinAsTab: $("bk-pin").checked
+    };
+    if (editingBucket) {
+      var b = BUCKETS.find(function(x){ return x.id === editingBucket; });
+      Object.assign(b, data);
+    } else {
+      BUCKETS.push(Object.assign({ id: uuid() }, data));
+    }
+    saveBuckets();
+    closeBk();
+    renderAll();
+  });
+
+  refreshFilterUI();
+  renderAll();
+}
+
+// Run with error boundary
+try {
+  initApp();
+} catch(err) {
+  console.error(err);
+  document.getElementById("main").innerHTML =
+    '<div style="padding:40px;text-align:center;color:var(--muted);">' +
+    '<div style="font-size:48px;margin-bottom:16px;">⚠️</div>' +
+    '<div style="font-size:18px;color:var(--text);margin-bottom:12px;">Initialization error</div>' +
+    '<div style="margin-bottom:20px;font-family:monospace;background:var(--panel-2);padding:12px;border-radius:8px;text-align:left;font-size:12px;">' + err.message + '</div>' +
+    '<button onclick="localStorage.clear();location.reload();" class="btn">🔄 Clear Data &amp; Reload</button>' +
+    '</div>';
+}
+</script>
+</body>
+</html>
