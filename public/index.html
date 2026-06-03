@@ -980,8 +980,10 @@ var monthlyGoal = 0;
 function $(id) { return document.getElementById(id); }
 function uuid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function leadKey(L) {
-  return ((L.name||"").trim().toLowerCase()) + "|" + ((L.phone||"").replace(/\D/g,""));
-}
+var name = (L.name || "").trim().toLowerCase();
+  var phone = (L.phone || "").replace(/\D/g, "").slice(-10);
+  var email = (L.email || "").trim().toLowerCase();
+  return name + "|" + phone + "|" + email;
 function statusClass(s) {
   s = (s||"").toLowerCase();
   if (s.indexOf("won") >= 0) return "won";

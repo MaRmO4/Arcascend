@@ -40,7 +40,7 @@
   <label>Email</label>
   <input type="email" id="email" placeholder="you@example.com" />
   <label>Password</label>
-  <input type="password" id="password" placeholder="••••••••" />
+<input type="password" id="password" placeholder="••••••••" onkeydown="if(event.key==='Enter') logIn()" />
   <button class="btn" onclick="logIn()">Log In</button>
   <button class="btn secondary" onclick="signUp()">Create Account</button>
   <div class="message" id="msg"></div>
