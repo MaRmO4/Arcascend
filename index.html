@@ -984,6 +984,7 @@ var name = (L.name || "").trim().toLowerCase();
   var phone = (L.phone || "").replace(/\D/g, "").slice(-10);
   var email = (L.email || "").trim().toLowerCase();
   return name + "|" + phone + "|" + email;
+}
 function statusClass(s) {
   s = (s||"").toLowerCase();
   if (s.indexOf("won") >= 0) return "won";
