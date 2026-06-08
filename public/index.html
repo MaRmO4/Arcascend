@@ -3062,15 +3062,18 @@ function renderHomeTab() {
   if (!isHome) return;
 
   // STAT CARDS
-  var activeClients = LEADS.filter(function(l) {
-    return (l.status || '').toLowerCase().includes('active');
-  });
+ var activeClients = LEADS.filter(function(l) {
+  var b = l.billing || {};
+  return b.active === true;
+});
   var totalProjection = LEADS.reduce(function(sum, l) {
-    return sum + ((l.sessions || 0) * (l.rate || 0));
-  }, 0);
-  var totalPaid = LEADS.reduce(function(sum, l) {
-    return sum + (l.paid || 0);
-  }, 0);
+  var b = l.billing || {};
+  return sum + ((b.sessions || 0) * (b.rate || 0));
+}, 0);
+var totalPaid = LEADS.reduce(function(sum, l) {
+  var b = l.billing || {};
+  return sum + (b.paid ? ((b.sessions || 0) * (b.rate || 0)) : 0);
+}, 0);
   var outstanding = Math.max(0, totalProjection - totalPaid);
 
   panel.innerHTML =
@@ -3349,7 +3352,11 @@ function initApp() {
         loadGoal();
         loadHiddenTabs();
         applyTabVisibility();
-        renderAll();
+        currentTab = 'home';
+document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('active'); });
+var homeTab = document.querySelector('.tab[data-tab="home"]');
+if (homeTab) homeTab.classList.add('active');
+renderHomeTab();
         initProfileMenu();
         initBulkSelect();
       });
