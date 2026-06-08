@@ -728,6 +728,86 @@ main { flex: 1; padding: 20px 24px; }
   .form-row { grid-template-columns: 1fr; }
   .billing-grid { grid-template-columns: 1fr 1fr; }
 }
+/* HOME TAB */
+.home-stat-card {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+}
+.home-stat-label {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.home-stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.home-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.home-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.home-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.home-lead-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.home-lead-row:hover { background: var(--border); }
+.home-lead-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.home-lead-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.home-task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border-radius: 8px;
+}
+.home-task-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.home-task-dot.overdue { background: #ef4444; }
+.home-task-dot.today { background: #22c55e; }
+.home-empty {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px 0;
+}
 </style>
 </head>
 <body>
@@ -761,6 +841,7 @@ main { flex: 1; padding: 20px 24px; }
 </header>
 
 <nav class="tabs" id="tabs">
+  <div class="tab" data-tab="home">🏠 Home</div>
   <div class="tab active" data-tab="all">⋯ All Leads <span class="count" id="c-all">0</span></div>
   <div class="tab" data-tab="clients">💼 Active Clients <span class="count" id="c-clients">0</span></div>
   <div class="tab" data-tab="priority">⭐ Priority <span class="count" id="c-priority">0</span></div>
@@ -796,7 +877,7 @@ main { flex: 1; padding: 20px 24px; }
   <button onclick="deleteSelected()" style="margin-left:auto;background:#ef4444;color:white;border:none;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;"> Delete Selected</button>
   <button onclick="cancelSelection()" style="background:#232c36;color:#e6e9ed;border:1px solid #2d3742;padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;">Cancel</button>
 </div>
-
+<div id="home-panel" style="display:none;padding:24px;"></div>
 <div class="filter-panel" id="filter-panel">
   <div class="filter-grid">
     <div class="filter-group"><label>Level</label><select id="f-level"><option value="">Any</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
@@ -2970,10 +3051,187 @@ function buildICS() {
   return { ics: lines.join("\r\n"), count: count };
 }
 
+function renderHomeTab() {
+  var panel = document.getElementById('home-panel');
+  if (!panel) return;
+
+  // Show/hide panel
+  var isHome = currentTab === 'home';
+  panel.style.display = isHome ? 'block' : 'none';
+  if (!isHome) return;
+
+  // STAT CARDS
+  var activeClients = LEADS.filter(function(l) {
+    return (l.status || '').toLowerCase().includes('active');
+  });
+  var totalProjection = LEADS.reduce(function(sum, l) {
+    return sum + ((l.sessions || 0) * (l.rate || 0));
+  }, 0);
+  var totalPaid = LEADS.reduce(function(sum, l) {
+    return sum + (l.paid || 0);
+  }, 0);
+  var outstanding = Math.max(0, totalProjection - totalPaid);
+
+  panel.innerHTML =
+    '<div style="margin-bottom:8px;">' +
+      '<h2 style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px;">🏠 Home</h2>' +
+      '<div style="font-size:13px;color:var(--muted);">Welcome back! Here\'s your overview.</div>' +
+    '</div>' +
+
+    // STAT CARDS ROW
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;margin-top:20px;">' +
+      '<div class="home-stat-card">' +
+        '<div class="home-stat-label">Monthly Projection</div>' +
+        '<div class="home-stat-value">$' + totalProjection.toLocaleString() + '</div>' +
+      '</div>' +
+      '<div class="home-stat-card" style="border-color:#22c55e;">' +
+        '<div class="home-stat-label">Paid So Far</div>' +
+        '<div class="home-stat-value" style="color:#22c55e;">$' + totalPaid.toLocaleString() + '</div>' +
+      '</div>' +
+      '<div class="home-stat-card" style="border-color:#f59e0b;">' +
+        '<div class="home-stat-label">Outstanding</div>' +
+        '<div class="home-stat-value" style="color:#f59e0b;">$' + outstanding.toLocaleString() + '</div>' +
+      '</div>' +
+      '<div class="home-stat-card">' +
+        '<div class="home-stat-label">Active Clients</div>' +
+        '<div class="home-stat-value">' + activeClients.length + '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // 3 COLUMN GRID
+    '<div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:16px;">' +
+
+      // LEFT COL: Tasks + Calendar
+      '<div style="display:flex;flex-direction:column;gap:16px;">' +
+        '<div class="home-card">' +
+          '<div class="home-card-title">📋 Tasks Due Soon</div>' +
+          '<div class="home-card-body" id="home-tasks-list"></div>' +
+        '</div>' +
+        '<div class="home-card">' +
+          '<div class="home-card-title">📅 Upcoming Appointments</div>' +
+          '<div class="home-card-body" id="home-calendar-list"></div>' +
+        '</div>' +
+      '</div>' +
+
+      // MIDDLE COL: Recent Leads
+      '<div class="home-card">' +
+        '<div class="home-card-title">🔥 New & Recent Leads</div>' +
+        '<div class="home-card-body" id="home-recent-leads"></div>' +
+      '</div>' +
+
+      // RIGHT COL: Favorites + Revenue
+      '<div style="display:flex;flex-direction:column;gap:16px;">' +
+        '<div class="home-card">' +
+          '<div class="home-card-title">⭐ Favorites</div>' +
+          '<div class="home-card-body" id="home-favorites-list"></div>' +
+        '</div>' +
+        '<div class="home-card">' +
+          '<div class="home-card-title">💰 Revenue Breakdown</div>' +
+          '<div class="home-card-body" id="home-revenue-breakdown"></div>' +
+        '</div>' +
+      '</div>' +
+
+    '</div>';
+
+  // RECENT LEADS
+  var recentEl = document.getElementById('home-recent-leads');
+  if (recentEl) {
+    var sorted = LEADS.slice().sort(function(a, b) {
+      return new Date(b.date || 0) - new Date(a.date || 0);
+    }).slice(0, 12);
+    recentEl.innerHTML = sorted.length === 0 ? '<div class="home-empty">No leads yet</div>' :
+      sorted.map(function(l) {
+        var s = (l.status || 'New');
+        var sc = s.toLowerCase().includes('active') ? '#22c55e' : s.toLowerCase().includes('won') ? '#a78bfa' : '#60a5fa';
+        return '<div class="home-lead-row" onclick="openLead(\'' + (l.name||'').replace(/'/g,"\\'") + '\')">' +
+          '<div><div class="home-lead-name">' + (l.name || 'Unnamed') + '</div>' +
+          '<div class="home-lead-meta">' + (l.goal || 'No goal listed') + '</div></div>' +
+          '<span style="font-size:11px;color:' + sc + ';font-weight:600;">' + s + '</span>' +
+        '</div>';
+      }).join('');
+  }
+
+  // FAVORITES
+  var favEl = document.getElementById('home-favorites-list');
+  if (favEl) {
+    var favs = LEADS.filter(function(l) { return l.priority; }).slice(0, 8);
+    favEl.innerHTML = favs.length === 0 ? '<div class="home-empty">Star a lead to see them here</div>' :
+      favs.map(function(l) {
+        return '<div class="home-lead-row" onclick="openLead(\'' + (l.name||'').replace(/'/g,"\\'") + '\')">' +
+          '<div><div class="home-lead-name">⭐ ' + (l.name || 'Unnamed') + '</div>' +
+          '<div class="home-lead-meta">' + (l.status || 'New') + '</div></div>' +
+        '</div>';
+      }).join('');
+  }
+
+  // TASKS DUE SOON
+  var tasksEl = document.getElementById('home-tasks-list');
+  if (tasksEl) {
+    var today = new Date(); today.setHours(0,0,0,0);
+    var dueTasks = [];
+    LEADS.forEach(function(l) {
+      if (l.tasks && l.tasks.length) {
+        l.tasks.forEach(function(t) {
+          if (!t.done && t.due) dueTasks.push({ lead: l.name, task: t.text || t.title || t.note || 'Task', due: t.due });
+        });
+      }
+    });
+    dueTasks.sort(function(a, b) { return new Date(a.due) - new Date(b.due); });
+    tasksEl.innerHTML = dueTasks.length === 0 ? '<div class="home-empty">No tasks due soon</div>' :
+      dueTasks.slice(0, 8).map(function(t) {
+        var d = new Date(t.due + 'T00:00:00');
+        var isOverdue = d < today;
+        var isToday = d.getTime() === today.getTime();
+        var cls = isOverdue ? 'overdue' : isToday ? 'today' : '';
+        var ds = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return '<div class="home-task-row"><div class="home-task-dot ' + cls + '"></div>' +
+          '<div><div class="home-lead-name" style="font-size:12px;">' + t.task + '</div>' +
+          '<div class="home-lead-meta">' + t.lead + ' · ' + ds + '</div></div></div>';
+      }).join('');
+  }
+
+  // UPCOMING APPOINTMENTS
+  var calEl = document.getElementById('home-calendar-list');
+  if (calEl) {
+    var upcoming = LEADS.filter(function(l) { return l.appointmentDate || l.appointment; })
+      .sort(function(a,b) { return new Date(a.appointmentDate||a.appointment) - new Date(b.appointmentDate||b.appointment); })
+      .slice(0, 6);
+    calEl.innerHTML = upcoming.length === 0 ? '<div class="home-empty">No upcoming appointments</div>' :
+      upcoming.map(function(l) {
+        var d = new Date((l.appointmentDate||l.appointment) + 'T00:00:00');
+        var ds = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return '<div class="home-lead-row"><div>' +
+          '<div class="home-lead-name">' + (l.name||'Unnamed') + '</div>' +
+          '<div class="home-lead-meta">' + ds + '</div></div></div>';
+      }).join('');
+  }
+
+  // REVENUE BREAKDOWN
+  var revEl = document.getElementById('home-revenue-breakdown');
+  if (revEl) {
+    var won = LEADS.filter(function(l) { return (l.status||'').toLowerCase().includes('won'); });
+    var pipeline = LEADS.filter(function(l) {
+      var s = (l.status||'').toLowerCase();
+      return !s.includes('won') && !s.includes('lost');
+    });
+    var wonVal = won.reduce(function(s,l){ return s+((l.sessions||0)*(l.rate||0)); }, 0);
+    var pipeVal = pipeline.reduce(function(s,l){ return s+((l.sessions||0)*(l.rate||0)); }, 0);
+    revEl.innerHTML =
+      '<div class="home-task-row"><div class="home-task-dot" style="background:#22c55e;"></div>' +
+        '<div><div class="home-lead-name" style="font-size:12px;">Closed Won</div>' +
+        '<div class="home-lead-meta">$' + wonVal.toLocaleString() + ' · ' + won.length + ' clients</div></div></div>' +
+      '<div class="home-task-row"><div class="home-task-dot" style="background:#60a5fa;"></div>' +
+        '<div><div class="home-lead-name" style="font-size:12px;">In Pipeline</div>' +
+        '<div class="home-lead-meta">$' + pipeVal.toLocaleString() + ' · ' + pipeline.length + ' leads</div></div></div>' +
+      '<div class="home-task-row"><div class="home-task-dot" style="background:#22c55e;"></div>' +
+        '<div><div class="home-lead-name" style="font-size:12px;">Active Clients</div>' +
+        '<div class="home-lead-meta">' + activeClients.length + ' training now</div></div></div>';
+  }
+}
 // ==========================================================
 // RENDER ALL
 // ==========================================================
-function renderAll() {
+function renderAll() {if (currentTab === 'home') { renderHomeTab(); return; }
   renderRevenueBanner();
   renderTabCounts();
   renderCustomTabs();
@@ -3091,6 +3349,7 @@ function initApp() {
         loadHiddenTabs();
         applyTabVisibility();
         renderAll();
+        renderHomeTab();
         initProfileMenu();
         initBulkSelect();
       });
