@@ -3060,8 +3060,8 @@ function renderHomeTab() {
   var isHome = (typeof currentTab !== 'undefined') && currentTab === 'home';
   panel.style.display = isHome ? 'block' : 'none';
   if (!isHome) return;
-  document.querySelector('main').style.display = 'none';
-document.getElementById('home-panel').style.display = 'block';
+document.getElementById('main').style.display = 'none';
+  document.getElementById('home-panel').style.display = 'block';
 
   // STAT CARDS
  var activeClients = LEADS.filter(function(l) {
@@ -3239,7 +3239,7 @@ var totalPaid = LEADS.reduce(function(sum, l) {
 // ==========================================================
 function renderAll() {if (typeof currentTab !== 'undefined' && currentTab === 'home') { renderHomeTab(); return; }
 document.getElementById('home-panel').style.display = 'none';
-document.querySelector('main').style.display = 'block';
+document.getElementById('main').style.display = 'block';
 renderRevenueBanner();
   renderTabCounts();
   renderCustomTabs();
