@@ -3056,7 +3056,7 @@ function renderHomeTab() {
   if (!panel) return;
 
   // Show/hide panel
-  var isHome = currentTab === 'home';
+  var isHome = (typeof currentTab !== 'undefined') && currentTab === 'home';
   panel.style.display = isHome ? 'block' : 'none';
   if (!isHome) return;
 
