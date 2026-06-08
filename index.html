@@ -1050,6 +1050,7 @@ var SHEET_URL_KEY = "arcascend_sheet_url";
 var AUTO_SYNC_KEY = "arcascend_auto_sync";
 var POLL_INT_KEY = "arcascend_poll_interval";
 
+var currentTab = 'all';
 var LEADS = [];
 var BUCKETS = [];
 var CAMPAIGNS = [];
@@ -3231,8 +3232,8 @@ function renderHomeTab() {
 // ==========================================================
 // RENDER ALL
 // ==========================================================
-function renderAll() {if (currentTab === 'home') { renderHomeTab(); return; }
-  renderRevenueBanner();
+function renderAll() {if (typeof currentTab !== 'undefined' && currentTab === 'home') { renderHomeTab(); return; }
+renderRevenueBanner();
   renderTabCounts();
   renderCustomTabs();
   renderMain();
@@ -3349,7 +3350,6 @@ function initApp() {
         loadHiddenTabs();
         applyTabVisibility();
         renderAll();
-        renderHomeTab();
         initProfileMenu();
         initBulkSelect();
       });
