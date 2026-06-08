@@ -834,6 +834,61 @@ main { flex: 1; padding: 20px 24px; }
   color: #fff;
   border-color: var(--accent);
 }
+/* QA POPUP */
+.qa-popup {
+  position: fixed;
+  z-index: 9999;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  min-width: 260px;
+  max-width: 300px;
+}
+.qa-popup-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+.qa-popup input[type="text"],
+.qa-popup input[type="date"],
+.qa-popup textarea,
+.qa-popup select {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+.qa-popup textarea { resize: vertical; min-height: 70px; }
+.qa-popup-actions { display: flex; gap: 8px; margin-top: 4px; }
+.qa-popup-actions button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.qa-confirm { background: var(--accent); color: #fff; }
+.qa-cancel { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border) !important; }
+.qa-status-option {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  transition: background 0.15s;
+}
+.qa-status-option:hover { background: var(--border); }
 </style>
 </head>
 <body>
@@ -1865,6 +1920,113 @@ function consultIcon(s) {
   return "";
 }
 
+function showQaPopup(action, L, btnEl) {
+  var old = document.getElementById('qa-popup');
+  if (old) old.remove();
+
+  var popup = document.createElement('div');
+  popup.className = 'qa-popup';
+  popup.id = 'qa-popup';
+
+  var rect = btnEl.getBoundingClientRect();
+  popup.style.top = (rect.bottom + 8 + window.scrollY) + 'px';
+  popup.style.left = Math.min(rect.left, window.innerWidth - 320) + 'px';
+
+  if (action === 'note') {
+    popup.innerHTML =
+      '<div class="qa-popup-title">📝 Add Note — ' + L.name + '</div>' +
+      '<textarea id="qa-input" placeholder="Enter note..."></textarea>' +
+      '<div class="qa-popup-actions">' +
+      '<button class="qa-cancel" onclick="document.getElementById(\'qa-popup\').remove()">Cancel</button>' +
+      '<button class="qa-confirm" onclick="qaConfirmNote(\'' + L.name.replace(/'/g,"\\'") + '\')">Save Note</button>' +
+      '</div>';
+  } else if (action === 'call') {
+    popup.innerHTML =
+      '<div class="qa-popup-title">📞 Log Call — ' + L.name + '</div>' +
+      '<textarea id="qa-input" placeholder="Call notes..."></textarea>' +
+      '<div class="qa-popup-actions">' +
+      '<button class="qa-cancel" onclick="document.getElementById(\'qa-popup\').remove()">Cancel</button>' +
+      '<button class="qa-confirm" onclick="qaConfirmCall(\'' + L.name.replace(/'/g,"\\'") + '\')">Log Call</button>' +
+      '</div>';
+  } else if (action === 'task') {
+    popup.innerHTML =
+      '<div class="qa-popup-title">✅ Add Task — ' + L.name + '</div>' +
+      '<input type="text" id="qa-task-text" placeholder="Task description..." />' +
+      '<input type="date" id="qa-task-date" value="' + new Date().toISOString().slice(0,10) + '" />' +
+      '<div class="qa-popup-actions">' +
+      '<button class="qa-cancel" onclick="document.getElementById(\'qa-popup\').remove()">Cancel</button>' +
+      '<button class="qa-confirm" onclick="qaConfirmTask(\'' + L.name.replace(/'/g,"\\'") + '\')">Add Task</button>' +
+      '</div>';
+  } else if (action === 'status') {
+    var statuses = [
+      { label: '🔵 New', value: 'New' },
+      { label: '🟡 Open', value: 'Open' },
+      { label: '🟠 Pending', value: 'Pending' },
+      { label: '🟢 Closed Won', value: 'Closed Won' },
+      { label: '🔴 Closed Lost', value: 'Closed Lost' }
+    ];
+    var current = L.status || 'New';
+    popup.innerHTML =
+      '<div class="qa-popup-title">🔄 Change Status — ' + L.name + '</div>' +
+      statuses.map(function(s) {
+        var isActive = s.value === current;
+        return '<div class="qa-status-option" style="' + (isActive ? 'background:rgba(79,158,255,0.15);color:var(--accent);' : '') + '" onclick="qaConfirmStatus(\'' + L.name.replace(/'/g,"\\'") + '\',\'' + s.value + '\')">' +
+          s.label + (isActive ? ' ✓' : '') +
+        '</div>';
+      }).join('') +
+      '<button class="qa-cancel" style="width:100%;margin-top:4px;padding:8px;border-radius:8px;background:var(--panel-2);color:var(--muted);border:1px solid var(--border);font-size:12px;cursor:pointer;" onclick="document.getElementById(\'qa-popup\').remove()">Cancel</button>';
+  }
+
+  document.body.appendChild(popup);
+
+  setTimeout(function() {
+    document.addEventListener('click', function closePopup(e) {
+      if (!popup.contains(e.target)) {
+        popup.remove();
+        document.removeEventListener('click', closePopup);
+      }
+    });
+  }, 100);
+}
+
+function qaConfirmNote(name) {
+  var note = document.getElementById('qa-input').value.trim();
+  if (!note) return;
+  var L = LEADS.find(function(l) { return l.name === name; });
+  if (!L) return;
+  L.notes = (L.notes ? L.notes + '\n' : '') + new Date().toLocaleDateString() + ': ' + note;
+  document.getElementById('qa-popup').remove();
+  saveState(); renderAll();
+}
+
+function qaConfirmCall(name) {
+  var note = document.getElementById('qa-input').value.trim() || 'Call logged';
+  var L = LEADS.find(function(l) { return l.name === name; });
+  if (!L) return;
+  L.notes = (L.notes ? L.notes + '\n' : '') + new Date().toLocaleDateString() + ': 📞 ' + note;
+  document.getElementById('qa-popup').remove();
+  saveState(); renderAll();
+}
+
+function qaConfirmTask(name) {
+  var text = document.getElementById('qa-task-text').value.trim();
+  var date = document.getElementById('qa-task-date').value;
+  if (!text) return;
+  var L = LEADS.find(function(l) { return l.name === name; });
+  if (!L) return;
+  if (!L.tasks) L.tasks = [];
+  L.tasks.push({ id: uuid(), type: 'Task', note: text, dueDate: date || '', completed: false });
+  document.getElementById('qa-popup').remove();
+  saveState(); renderAll();
+}
+
+function qaConfirmStatus(name, status) {
+  var L = LEADS.find(function(l) { return l.name === name; });
+  if (!L) return;
+  L.status = status;
+  document.getElementById('qa-popup').remove();
+  saveState(); renderAll();
+}
 function wireCards() {
   document.querySelectorAll(".lead-card").forEach(function(c){
     c.addEventListener("click", function(){ openLead(c.dataset.name); });
@@ -1910,33 +2072,7 @@ function wireCards() {
     var action = this.dataset.qa;
     var L = LEADS.find(function(l) { return l.name === name; });
     if (!L) return;
-    if (action === 'note') {
-      var note = prompt('Add note for ' + name + ':');
-      if (note) {
-        L.notes = (L.notes ? L.notes + '\n' : '') + new Date().toLocaleDateString() + ': ' + note;
-        saveState(); renderAll();
-      }
-    } else if (action === 'task') {
-      var task = prompt('Task for ' + name + ':');
-      var due = prompt('Due date (YYYY-MM-DD):');
-      if (task) {
-        if (!L.tasks) L.tasks = [];
-        L.tasks.push({ id: uuid(), type: 'Task', note: task, dueDate: due || '', completed: false });
-        saveState(); renderAll();
-      }
-    } else if (action === 'call') {
-      var callNote = prompt('Call notes for ' + name + ':') || 'Call logged';
-      L.notes = (L.notes ? L.notes + '\n' : '') + new Date().toLocaleDateString() + ': 📞 ' + callNote;
-      saveState(); renderAll();
-    } else if (action === 'status') {
-      var statuses = ['New', 'Open', 'Pending', 'Active Client', 'Closed Won', 'Closed Lost'];
-      var current = L.status || 'New';
-      var next = statuses[(statuses.indexOf(current) + 1) % statuses.length];
-      if (confirm('Change ' + name + ' from "' + current + '" to "' + next + '"?')) {
-        L.status = next;
-        saveState(); renderAll();
-      }
-    }
+    showQaPopup(action, L, this);
   });
 });
 }
