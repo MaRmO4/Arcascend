@@ -3388,7 +3388,9 @@ function initApp() {
       document.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("active"); });
       t.classList.add("active");
       activeTab = t.dataset.tab;
-      renderMain();
+currentTab = t.dataset.tab;
+if (currentTab === 'home') { renderHomeTab(); return; }
+renderMain();
     });
   });
 
