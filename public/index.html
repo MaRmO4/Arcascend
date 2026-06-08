@@ -3178,8 +3178,7 @@ var totalPaid = LEADS.reduce(function(sum, l) {
     LEADS.forEach(function(l) {
       if (l.tasks && l.tasks.length) {
         l.tasks.forEach(function(t) {
-          if (!t.done && t.due) dueTasks.push({ lead: l.name, task: t.text || t.title || t.note || 'Task', due: t.due });
-        });
+    if (!t.completed && t.dueDate) dueTasks.push({ lead: l.name, task: t.note || t.text || t.title || 'Task', due: t.dueDate });    });
       }
     });
     dueTasks.sort(function(a, b) { return new Date(a.due) - new Date(b.due); });
@@ -3283,7 +3282,6 @@ function deleteSelected() {
   });
   selectedLeads.clear();
   saveState();
-  saveToSupabase();
   renderAll();
   updateBulkBar();
 }
