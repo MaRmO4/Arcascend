@@ -3805,6 +3805,7 @@ setTimeout(function(){ renderHomeTab(); setTimeout(refreshReminders, 400); }, 10
       activeTab = t.dataset.tab;
 currentTab = t.dataset.tab;
 renderAll();
+if (currentTab === 'home') setTimeout(refreshReminders, 100);
     });
   });
 
