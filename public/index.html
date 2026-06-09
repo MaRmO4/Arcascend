@@ -3443,8 +3443,7 @@ if (lead.status === 'Closed Won' || lead.status === 'Closed Lost') return;
   reminders.sort(function(a,b) { return b.priority - a.priority; });
 
   var rows = reminders.slice(0, 8).map(function(r) {
-    return '<div class="reminder-row ' + r.type + '" onclick="openLeadModal(\'' + r.leadId + '\')">' +
-      '<div><div class="reminder-name">' + r.name + '</div><div class="reminder-meta">' + r.meta + '</div></div>' +
+return '<div class="reminder-row ' + r.type + '" onclick="openLead(\'' + r.name.replace(/'/g, "\\'") + '\')">' +      '<div><div class="reminder-name">' + r.name + '</div><div class="reminder-meta">' + r.meta + '</div></div>' +
       '<span class="reminder-badge ' + r.type + '">' + r.badge + '</span></div>';
   }).join('');
 
