@@ -1436,11 +1436,19 @@ async function loadFromSupabase() {
     });
     var rows = await res.json();
     if (Array.isArray(rows) && rows.length > 0) {
-      LEADS = rows.map(function(r) {
-        try { return JSON.parse(r.data); } catch(e) { return r; }
-      });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
-      return true;
+      var allLeads = rows.map(function(r) {
+  try { return JSON.parse(r.data); } catch(e) { return r; }
+});
+// Deduplicate by name+phone key
+var seen = {};
+LEADS = allLeads.filter(function(l) {
+  var key = (l.name || '').trim().toLowerCase() + '|' + (l.phone || '').replace(/\D/g,'').slice(-10);
+  if (seen[key]) return false;
+  seen[key] = true;
+  return true;
+});
+localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
+return true;
     }
     return false;
   } catch(e) {
