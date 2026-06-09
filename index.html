@@ -3765,8 +3765,7 @@ function initApp() {
 document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('active'); });
 var homeTab = document.querySelector('.tab[data-tab="home"]');
 if (homeTab) homeTab.classList.add('active');
-renderHomeTab();
-setTimeout(refreshReminders, 300);
+setTimeout(function(){ renderHomeTab(); setTimeout(refreshReminders, 400); }, 100);
         initProfileMenu();
         initBulkSelect();
       });
