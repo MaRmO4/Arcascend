@@ -3395,100 +3395,60 @@ function buildICS() {
   lines.push("END:VCALENDAR");
   return { ics: lines.join("\r\n"), count: count };
 }
-function renderFollowUpReminders() {
+  function renderFollowUpReminders() {
   const now = new Date();
   const reminders = [];
 
-  // Check leads not contacted in 7+ days
-  (window.leads || []).forEach(lead => {
+  (LEADS || []).forEach(function(lead) {
     if (lead.status === 'closed' || lead.status === 'lost') return;
 
-    const activities = (window.activityLog || []).filter(a => a.lead_id === lead.id);
+    const activities = (window.activityLog || []).filter(function(a) { return a.lead_id === lead.id; });
     const lastContact = activities
-      .filter(a => ['call','note','task'].includes(a.type))
-      .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0];
+      .filter(function(a) { return ['call','note','task'].includes(a.type); })
+      .sort(function(a,b) { return new Date(b.created_at) - new Date(a.created_at); })[0];
 
     const created = new Date(lead.created_at);
     const lastDate = lastContact ? new Date(lastContact.created_at) : created;
     const daysSince = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
 
-    // New lead (< 2 days, never touched) — blue
     if (!lastContact && daysSince < 2) {
-      reminders.push({
-        name: lead.name,
-        meta: `New lead · Added ${daysSince === 0 ? 'today' : daysSince + 'd ago'}`,
-        badge: 'New Lead',
-        type: 'new-lead',
-        priority: 0,
-        leadId: lead.id
-      });
-    }
-    // Overdue 7–13 days — amber
-    else if (daysSince >= 7 && daysSince < 14) {
-      reminders.push({
-        name: lead.name,
-        meta: `No contact in ${daysSince} days`,
-        badge: `${daysSince}d overdue`,
-        type: '',
-        priority: 1,
-        leadId: lead.id
-      });
-    }
-    // Urgent 14+ days — red
-    else if (daysSince >= 14) {
-      reminders.push({
-        name: lead.name,
-        meta: `No contact in ${daysSince} days`,
-        badge: `${daysSince}d overdue`,
-        type: 'urgent',
-        priority: 2,
-        leadId: lead.id
-      });
+      reminders.push({ name: lead.name, meta: 'New lead · Added ' + (daysSince === 0 ? 'today' : daysSince + 'd ago'), badge: 'New Lead', type: 'new-lead', priority: 0, leadId: lead.id });
+    } else if (daysSince >= 14) {
+      reminders.push({ name: lead.name, meta: 'No contact in ' + daysSince + ' days', badge: daysSince + 'd overdue', type: 'urgent', priority: 2, leadId: lead.id });
+    } else if (daysSince >= 7) {
+      reminders.push({ name: lead.name, meta: 'No contact in ' + daysSince + ' days', badge: daysSince + 'd overdue', type: '', priority: 1, leadId: lead.id });
     }
   });
 
-  // Check active clients low on sessions (≤ 20% remaining)
-  (window.clients || []).forEach(client => {
-    const total = client.session_total || 0;
-    const used = client.sessions_used || 0;
-    const remaining = total - used;
+  // Low sessions — filter active clients from LEADS
+  (LEADS || []).filter(function(l) { return l.billing && l.billing.active === true; }).forEach(function(client) {
+    var total = (client.billing && client.billing.sessions) || 0;
+    var paid = (client.billing && client.billing.paid) ? 1 : 0;
+    var used = client.sessionsUsed || client.sessions_used || 0;
+    var remaining = total - used;
     if (total > 0 && remaining / total <= 0.2) {
-      reminders.push({
-        name: client.name,
-        meta: `${remaining} session${remaining !== 1 ? 's' : ''} remaining of ${total}`,
-        badge: 'Low sessions',
-        type: remaining === 0 ? 'urgent' : '',
-        priority: remaining === 0 ? 2 : 1,
-        leadId: null,
-        clientId: client.id
-      });
+      reminders.push({ name: client.name, meta: remaining + ' session' + (remaining !== 1 ? 's' : '') + ' remaining of ' + total, badge: 'Low sessions', type: remaining === 0 ? 'urgent' : '', priority: remaining === 0 ? 2 : 1, leadId: client.id });
     }
   });
 
   if (reminders.length === 0) return '';
+  reminders.sort(function(a,b) { return b.priority - a.priority; });
 
-  // Sort: urgent first, then amber, then new
-  reminders.sort((a,b) => b.priority - a.priority);
+  var rows = reminders.slice(0, 8).map(function(r) {
+    return '<div class="reminder-row ' + r.type + '" onclick="openLeadModal(\'' + r.leadId + '\')">' +
+      '<div><div class="reminder-name">' + r.name + '</div><div class="reminder-meta">' + r.meta + '</div></div>' +
+      '<span class="reminder-badge ' + r.type + '">' + r.badge + '</span></div>';
+  }).join('');
 
-  const rows = reminders.slice(0, 8).map(r => `
-    <div class="reminder-row ${r.type}" onclick="${r.leadId ? `openLeadModal('${r.leadId}')` : `openClientModal('${r.clientId}')`}">
-      <div>
-        <div class="reminder-name">${r.name}</div>
-        <div class="reminder-meta">${r.meta}</div>
-      </div>
-      <span class="reminder-badge ${r.type}">${r.badge}</span>
-    </div>
-  `).join('');
-
-  return `
-    <div style="background:var(--panel);border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid var(--border);">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <span style="font-size:13px;font-weight:700;color:var(--text);">⏰ Follow-Up Reminders</span>
-        <span style="font-size:11px;color:var(--muted);">${reminders.length} need attention</span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;">${rows}</div>
-    </div>
-  `;
+  return '<div style="background:var(--panel);border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid var(--border);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+    '<span style="font-size:13px;font-weight:700;color:var(--text);">⏰ Follow-Up Reminders</span>' +
+    '<span style="font-size:11px;color:var(--muted);">' + reminders.length + ' need attention</span></div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px;">' + rows + '</div></div>';
+}
+function refreshReminders() {
+  var el = document.getElementById('reminders-container');
+  if (el) el.innerHTML = renderFollowUpReminders();
 }
 function renderHomeTab() {
   var panel = document.getElementById('home-panel');
@@ -3543,8 +3503,8 @@ var totalPaid = LEADS.reduce(function(sum, l) {
     '</div>' +
 
     // 3 COLUMN GRID
-    renderFollowUpReminders() +
-    '<div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:16px;">' +
+    '<div id="reminders-container"></div>' +
+'<div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:16px;">' +
 
       // LEFT COL: Tasks + Calendar
       '<div style="display:flex;flex-direction:column;gap:16px;">' +
@@ -3798,6 +3758,7 @@ document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('activ
 var homeTab = document.querySelector('.tab[data-tab="home"]');
 if (homeTab) homeTab.classList.add('active');
 renderHomeTab();
+setTimeout(refreshReminders, 300);
         initProfileMenu();
         initBulkSelect();
       });
