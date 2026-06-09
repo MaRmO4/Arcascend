@@ -1995,6 +1995,7 @@ function qaConfirmNote(name) {
   var L = LEADS.find(function(l) { return l.name === name; });
   if (!L) return;
   L.notes = (L.notes ? L.notes + '\n' : '') + new Date().toLocaleDateString() + ': ' + note;
+  logActivity(L, 'note', '📝 Note: ' + note);
   document.getElementById('qa-popup').remove();
   saveState(); renderAll();
 }
@@ -2003,6 +2004,7 @@ function qaConfirmCall(name) {
   var note = document.getElementById('qa-input').value.trim() || 'Call logged';
   var L = LEADS.find(function(l) { return l.name === name; });
   if (!L) return;
+  logActivity(L, 'call', '📞 ' + note);
   L.notes = (L.notes ? L.notes + '\n' : '') + new Date().toLocaleDateString() + ': 📞 ' + note;
   document.getElementById('qa-popup').remove();
   saveState(); renderAll();
@@ -2016,6 +2018,7 @@ function qaConfirmTask(name) {
   if (!L) return;
   if (!L.tasks) L.tasks = [];
   L.tasks.push({ id: uuid(), type: 'Task', note: text, dueDate: date || '', completed: false });
+ logActivity(L, 'note', '✅ Task added: ' + text + (date ? ' · Due ' + date : ''));
   document.getElementById('qa-popup').remove();
   saveState(); renderAll();
 }
@@ -2024,6 +2027,7 @@ function qaConfirmStatus(name, status) {
   var L = LEADS.find(function(l) { return l.name === name; });
   if (!L) return;
   L.status = status;
+  logActivity(L, 'note', '🔄 Status changed to: ' + status);
   document.getElementById('qa-popup').remove();
   saveState(); renderAll();
 }
