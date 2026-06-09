@@ -3595,8 +3595,7 @@ var totalPaid = LEADS.reduce(function(sum, l) {
         var isToday = d.getTime() === today.getTime();
         var cls = isOverdue ? 'overdue' : isToday ? 'today' : '';
         var ds = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        return '<div class="home-task-row"><div class="home-task-dot ' + cls + '"></div>' +
-          '<div><div class="home-lead-name" style="font-size:12px;">' + t.task + '</div>' +
+        return '<div class="home-task-row" onclick="openLead(\'' + t.lead.replace(/'/g, "\\'") + '\')" style="cursor:pointer;"><div class="home-task-dot ' + cls + '"></  '<div><div class="home-lead-name" style="font-size:12px;">' + t.task + '</div>' +
           '<div class="home-lead-meta">' + t.lead + ' · ' + ds + '</div></div></div>';
       }).join('');
   }
