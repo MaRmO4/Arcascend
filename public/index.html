@@ -1439,6 +1439,7 @@ async function loadFromSupabase() {
       LEADS = rows.map(function(r) {
         try { return JSON.parse(r.data); } catch(e) { return r; }
       });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
       return true;
     }
     return false;
