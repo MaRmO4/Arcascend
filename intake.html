@@ -1,0 +1,233 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Client Intake Form</title>
+<style>
+  :root {
+    --bg:#0f1117; --panel:#1a1d27; --panel2:#222634; --border:#2c3142;
+    --text:#e8eaed; --muted:#9aa0ac; --accent:#3b82f6; --won:#22c55e;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; line-height:1.5; padding:0 0 60px; }
+  .header-img { width:100%; height:160px; object-fit:cover; display:block; background:var(--panel2); }
+  .container { max-width:640px; margin:0 auto; padding:0 20px; }
+  .form-head { background:var(--panel); border-radius:0 0 16px 16px; padding:28px 24px; margin-bottom:20px; border:1px solid var(--border); border-top:none; }
+  .form-title { font-size:26px; font-weight:700; margin-bottom:12px; }
+  .form-desc { font-size:14px; color:var(--muted); }
+  .field { background:var(--panel); border-radius:12px; padding:20px; margin-bottom:14px; border:1px solid var(--border); }
+  .field label { display:block; font-size:15px; font-weight:600; margin-bottom:12px; }
+  .req { color:var(--accent); margin-left:3px; }
+  input[type=text], input[type=tel], input[type=email], select, textarea {
+    width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    padding:11px 13px; color:var(--text); font-size:14px; font-family:inherit;
+  }
+  textarea { min-height:80px; resize:vertical; }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); }
+  .opt { display:flex; align-items:center; gap:10px; padding:9px 0; cursor:pointer; font-size:14px; font-weight:400; }
+  .opt input { width:auto; cursor:pointer; }
+  .submit-btn { width:100%; background:var(--accent); color:#fff; border:none; border-radius:10px; padding:15px; font-size:16px; font-weight:700; cursor:pointer; margin-top:8px; transition:opacity 0.15s; }
+  .submit-btn:hover { opacity:0.9; }
+  .submit-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .success { text-align:center; padding:60px 24px; }
+  .success-icon { font-size:56px; margin-bottom:16px; }
+  .success h2 { font-size:24px; margin-bottom:10px; }
+  .success p { color:var(--muted); }
+  .err { color:#ef4444; font-size:13px; margin-top:8px; display:none; }
+  .brand { text-align:center; font-size:12px; color:var(--muted); margin-top:24px; }
+</style>
+</head>
+<body>
+<img class="header-img" id="header-img" src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&h=320&fit=crop" alt="">
+<div class="container">
+  <div id="form-wrap">
+    <div class="form-head">
+      <div class="form-title" id="form-title">Client Intake Form</div>
+      <div class="form-desc" id="form-desc">This form helps me understand your current fitness level, lifestyle, and goals so I can tailor our consultation. Please answer as openly and honestly as you can — this is all about you.</div>
+    </div>
+
+    <div class="field">
+      <label>Full Name<span class="req">*</span></label>
+      <input type="text" id="f-name" required>
+    </div>
+    <div class="field">
+      <label>Phone Number<span class="req">*</span></label>
+      <input type="tel" id="f-phone" required>
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="f-email">
+    </div>
+    <div class="field">
+      <label>What is your current fitness goal?</label>
+      <select id="f-goal">
+        <option value="">Choose</option>
+        <option>Lose body fat</option>
+        <option>Build Muscle</option>
+        <option>Improve performance/athleticism</option>
+        <option>Increase energy and confidence</option>
+        <option>General Health & Longevity</option>
+        <option>Improve mobility/flexibility</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Current Fitness Level</label>
+      <select id="f-level">
+        <option value="">Choose</option>
+        <option>Beginner - new to training</option>
+        <option>Intermediate - I've trained before</option>
+        <option>Advanced - I've followed structured programs or worked with a coach</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>What timeline are you hoping to achieve your goals in?</label>
+      <select id="f-timeline">
+        <option value="">Choose</option>
+        <option>4-6 weeks (short term)</option>
+        <option>2-3 months (moderate)</option>
+        <option>3-6 months (longer commitment)</option>
+        <option>Here for the long game (6+ months)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Preferred Training Style<span class="req">*</span></label>
+      <select id="f-style" required>
+        <option value="">Choose</option>
+        <option>Strength Training</option>
+        <option>Cardio/Running</option>
+        <option>HIIT</option>
+        <option>Mobility/Flexibility</option>
+        <option>Sports Specific Training</option>
+        <option>Not Sure</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Do you have any injuries or health conditions we should know about?</label>
+      <textarea id="f-injuries"></textarea>
+    </div>
+    <div class="field">
+      <label>Availability</label>
+      <div class="opt"><input type="checkbox" class="f-avail" value="Morning (6 AM – 10 AM)"> Morning (6 AM – 10 AM)</div>
+      <div class="opt"><input type="checkbox" class="f-avail" value="Midday (11 AM – 2 PM)"> Midday (11 AM – 2 PM)</div>
+      <div class="opt"><input type="checkbox" class="f-avail" value="Afternoon (2 PM – 5 PM)"> Afternoon (2 PM – 5 PM)</div>
+      <div class="opt"><input type="checkbox" class="f-avail" value="Evening (5 PM – 8 PM)"> Evening (5 PM – 8 PM)</div>
+    </div>
+    <div class="field">
+      <label>Why is now the right time for you to invest in yourself?</label>
+      <select id="f-whyNow">
+        <option value="">Choose</option>
+        <option>I've tried it on my own but haven't been consistent or successful</option>
+        <option>I need structure and accountability</option>
+        <option>I want to be a better version of myself — stronger, healthier, and happier</option>
+        <option>A recent event (vacation, milestone, medical, etc.) gave me the push</option>
+        <option>I want to build discipline and healthier routines</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>What specific outcomes are you hoping to achieve by working with a personal trainer?</label>
+      <textarea id="f-outcomes"></textarea>
+    </div>
+    <div class="field">
+      <label>Is there anything else you'd like me to know?</label>
+      <textarea id="f-other"></textarea>
+    </div>
+
+    <button class="submit-btn" id="submit-btn" onclick="submitForm()">Submit & Get Started</button>
+    <div class="err" id="err"></div>
+    <div class="brand">Powered by ArcAscend</div>
+  </div>
+
+  <div id="success-wrap" class="success" style="display:none;">
+    <div class="success-icon">✅</div>
+    <h2>Thank you!</h2>
+    <p>Your information has been received. We'll be in touch with you soon.</p>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://udzfpeztwgsynjhwjwic.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkemZwZXp0d2dzeW5qaHdqd2ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2OTcwOTcsImV4cCI6MjA5NTI3MzA5N30.Eke_HxZtww3zVekkPMDydT90NkVWSltJjA2fr40oquQ';
+
+// trainer_id comes from URL: intake.html?trainer=YOUR_USER_ID
+var params = new URLSearchParams(window.location.search);
+var TRAINER_ID = params.get('trainer') || 'a83ab75d-0b97-4729-9cf6-7630c2c03115';
+
+function submitForm() {
+  var name = document.getElementById('f-name').value.trim();
+  var phone = document.getElementById('f-phone').value.trim();
+  var style = document.getElementById('f-style').value;
+  var err = document.getElementById('err');
+
+  if (!name || !phone || !style) {
+    err.textContent = 'Please fill in all required fields (Name, Phone, Training Style).';
+    err.style.display = 'block';
+    return;
+  }
+  err.style.display = 'none';
+
+  var avail = Array.from(document.querySelectorAll('.f-avail:checked')).map(function(c){ return c.value; }).join(', ');
+
+  var lead = {
+    date: new Date().toISOString().slice(0,10),
+    name: name,
+    phone: phone,
+    email: document.getElementById('f-email').value.trim(),
+    goal: document.getElementById('f-goal').value,
+    level: document.getElementById('f-level').value,
+    timeline: document.getElementById('f-timeline').value,
+    style: style,
+    injuries: document.getElementById('f-injuries').value.trim(),
+    availability: avail,
+    whyNow: document.getElementById('f-whyNow').value,
+    outcomes: document.getElementById('f-outcomes').value.trim(),
+    other: document.getElementById('f-other').value.trim(),
+    notes: '',
+    status: 'New',
+    source: 'Intake Form',
+    billing: { active:false, sessions:0, rate:0, paid:false },
+    tasks: [],
+    activity: [{ type:'status', text:'Lead created via intake form', ts: Date.now() }]
+  };
+
+  var btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  fetch(SUPABASE_URL + '/rest/v1/leads', {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify({
+      user_id: TRAINER_ID,
+      name: name,
+      phone: phone,
+      email: lead.email,
+      goal: lead.goal,
+      status: 'New',
+      data: JSON.stringify(lead)
+    })
+  })
+  .then(function(resp) {
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    document.getElementById('form-wrap').style.display = 'none';
+    document.getElementById('success-wrap').style.display = 'block';
+    window.scrollTo(0, 0);
+  })
+  .catch(function(e) {
+    btn.disabled = false;
+    btn.textContent = 'Submit & Get Started';
+    err.textContent = 'Something went wrong. Please try again. (' + e.message + ')';
+    err.style.display = 'block';
+  });
+}
+</script>
+</body>
+</html>
