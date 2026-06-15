@@ -2394,6 +2394,11 @@ function renderMain() {
     var b = BUCKETS.find(function(x){ return x.id === bid; });
     if (!b) { activeTab = "all"; return renderMain(); }
     var leads = sortLeads(filterLeads(leadsInBucket(b)));
+    main.innerHTML =
+      (leads.length ? '<div class="lead-grid">' + leads.map(leadCard).join("") + '</div>' : emptyState("📋", "No leads match."));
+    wireCards();
+    return;
+  }
     
 
   if (activeTab === "clients") { renderClientsTab(); return; }
