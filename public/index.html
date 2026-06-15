@@ -2394,15 +2394,18 @@ function renderMain() {
     var b = BUCKETS.find(function(x){ return x.id === bid; });
     if (!b) { activeTab = "all"; return renderMain(); }
     var leads = sortLeads(filterLeads(leadsInBucket(b)));
-    main.innerHTML =
-      '<div class="page-header"><div>' +
-        '<div class="page-title">' + b.icon + ' ' + b.name + ' <span class="demo-pill" style="background:rgba(79,158,255,0.15);color:var(--accent);border-color:rgba(79,158,255,0.3);">' + leads.length + ' leads</span></div>' +
-        '<div class="page-subtitle">' + (b.desc || "Custom segment") + '</div>' +
-      '</div></div>' +
-      (leads.length ? '<div class="lead-grid">' + leads.map(leadCard).join("") + '</div>' : emptyState("🎯", "No leads match."));
-    wireCards();
-    return;
-  }
+    if (activeTab === "all" && leadView === "board") { renderKanban(); return; }
+
+  main.innerHTML = leads.length
+    ? viewToggleWrap(leads)
+    : viewToggleHTML() + emptyState("📋", "No leads match the current filters.");
+  wireCards();
+}
+
+function viewToggleWrap(leads) {
+  return '<div class="page-header"><div></div>' + viewToggleHTML() + '</div>' +
+    '<div class="lead-grid">' + leads.map(leadCard).join("") + '</div>';
+}
 
   if (activeTab === "clients") { renderClientsTab(); return; }
   if (activeTab === "tasks") { renderTasksTab(); return; }
