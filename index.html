@@ -991,6 +991,21 @@ main { flex: 1; padding: 20px 24px; }
   background: rgba(96,165,250,0.15);
   color: #60a5fa;
 }
+.view-toggle { display:inline-flex;gap:4px;background:var(--panel-2);border-radius:8px;padding:4px;margin-left:12px; }
+.view-toggle button { background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;padding:6px 14px;border-radius:6px;cursor:pointer;transition:all 0.15s; }
+.view-toggle button.active { background:var(--accent);color:#fff; }
+.kanban-board { display:flex;gap:12px;overflow-x:auto;padding:8px 0 16px;align-items:flex-start; }
+.kanban-col { flex:0 0 240px;background:var(--panel-2);border-radius:12px;padding:10px;min-height:120px; }
+.kanban-col.drag-over { outline:2px dashed var(--accent);outline-offset:-2px; }
+.kanban-col-head { display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 4px; }
+.kanban-col-title { font-size:12px;font-weight:700;color:var(--text); }
+.kanban-col-count { font-size:11px;font-weight:600;color:var(--muted);background:var(--border);border-radius:99px;padding:2px 8px; }
+.kanban-card { background:var(--panel);border-radius:8px;padding:10px;margin-bottom:8px;cursor:grab;border-left:3px solid var(--accent);transition:transform 0.1s,box-shadow 0.1s; }
+.kanban-card:active { cursor:grabbing; }
+.kanban-card.dragging { opacity:0.5; }
+.kanban-card:hover { transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+.kanban-card-name { font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px; }
+.kanban-card-meta { font-size:11px;color:var(--muted); }
 </style>
 </head>
 <body>
@@ -2288,6 +2303,89 @@ function goToTab(name) {
   renderMain();
 }
 
+var leadView = localStorage.getItem('arcascend_lead_view') || 'list';
+
+function renderKanban() {
+  var main = $("main");
+  var cols = [
+    { key: 'New', color: '#60a5fa' },
+    { key: 'Open', color: '#f59e0b' },
+    { key: 'Pending', color: '#a78bfa' },
+    { key: 'Closed Won', color: '#22c55e' },
+    { key: 'Closed Lost', color: '#ef4444' }
+  ];
+  var pool = sortLeads(filterLeads(LEADS));
+  var board = cols.map(function(c) {
+    var inCol = pool.filter(function(l) { return (l.status || 'New') === c.key; });
+    var cards = inCol.map(function(l) {
+      var goal = l.goal || 'No goal listed';
+      return '<div class="kanban-card" draggable="true" data-name="' + encodeURIComponent(l.name) + '" style="border-left-color:' + c.color + '" ' +
+        'onclick="openLead(\'' + l.name.replace(/'/g, "\\'") + '\')">' +
+        '<div class="kanban-card-name">' + l.name + '</div>' +
+        '<div class="kanban-card-meta">' + goal + '</div></div>';
+    }).join('');
+    return '<div class="kanban-col" data-status="' + c.key + '">' +
+      '<div class="kanban-col-head"><span class="kanban-col-title">' + c.key + '</span>' +
+      '<span class="kanban-col-count">' + inCol.length + '</span></div>' + cards + '</div>';
+  }).join('');
+
+  main.innerHTML =
+    '<div class="page-header"><div>' +
+    '<div class="page-title">Pipeline Board</div>' +
+    '<div class="page-subtitle">Drag leads between stages to update status</div>' +
+    '</div>' + viewToggleHTML() + '</div>' +
+    '<div class="kanban-board">' + board + '</div>';
+
+  wireKanban();
+}
+
+function viewToggleHTML() {
+  return '<div class="view-toggle">' +
+    '<button class="' + (leadView === 'list' ? 'active' : '') + '" onclick="setLeadView(\'list\')">List</button>' +
+    '<button class="' + (leadView === 'board' ? 'active' : '') + '" onclick="setLeadView(\'board\')">Board</button>' +
+    '</div>';
+}
+
+function setLeadView(v) {
+  leadView = v;
+  localStorage.setItem('arcascend_lead_view', v);
+  renderMain();
+}
+
+function wireKanban() {
+  var dragged = null;
+  document.querySelectorAll('.kanban-card').forEach(function(card) {
+    card.addEventListener('dragstart', function(e) {
+      dragged = card;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', function() {
+      card.classList.remove('dragging');
+      dragged = null;
+    });
+  });
+  document.querySelectorAll('.kanban-col').forEach(function(col) {
+    col.addEventListener('dragover', function(e) { e.preventDefault(); col.classList.add('drag-over'); });
+    col.addEventListener('dragleave', function() { col.classList.remove('drag-over'); });
+    col.addEventListener('drop', function(e) {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      if (!dragged) return;
+      var name = decodeURIComponent(dragged.dataset.name);
+      var newStatus = col.dataset.status;
+      var L = LEADS.find(function(x) { return x.name === name; });
+      if (!L || L.status === newStatus) return;
+      var oldStatus = L.status || 'New';
+      L.status = newStatus;
+      if (!L.activity) L.activity = [];
+      L.activity.unshift({ type: 'status', text: 'Status changed from ' + oldStatus + ' to ' + newStatus, ts: Date.now() });
+      saveState();
+      renderKanban();
+      renderTabCounts();
+    });
+  });
+}
 function renderMain() {
   var main = $("main");
 
@@ -3795,7 +3893,17 @@ setTimeout(function(){ renderHomeTab(); setTimeout(refreshReminders, 400); }, 10
 
   // Restore polling
   var savedUrl = localStorage.getItem(SHEET_URL_KEY);
-  // polling is set up when user lands on sync tab
+var savedAutoSync = localStorage.getItem(AUTO_SYNC_KEY) === "1";
+var savedPollInt = localStorage.getItem(POLL_INT_KEY) || "300";
+if (savedUrl && savedAutoSync) {
+  setTimeout(function() {
+    var urlInput = document.getElementById('sync-url');
+    var intInput = document.getElementById('sync-int');
+    if (urlInput) urlInput.value = savedUrl;
+    if (intInput) intInput.value = savedPollInt;
+    startPolling();
+  }, 2000);
+}
 
   // Wire tab clicks
   document.querySelectorAll(".tab[data-tab]").forEach(function(t){
