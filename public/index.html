@@ -2416,9 +2416,10 @@ function renderMain() {
     return;
   }
 
+  if (activeTab === "all" && leadView === "board") { renderKanban(); return; }
   main.innerHTML = leads.length
-    ? '<div class="lead-grid">' + leads.map(leadCard).join("") + '</div>'
-    : emptyState("📋", "No leads match the current filters.");
+    ? viewToggleWrap(leads)
+    : viewToggleHTML() + emptyState("📋", "No leads match the current filters.");
   wireCards();
 }
 function viewToggleWrap(leads) {
