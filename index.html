@@ -2407,6 +2407,7 @@ function wireKanban() {
 }
 function renderMain() {
   var main = $("main");
+  if (activeTab === "forms") { main.innerHTML = ""; document.querySelectorAll(".tab-panel").forEach(function(p){p.style.display="none";}); var fp=document.getElementById("tab-forms"); if(fp)fp.style.display="block"; formsInit(); return; }
 
   if (activeTab && activeTab.indexOf("custom-") === 0) {
     var bid = activeTab.slice("custom-".length);
