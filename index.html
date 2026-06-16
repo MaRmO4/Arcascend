@@ -2487,7 +2487,7 @@ function wireKanban() {
 }
 function renderMain() {
   var main = $("main");
-  iif (activeTab === "forms") {
+  if (activeTab === "forms") {
     window.scrollTo(0,0);
     main.innerHTML = "";
     main.style.display = "none";
