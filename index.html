@@ -1007,6 +1007,7 @@ main { flex: 1; padding: 20px 24px; }
 .kanban-card-name { font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px; }
 .kanban-card-meta { font-size:11px;color:var(--muted); }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -1049,7 +1050,7 @@ main { flex: 1; padding: 20px 24px; }
   <div class="tab" data-tab="sync">🔄 Sync <span class="count" id="c-sync">0</span></div>
   <div class="tab" data-tab="won">✓ Closed Won <span class="count" id="c-won">0</span></div>
   <div class="tab" data-tab="remaining">○ Pipeline <span class="count" id="c-remaining">0</span></div>
-  <div class="tab" data-tab="notes">📝 With Notes <span class="count" id="c-notes">0</span></div>
+  <div class="tab" data-tab="notes">📝 With Notes <span class="count" id="c-notes">0</span></div><div class="tab" data-tab="forms">📋 Forms</div>
 </nav>
 
 <div class="toolbar">
