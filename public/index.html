@@ -2425,6 +2425,7 @@ function renderMain() {
   if (activeTab === "campaigns") { renderCampaignsTab(); return; }
   if (activeTab === "buckets") { renderBucketsTab(); return; }
   if (activeTab === "sync") { renderSyncTab(); return; }
+  if (activeTab === "forms") { document.querySelectorAll(".tab-panel").forEach(function(p){p.style.display="none";}); var fp=document.getElementById("tab-forms"); if(fp)fp.style.display="block"; formsInit(); return; }
 
   // Standard list tabs
   var pool = LEADS;
