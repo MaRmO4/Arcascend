@@ -2407,7 +2407,7 @@ function wireKanban() {
 }
 function renderMain() {
   var main = $("main");
-  if (activeTab === "forms") { main.innerHTML = ""; var tb=document.querySelector(".toolbar"); if(tb)tb.style.display="none"; document.querySelectorAll(".tab-panel").forEach(function(p){p.style.display="none";}); var fp=document.getElementById("tab-forms"); if(fp)fp.style.display="block"; formsInit(); return; } else { var tb=document.querySelector(".toolbar"); if(tb)tb.style.display=""; }
+  if (activeTab === "forms") { main.innerHTML = ""; main.style.display="none"; var tb=document.querySelector(".toolbar"); if(tb)tb.style.display="none"; document.querySelectorAll(".tab-panel").forEach(function(p){p.style.display="none";}); var fp=document.getElementById("tab-forms"); if(fp)fp.style.display="block"; formsInit(); return; } else { main.style.display=""; } else { var tb=document.querySelector(".toolbar"); if(tb)tb.style.display=""; }
 
   if (activeTab && activeTab.indexOf("custom-") === 0) {
     var bid = activeTab.slice("custom-".length);
