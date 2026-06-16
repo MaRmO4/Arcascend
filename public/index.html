@@ -2487,7 +2487,18 @@ function wireKanban() {
 }
 function renderMain() {
   var main = $("main");
-  if (activeTab === "forms") { main.innerHTML = ""; main.style.display="none"; var tb=document.querySelector(".toolbar"); if(tb)tb.style.display="none"; var sb=document.querySelector(".search-wrap"); if(sb)sb.style.display="none"; document.querySelectorAll(".tab-panel").forEach(function(p){p.style.display="none";}); var fp=document.getElementById("tab-forms"); if(fp)fp.style.display="block"; formsInit(); return; } else { main.style.display=""; var tb2=document.querySelector(".toolbar"); if(tb2)tb2.style.display=""; }
+  iif (activeTab === "forms") {
+    window.scrollTo(0,0);
+    main.innerHTML = "";
+    main.style.display = "none";
+    var tb = document.querySelector(".toolbar"); if(tb) tb.style.display = "none";
+    var fp = document.getElementById("tab-forms"); if(fp) fp.style.display = "block";
+    formsInit();
+    return;
+  }
+  main.style.display = "";
+  var tb2 = document.querySelector(".toolbar"); if(tb2) tb2.style.display = "";
+  var fp2 = document.getElementById("tab-forms"); if(fp2) fp2.style.display = "none";
 
   if (activeTab && activeTab.indexOf("custom-") === 0) {
     var bid = activeTab.slice("custom-".length);
