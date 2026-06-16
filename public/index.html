@@ -97,7 +97,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-s
 .app { display: flex; flex-direction: column; min-height: 100vh; }
 
 /* Header */
-header {
+header { position:sticky; top:0; z-index:100;
   background: linear-gradient(135deg, #1a2129 0%, #232c36 100%);
   padding: 16px 24px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
@@ -150,7 +150,7 @@ header {
 .btn-settings:hover { border-color: var(--accent); }
 
 /* Nav */
-nav.tabs {
+nav.tabs { position:sticky; top:0; z-index:99;
   display: flex; background: var(--panel); border-bottom: 1px solid var(--border);
   padding: 0 24px; gap: 4px; overflow-x: auto; flex-wrap: nowrap;
 }
