@@ -131,13 +131,29 @@ function submitForm() {
   });
   var missing = loadedQuestions.filter(function(q){ return q.required && !fields[q.id]; });
   if (missing.length > 0) { alert('Please fill in: ' + missing.map(function(q){ return q.label; }).join(', ')); return; }
+  var fullName = fields['q_name'] || '';
+  var phoneVal = fields['q_phone'] || '';
+  var emailVal = fields['q_email'] || '';
+  var goalVal = fields['q_goal'] || '';
+  var dataObj = Object.assign({}, fields, {
+    name: fullName,
+    phone: phoneVal,
+    email: emailVal,
+    goal: goalVal,
+    source: 'Intake Form',
+    bucket: loadedBucket,
+    submittedAt: new Date().toISOString(),
+    tasks: [],
+    billing: { active: false, sessions: 0, rate: 0, package: '', paid: false }
+  });
   var lead = {
     user_id: TRAINER_ID,
-    name: fields['q_name'] || '',
-    phone: fields['q_phone'] || '',
-    email: fields['q_email'] || '',
+    name: fullName,
+    phone: phoneVal,
+    email: emailVal,
+    goal: goalVal,
     status: 'New',
-    data: JSON.stringify(Object.assign({}, fields, { source: 'Intake Form', bucket: loadedBucket, submittedAt: new Date().toISOString() }))
+    data: JSON.stringify(dataObj)
   };
   btn.disabled = true; btn.textContent = 'Submitting...';
   fetch(SUPABASE_URL + '/rest/v1/leads', {
