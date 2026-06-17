@@ -4088,6 +4088,9 @@ if (currentTab === 'home') setTimeout(refreshReminders, 100);
     if (!L.name) return;
     LEADS.unshift(L);
     saveState(); renderAll(); closeAdd();
+    e.target.reset();
+    var dateField = document.getElementById("add-date");
+    if (dateField) dateField.value = new Date().toLocaleDateString("en-US");
     setTimeout(function(){ openLead(L.name); }, 100);
   });
 
@@ -4323,6 +4326,22 @@ function formsPreviewLogo(url) {
   const img = document.getElementById('forms-logo-img');
   if (url && url.startsWith('http')) { img.src = url; preview.style.display = 'block'; }
   else preview.style.display = 'none';
+}
+
+function autoBackupReminder() {
+  // Remind trainer to export data weekly
+  var lastBackup = localStorage.getItem('arcascend_last_backup');
+  var now = Date.now();
+  if (!lastBackup || (now - parseInt(lastBackup)) > 7 * 24 * 60 * 60 * 1000) {
+    var reminder = document.createElement('div');
+    reminder.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#f59e0b;color:#000;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;cursor:pointer;';
+    reminder.textContent = '⚠️ Weekly reminder: Export your data backup (Settings → Export All Data)';
+    reminder.onclick = function() { 
+      localStorage.setItem('arcascend_last_backup', Date.now().toString());
+      reminder.remove(); 
+    };
+    document.body.appendChild(reminder);
+  }
 }
 
 function formsCopyLink() {
