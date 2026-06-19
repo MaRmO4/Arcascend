@@ -1474,6 +1474,26 @@ var lastSavedAt = null;
 // SUPABASE CONNECTION & SYNC
 // ==========================================
 var SUPABASE_URL = 'https://udzfpeztwgsynjhwjwic.supabase.co';
+
+function logEvent(eventType, leadName, extraData) {
+  try {
+    fetch(SUPABASE_URL + '/rest/v1/lead_events', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        user_id: localStorage.getItem('arcascend_user_id'),
+        lead_name: leadName || null,
+        event_type: eventType,
+        event_data: extraData || {}
+      })
+    }).catch(function(e){ console.warn('logEvent failed:', e); });
+  } catch(e) { console.warn('logEvent error:', e); }
+}
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkemZwZXp0d2dzeW5qaHdqd2ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2OTcwOTcsImV4cCI6MjA5NTI3MzA5N30.Eke_HxZtww3zVekkPMDydT90NkVWSltJjA2fr40oquQ';
 var currentUser = null;
 var currentGymId = null;
@@ -2315,8 +2335,10 @@ function qaConfirmTask(name) {
 function qaConfirmStatus(name, status) {
   var L = LEADS.find(function(l) { return l.name === name; });
   if (!L) return;
-  L.status = status;
-  logActivity(L, 'note', '🔄 Status changed to: ' + status);
+var fromStatus = L.status;
+L.status = status;
+logEvent('status_changed', L.name, { from: fromStatus, to: status });
+logActivity(L, 'note', '🔄 Status changed to: ' + status);
   document.getElementById('qa-popup').remove();
   saveState(); renderAll();
 }
@@ -3251,7 +3273,10 @@ function openLead(name) {
   });
   $("m-status").querySelectorAll(".status-btn").forEach(function(btn){
     btn.addEventListener("click", function(){
-      L.status = btn.dataset.s; saveState(); renderAll(); openLead(name);
+      var fromStatus = L.status;
+L.status = btn.dataset.s;
+logEvent('status_changed', L.name, { from: fromStatus, to: L.status });
+saveState(); renderAll(); openLead(name);
     });
   });
   $("m-notes").addEventListener("blur", function(e){ L.notes = e.target.value; saveState(); renderAll(); });
@@ -3314,8 +3339,9 @@ function openLead(name) {
   }
   $("b-active").addEventListener("change", function(e){
     b.active = e.target.checked;
-    saveState(); renderAll();
-    updateTotal();
+if (b.active) logEvent('active_client_marked', L.name, {});
+saveState(); renderAll();
+updateTotal();
   });
   $("b-sessions").addEventListener("input", function(e){
     b.sessions = parseInt(e.target.value || "0");
@@ -3337,8 +3363,9 @@ function openLead(name) {
   });
   $("b-paid").addEventListener("change", function(e){
     b.paid = e.target.checked;
-    saveState();
-    renderRevenueBanner();
+if (b.paid) logEvent('payment_marked', L.name, { amount: leadTotal(L) });
+saveState();
+renderRevenueBanner();
     // Live-update the paid row styling + label
     var row = $("b-paid-row");
     var lbl = row.querySelector("label");
@@ -4136,7 +4163,8 @@ if (currentTab === 'home') setTimeout(refreshReminders, 100);
     };
     if (!L.name) return;
     LEADS.unshift(L);
-    saveState(); renderAll(); closeAdd();
+logEvent('lead_created', L.name, { source: 'manual' });
+saveState(); renderAll(); closeAdd();
     e.target.reset();
     var dateField = document.getElementById("add-date");
     if (dateField) dateField.value = new Date().toLocaleDateString("en-US");
