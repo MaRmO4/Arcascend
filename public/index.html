@@ -1023,6 +1023,7 @@ main { flex: 1; padding: 20px 24px; }
   <div class="header-actions">
     <button class="btn-save" id="save-btn" title="All changes auto-save. Click to confirm + see timestamp.">💾 Save</button>
     <button class="btn-add" id="add-lead-btn">+ Add Lead</button>
+    <button class="btn" id="undo-btn" onclick="performUndo()" title="Undo last change (Cmd+Z)" style="opacity:0.5;">↩ Undo</button>
     <button class="btn-settings" id="tabs-btn">✏️ Edit Tabs</button>
     <button class="btn-settings" id="settings-btn">⚙ Settings</button>
     <div class="profile-menu-wrap" style="position:relative;display:inline-block;">
@@ -1552,7 +1553,38 @@ return true;
   }
 }
 // ==========================================
+var UNDO_STACK = [];
+var UNDO_PREV_SNAPSHOT = null;
+function pushUndoSnapshot() {
+  if (UNDO_PREV_SNAPSHOT !== null) {
+    UNDO_STACK.push(UNDO_PREV_SNAPSHOT);
+    if (UNDO_STACK.length > 20) UNDO_STACK.shift();
+  }
+  UNDO_PREV_SNAPSHOT = JSON.stringify(LEADS);
+  var btn = document.getElementById("undo-btn");
+  if (btn) btn.style.opacity = UNDO_STACK.length > 0 ? "1" : "0.5";
+}
+function performUndo() {
+  if (UNDO_STACK.length === 0) { return; }
+  var restored = UNDO_STACK.pop();
+  LEADS = JSON.parse(restored);
+  UNDO_PREV_SNAPSHOT = restored;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
+  saveToSupabase();
+  renderAll();
+  var btn = document.getElementById("undo-btn");
+  if (btn) btn.style.opacity = UNDO_STACK.length > 0 ? "1" : "0.5";
+  var ind = document.getElementById("last-saved-text");
+  if (ind) ind.textContent = "Undid last change";
+}
+document.addEventListener("keydown", function(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+    e.preventDefault();
+    performUndo();
+  }
+});
 function saveState() {
+  pushUndoSnapshot();
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
     saveToSupabase();
