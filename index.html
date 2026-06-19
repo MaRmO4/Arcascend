@@ -1170,7 +1170,7 @@ main { flex: 1; padding: 20px 24px; }
         <button onclick="formsAddQuestion()" style="padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add Question</button>
       </div>
       <div id="forms-questions-list" style="display:flex;flex-direction:column;gap:10px"></div>
-      <div style="margin-top:16px"><button onclick="formsResetQuestions()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);cursor:pointer">Reset to Defaults</button></div>
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button onclick="formsResetQuestions()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);cursor:pointer">Reset to Defaults</button><button onclick="formsSaveSettings()" style="padding:8px 16px;background:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer">Save Questions</button><span id="forms-q-save-status" style="font-size:12px;color:var(--text-muted)"></span></div>
     </div>
     <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--text-muted);line-height:1.6">
       <strong style="color:var(--text-secondary)">Link Preview (Open Graph)</strong><br>
@@ -4462,7 +4462,7 @@ async function formsSaveSettings() {
     questions: formsQuestions,
   };
   try {
-    var res = await fetch(SUPABASE_URL + '/rest/v1/trainer_settings', {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/trainer_settings?on_conflict=user_id', {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer ' + token,
