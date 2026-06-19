@@ -1048,7 +1048,6 @@ main { flex: 1; padding: 20px 24px; }
   <div class="tab" data-tab="clients">💼 Active Clients <span class="count" id="c-clients">0</span></div>
   <div class="tab" data-tab="priority">⭐ Priority <span class="count" id="c-priority">0</span></div>
   <div class="tab" data-tab="tasks">📅 Tasks <span class="count" id="c-tasks">0</span></div>
-<div class="tab" data-tab="calendar">📆 Calendar</div>
   <div class="tab" data-tab="campaigns">🚀 Campaigns <span class="count" id="c-campaigns">0</span></div>
   <div class="tab" data-tab="buckets">🎯 Buckets <span class="count" id="c-buckets">0</span></div>
   <div class="tab" data-tab="sync">🔄 Sync <span class="count" id="c-sync">0</span></div>
@@ -1495,110 +1494,6 @@ function logEvent(eventType, leadName, extraData) {
     }).catch(function(e){ console.warn('logEvent failed:', e); });
   } catch(e) { console.warn('logEvent error:', e); }
 }
-
-var calMonth = new Date(); calMonth.setDate(1);
-function renderCalendarTab(){
-  var main = $("main");
-  main.innerHTML = '<div style="padding:20px;color:var(--text-muted)">Loading calendar...</div>';
-  var token = localStorage.getItem('arcascend_token');
-
-  fetch(SUPABASE_URL + '/rest/v1/lead_events?user_id=eq.' + (currentUser?currentUser.id:'') + '&event_type=eq.lead_created&select=lead_name,created_at&order=created_at.desc&limit=500', {
-    headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
-  }).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; }).then(function(events){
-    drawCalendar(events || []);
-  });
-
-  function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
-  function parseLeadDate(str){ if(!str) return null; var d = new Date(str); return isNaN(d.getTime()) ? null : d; }
-
-  function drawCalendar(events){
-    var dayMap = {};
-    function addToDay(key, kind, item){ if(!dayMap[key]) dayMap[key] = { tasks:[], newleads:[], intakes:[] }; dayMap[key][kind].push(item); }
-
-    LEADS.forEach(function(L){
-      leadTasks(L).forEach(function(t){
-        if (t.dueDate && !t.completed) addToDay(t.dueDate, 'tasks', { lead: L.name, type: t.type, note: t.note });
-      });
-      var d = parseLeadDate(L.date);
-      if (d) addToDay(ymd(d), 'intakes', { lead: L.name, status: L.status });
-    });
-    events.forEach(function(ev){
-      var d = new Date(ev.created_at);
-      if (!isNaN(d.getTime())) addToDay(ymd(d), 'newleads', { lead: ev.lead_name });
-    });
-
-    var year = calMonth.getFullYear(), month = calMonth.getMonth();
-    var firstDay = new Date(year, month, 1);
-    var startOffset = firstDay.getDay();
-    var daysInMonth = new Date(year, month+1, 0).getDate();
-    var todayKey = ymd(new Date());
-    var dotStyle = 'display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px;';
-
-    var html = '<div style="padding:20px;">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">';
-    html += '<button id="cal-prev" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;cursor:pointer;">‹ Prev</button>';
-    html += '<div style="font-size:18px;font-weight:600;">' + firstDay.toLocaleString('default',{month:'long', year:'numeric'}) + '</div>';
-    html += '<button id="cal-next" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;cursor:pointer;">Next ›</button>';
-    html += '</div>';
-    html += '<div style="display:flex;gap:14px;margin-bottom:12px;font-size:12px;color:var(--text-muted);align-items:center;">';
-    html += '<span><span style="'+dotStyle+'background:#3b82f6;"></span>Tasks / Follow-ups</span>';
-    html += '<span><span style="'+dotStyle+'background:#22c55e;"></span>New Leads</span>';
-    html += '<span><span style="'+dotStyle+'background:#f59e0b;"></span>Intake / Consultation</span>';
-    html += '</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">';
-    ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(function(d){ html += '<div style="text-align:center;font-size:11px;color:var(--text-muted);font-weight:600;padding:4px 0;">'+d+'</div>'; });
-    for (var i=0;i<startOffset;i++) html += '<div></div>';
-    for (var day=1; day<=daysInMonth; day++){
-      var dcell = new Date(year, month, day);
-      var key = ymd(dcell);
-      var info = dayMap[key] || { tasks:[], newleads:[], intakes:[] };
-      var isToday = key === todayKey;
-      html += '<div data-cal-day="'+key+'" style="min-height:64px;border:1px solid '+(isToday?'var(--accent)':'var(--border)')+';border-radius:8px;padding:6px;cursor:pointer;background:'+(isToday?'rgba(79,158,255,0.08)':'var(--panel)')+';">';
-      html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">'+day+'</div>';
-      html += '<div>';
-      if (info.tasks.length) html += '<span style="'+dotStyle+'background:#3b82f6;" title="'+info.tasks.length+' task(s)"></span>';
-      if (info.newleads.length) html += '<span style="'+dotStyle+'background:#22c55e;" title="'+info.newleads.length+' new lead(s)"></span>';
-      if (info.intakes.length) html += '<span style="'+dotStyle+'background:#f59e0b;" title="'+info.intakes.length+' intake(s)"></span>';
-      html += '</div></div>';
-    }
-    html += '</div>';
-    html += '<div id="cal-day-detail" style="margin-top:20px;"></div>';
-    html += '</div>';
-
-    main.innerHTML = html;
-    window.__CAL_DAYMAP = dayMap;
-
-    $("cal-prev").addEventListener("click", function(){ calMonth.setMonth(calMonth.getMonth()-1); renderCalendarTab(); });
-    $("cal-next").addEventListener("click", function(){ calMonth.setMonth(calMonth.getMonth()+1); renderCalendarTab(); });
-
-    document.querySelectorAll("[data-cal-day]").forEach(function(cell){
-      cell.addEventListener("click", function(){
-        var key = cell.dataset.calDay;
-        var info = window.__CAL_DAYMAP[key] || { tasks:[], newleads:[], intakes:[] };
-        var detail = document.getElementById('cal-day-detail');
-        var h = '<div style="font-weight:600;font-size:14px;margin-bottom:10px;">' + key + '</div>';
-        if (!info.tasks.length && !info.newleads.length && !info.intakes.length) {
-          h += '<div style="color:var(--text-muted);font-size:13px;">No events this day.</div>';
-        } else {
-          if (info.tasks.length){
-            h += '<div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin:10px 0 4px;">Tasks / Follow-ups</div>';
-            info.tasks.forEach(function(t){ h += '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);"><b>'+t.type+'</b> — '+t.lead+(t.note?' ('+t.note+')':'')+'</div>'; });
-          }
-          if (info.newleads.length){
-            h += '<div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin:10px 0 4px;">New Leads</div>';
-            info.newleads.forEach(function(n){ h += '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);">'+n.lead+'</div>'; });
-          }
-          if (info.intakes.length){
-            h += '<div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin:10px 0 4px;">Intake / Consultation</div>';
-            info.intakes.forEach(function(n){ h += '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);">'+n.lead+' — '+n.status+'</div>'; });
-          }
-        }
-        detail.innerHTML = h;
-      });
-    });
-  }
-}
-
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkemZwZXp0d2dzeW5qaHdqd2ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2OTcwOTcsImV4cCI6MjA5NTI3MzA5N30.Eke_HxZtww3zVekkPMDydT90NkVWSltJjA2fr40oquQ';
 var currentUser = null;
 var currentGymId = null;
@@ -2690,7 +2585,6 @@ function renderMain() {
 
   if (activeTab === "clients") { renderClientsTab(); return; }
   if (activeTab === "tasks") { renderTasksTab(); return; }
-if (activeTab === "calendar") { renderCalendarTab(); return; }
   if (activeTab === "campaigns") { renderCampaignsTab(); return; }
   if (activeTab === "buckets") { renderBucketsTab(); return; }
   if (activeTab === "sync") { renderSyncTab(); return; }
@@ -3387,22 +3281,7 @@ saveState(); renderAll(); openLead(name);
   });
   $("m-notes").addEventListener("blur", function(e){ L.notes = e.target.value; saveState(); renderAll(); });
   if ($("m-pnote")) $("m-pnote").addEventListener("blur", function(e){ L.priorityNote = e.target.value; saveState(); renderAll(); });
-  $("m-consult").addEventListener("change", function(e){
-  var newStatus = e.target.value;
-  var wasComplete = L.consultStatus === "Complete";
-  L.consultStatus = newStatus;
-  if (newStatus === "Complete" && !wasComplete && !L.followUpCreated) {
-    if (!L.tasks) L.tasks = [];
-    var fu = new Date();
-    fu.setDate(fu.getDate() + 30);
-    var dueDateStr = fu.toISOString().slice(0,10);
-    L.tasks.push({ id: uuid(), type: 'Follow Up', note: '30-day follow-up after consultation', dueDate: dueDateStr, completed: false });
-    L.followUpCreated = true;
-    logEvent('consultation_completed', L.name, {});
-    logEvent('follow_up_scheduled', L.name, { dueDate: dueDateStr });
-  }
-  saveState(); renderAll();
-});
+  $("m-consult").addEventListener("change", function(e){ L.consultStatus = e.target.value; saveState(); renderAll(); });
 
   // Editable profile fields — auto-save on blur (text inputs) or change (selects)
   var profileFields = [
