@@ -4473,8 +4473,17 @@ async function formsSaveSettings() {
       body: JSON.stringify(payload)
     });
     if (res.ok || res.status === 201 || res.status === 204) {
-      statusEl.textContent = 'Saved!';
-      setTimeout(function(){ statusEl.textContent = ''; }, 2500);
+      statusEl.textContent = '✓ Saved';
+      statusEl.style.color = '#22c55e';
+      statusEl.style.fontWeight = '600';
+      var qStatus = document.getElementById('forms-q-save-status');
+      if (qStatus) { qStatus.textContent = '✓ Saved'; qStatus.style.color = '#22c55e'; qStatus.style.fontWeight = '600'; }
+      setTimeout(function(){
+        statusEl.textContent = '';
+        statusEl.style.color = '';
+        statusEl.style.fontWeight = '';
+        if (qStatus) { qStatus.textContent = ''; qStatus.style.color = ''; qStatus.style.fontWeight = ''; }
+      }, 2500);
     } else {
       var err = await res.text();
       statusEl.textContent = 'Error: ' + err;
