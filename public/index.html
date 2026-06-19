@@ -4468,8 +4468,14 @@ function formsApplyCrop() {
   });
   document.addEventListener('mousemove', function(e){
     if (!cropState.dragging) return;
-    cropState.x = e.clientX - cropState.startX;
-    cropState.y = e.clientY - cropState.startY;
+    var vp = document.getElementById('crop-viewport');
+    var vw = vp.clientWidth, vh = vp.clientHeight;
+    var imgW = cropState.naturalW * cropState.scale;
+    var imgH = cropState.naturalH * cropState.scale;
+    var newX = e.clientX - cropState.startX;
+    var newY = e.clientY - cropState.startY;
+    cropState.x = Math.min(0, Math.max(newX, vw - imgW));
+    cropState.y = Math.min(0, Math.max(newY, vh - imgH));
     formsRenderCrop();
   });
   document.addEventListener('mouseup', function(){
@@ -4487,6 +4493,10 @@ function formsApplyCrop() {
     cropState.scale = cropState.baseScale * pct;
     cropState.x = cx - imgCx * cropState.scale;
     cropState.y = cy - imgCy * cropState.scale;
+    var imgW2 = cropState.naturalW * cropState.scale;
+    var imgH2 = cropState.naturalH * cropState.scale;
+    cropState.x = Math.min(0, Math.max(cropState.x, vw - imgW2));
+    cropState.y = Math.min(0, Math.max(cropState.y, vh - imgH2));
     formsRenderCrop();
   });
 })();
