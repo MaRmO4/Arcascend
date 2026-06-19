@@ -1560,7 +1560,6 @@ function pushUndoSnapshot() {
     UNDO_STACK.push(UNDO_PREV_SNAPSHOT);
     if (UNDO_STACK.length > 20) UNDO_STACK.shift();
   }
-  UNDO_PREV_SNAPSHOT = JSON.stringify(LEADS);
   var btn = document.getElementById("undo-btn");
   if (btn) btn.style.opacity = UNDO_STACK.length > 0 ? "1" : "0.5";
 }
@@ -1583,6 +1582,12 @@ document.addEventListener("keydown", function(e) {
     performUndo();
   }
 });
+var _origRenderAllForUndo = renderAll;
+renderAll = function() {
+  _origRenderAllForUndo.apply(this, arguments);
+  UNDO_PREV_SNAPSHOT = JSON.stringify(LEADS);
+};
+
 function saveState() {
   pushUndoSnapshot();
   try {
