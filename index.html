@@ -1149,7 +1149,19 @@ main { flex: 1; padding: 20px 24px; }
         <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Gym / Business Name</label><input id="forms-gym-name" placeholder="e.g. Fit Club" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
         <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Title</label><input id="forms-form-title" placeholder="e.g. Client Intake Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
         <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Description</label><textarea id="forms-form-desc" rows="2" placeholder="e.g. Fill out the form and we will be in touch shortly." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;resize:vertical;box-sizing:border-box"></textarea></div>
-        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Logo URL <span style="color:var(--text-muted);font-weight:400">(paste a direct image link)</span></label><input id="forms-logo-url" placeholder="https://your-logo-url.com/logo.png" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /><div id="forms-logo-preview" style="margin-top:8px;display:none"><img id="forms-logo-img" style="height:60px;object-fit:contain;border-radius:6px;border:1px solid var(--border)" /></div></div>
+        <div>
+  <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Header Image</label>
+  <input type="hidden" id="forms-logo-url" />
+  <div id="forms-drop-zone" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s;background:var(--bg-secondary)">
+    <div style="font-size:13px;color:var(--text-secondary)">Drag & drop an image here, or click to browse</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Recommended: wide image, at least 1200x300px</div>
+  </div>
+  <input type="file" id="forms-file-input" accept="image/*" style="display:none" />
+  <div id="forms-logo-preview" style="margin-top:8px;display:none">
+    <img id="forms-logo-img" style="height:60px;object-fit:contain;border-radius:6px;border:1px solid var(--border)" />
+    <button onclick="document.getElementById('forms-file-input').click()" style="margin-left:10px;padding:6px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">Change image</button>
+  </div>
+</div>
       </div>
       <div style="margin-top:20px;display:flex;gap:10px;align-items:center">
         <button onclick="formsSaveSettings()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Settings</button>
@@ -4356,14 +4368,129 @@ async function formsInit() {
   } catch(e) { formsQuestions = JSON.parse(JSON.stringify(INTAKE_DEFAULT_QUESTIONS)); }
   formsRenderQuestions();
   document.getElementById('forms-logo-url').addEventListener('input', function(e) { formsPreviewLogo(e.target.value); });
+  formsInitDropZone();
 }
 
 function formsPreviewLogo(url) {
   const preview = document.getElementById('forms-logo-preview');
   const img = document.getElementById('forms-logo-img');
-  if (url && url.startsWith('http')) { img.src = url; preview.style.display = 'block'; }
+  if (url && (url.startsWith('http') || url.startsWith('data:'))) { img.src = url; preview.style.display = 'block'; }
   else preview.style.display = 'none';
 }
+
+var cropState = { naturalW:0, naturalH:0, scale:1, baseScale:1, x:0, y:0, dragging:false, startX:0, startY:0 };
+var CROP_OUT_W = 1200, CROP_OUT_H = 300;
+
+function formsInitDropZone() {
+  var zone = document.getElementById('forms-drop-zone');
+  var fileInput = document.getElementById('forms-file-input');
+  if (!zone || zone.dataset.bound) return;
+  zone.dataset.bound = '1';
+  zone.addEventListener('click', function(){ fileInput.click(); });
+  zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.style.borderColor = 'var(--accent)'; });
+  zone.addEventListener('dragleave', function(){ zone.style.borderColor = 'var(--border)'; });
+  zone.addEventListener('drop', function(e){
+    e.preventDefault();
+    zone.style.borderColor = 'var(--border)';
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) formsHandleImageFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', function(e){
+    if (e.target.files && e.target.files[0]) formsHandleImageFile(e.target.files[0]);
+  });
+}
+
+function formsHandleImageFile(file) {
+  if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) { formsOpenCropModal(e.target.result); };
+  reader.readAsDataURL(file);
+}
+
+function formsOpenCropModal(dataUrl) {
+  var modal = document.getElementById('crop-modal');
+  var img = document.getElementById('crop-image');
+  img.onload = function() {
+    cropState.naturalW = img.naturalWidth;
+    cropState.naturalH = img.naturalHeight;
+    var viewport = document.getElementById('crop-viewport');
+    var vw = viewport.clientWidth, vh = viewport.clientHeight;
+    cropState.baseScale = Math.max(vw / cropState.naturalW, vh / cropState.naturalH);
+    cropState.scale = cropState.baseScale;
+    cropState.x = (vw - cropState.naturalW * cropState.scale) / 2;
+    cropState.y = (vh - cropState.naturalH * cropState.scale) / 2;
+    document.getElementById('crop-zoom').value = 100;
+    formsRenderCrop();
+  };
+  img.src = dataUrl;
+  modal.classList.add('show');
+}
+
+function formsRenderCrop() {
+  var img = document.getElementById('crop-image');
+  img.style.width = (cropState.naturalW * cropState.scale) + 'px';
+  img.style.height = (cropState.naturalH * cropState.scale) + 'px';
+  img.style.transform = 'translate(' + cropState.x + 'px,' + cropState.y + 'px)';
+}
+
+function formsCloseCropModal() {
+  document.getElementById('crop-modal').classList.remove('show');
+}
+
+function formsApplyCrop() {
+  var canvas = document.createElement('canvas');
+  canvas.width = CROP_OUT_W;
+  canvas.height = CROP_OUT_H;
+  var ctx = canvas.getContext('2d');
+  var viewport = document.getElementById('crop-viewport');
+  var vw = viewport.clientWidth, vh = viewport.clientHeight;
+  var ratio = CROP_OUT_W / vw;
+  var img = document.getElementById('crop-image');
+  ctx.drawImage(img,
+    -cropState.x / cropState.scale, -cropState.y / cropState.scale,
+    vw / cropState.scale, vh / cropState.scale,
+    0, 0, CROP_OUT_W, CROP_OUT_H
+  );
+  var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  document.getElementById('forms-logo-url').value = dataUrl;
+  formsPreviewLogo(dataUrl);
+  formsCloseCropModal();
+}
+
+(function(){
+  var viewport;
+  document.addEventListener('mousedown', function(e){
+    viewport = document.getElementById('crop-viewport');
+    if (!viewport || !viewport.contains(e.target)) return;
+    cropState.dragging = true;
+    cropState.startX = e.clientX - cropState.x;
+    cropState.startY = e.clientY - cropState.y;
+    viewport.style.cursor = 'grabbing';
+  });
+  document.addEventListener('mousemove', function(e){
+    if (!cropState.dragging) return;
+    cropState.x = e.clientX - cropState.startX;
+    cropState.y = e.clientY - cropState.startY;
+    formsRenderCrop();
+  });
+  document.addEventListener('mouseup', function(){
+    cropState.dragging = false;
+    if (viewport) viewport.style.cursor = 'grab';
+  });
+  document.addEventListener('input', function(e){
+    if (e.target.id !== 'crop-zoom') return;
+    var vp = document.getElementById('crop-viewport');
+    var vw = vp.clientWidth, vh = vp.clientHeight;
+    var cx = vw/2, cy = vh/2;
+    var imgCx = (cx - cropState.x) / cropState.scale;
+    var imgCy = (cy - cropState.y) / cropState.scale;
+    var pct = e.target.value / 100;
+    cropState.scale = cropState.baseScale * pct;
+    cropState.x = cx - imgCx * cropState.scale;
+    cropState.y = cy - imgCy * cropState.scale;
+    formsRenderCrop();
+  });
+})();
+
 
 function autoBackupReminder() {
   // Remind trainer to export data weekly
@@ -4496,6 +4623,29 @@ async function formsSaveSettings() {
 </script>
 
 
+
+
+<div class="modal-bg" id="crop-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head">
+      <div class="modal-title">Position Your Header Image</div>
+      <button class="modal-close" onclick="formsCloseCropModal()">x</button>
+    </div>
+    <div class="modal-body">
+      <div id="crop-viewport" style="width:100%;height:160px;overflow:hidden;position:relative;border-radius:10px;border:1px solid var(--border);cursor:grab;background:#000">
+        <img id="crop-image" style="position:absolute;left:0;top:0;max-width:none;user-select:none;-webkit-user-drag:none" draggable="false" />
+      </div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:12px;color:var(--text-muted)">Zoom</span>
+        <input type="range" id="crop-zoom" min="100" max="300" value="100" style="flex:1" />
+      </div>
+      <div class="form-actions" style="margin-top:18px">
+        <button type="button" class="btn btn-ghost" onclick="formsCloseCropModal()">Cancel</button>
+        <button type="button" class="btn-add" onclick="formsApplyCrop()">Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
