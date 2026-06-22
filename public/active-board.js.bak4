@@ -166,26 +166,3 @@ function wireActiveBoardDnD(){
     });
   });
 }
-
-// Auto-refresh: while Board view is visible, watch for paid changes elsewhere (e.g. lead modal checkbox) and re-render.
-var __activeBoardPaidSnapshot = '';
-function __snapshotActiveBoardState() {
-  return LEADS.filter(function(L){ return L.billing && L.billing.active; })
-    .map(function(L){ return (L.name||'') + ':' + (L.billing.paid?'1':'0') + ':' + (L.billing.sessions||0); })
-    .join('|');
-}
-setInterval(function(){
-  if (typeof __ACTIVE_VIEW === 'undefined' || __ACTIVE_VIEW !== 'board') return;
-  if (typeof activeTab !== 'undefined' && activeTab !== 'clients') return;
-  // Don't re-render while the lead modal is open (would close it)
-  var modal = document.getElementById('modal');
-  if (modal && modal.classList.contains('show')) return;
-  var snap = __snapshotActiveBoardState();
-  if (__activeBoardPaidSnapshot && snap !== __activeBoardPaidSnapshot) {
-    __activeBoardPaidSnapshot = snap;
-    if (typeof renderActiveClientsBoard === 'function') renderActiveClientsBoard();
-  } else {
-    __activeBoardPaidSnapshot = snap;
-  }
-}, 1500);
-
