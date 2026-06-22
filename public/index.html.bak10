@@ -3571,7 +3571,8 @@ function openLead(name) {
 
       '<div class="section-title" style="color:var(--lost);border-color:var(--lost);margin-top:30px;">⚠ Danger Zone</div>' +
       '<div style="color:var(--muted);font-size:12px;margin-bottom:10px;">Permanently remove this lead and all their tasks, notes, billing, and activity. This cannot be undone.</div>' +
-      '<button class="btn-danger" id="delete-lead-btn" style="width:100%;">🗑 Delete This Lead</button>' +
+      '<div style="margin-top:20px;text-align:center;"><button onclick="saveAndCloseLead()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:12px 28px;font-size:14px;font-weight:600;cursor:pointer;">💾 Save & Close</button></div>' +
+'<button class="btn-danger" id="delete-lead-btn" style="width:100%;">🗑 Delete This Lead</button>' +
     '</div>';
 
   $("modal").classList.add("show");
