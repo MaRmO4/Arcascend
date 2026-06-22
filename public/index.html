@@ -2758,6 +2758,8 @@ var INTAKE_TO_LEAD_FIELD = {
   q_style: 'style',
   q_avail: 'availability',
   q_injuries: 'injuries',
+  q_whynow: 'whyNow',
+  q_outcomes: 'outcomes',
   q_other: 'other'
 };
 
@@ -2784,7 +2786,11 @@ function renderDynamicProfile(L) {
     if (q.type === 'textarea') {
       input = '<textarea data-qid="' + escapeAttr(q.id) + '" id="' + attrId + '" rows="3">' + escapeHtml(val) + '</textarea>';
     } else if (q.type === 'select') {
-      var opts = '<option value="">—</option>' + (q.options||[]).map(function(o){
+      var optionList = (q.options||[]).slice();
+      var hasMatch = optionList.some(function(o){ return String(o) === String(val); });
+      // If saved value doesn't match any option (e.g. legacy free-text), include it so nothing is lost
+      if (val && !hasMatch) optionList.push(val);
+      var opts = '<option value="">—</option>' + optionList.map(function(o){
         return '<option value="' + escapeAttr(o) + '"' + (String(val)===String(o)?' selected':'') + '>' + escapeHtml(o) + '</option>';
       }).join('');
       input = '<select data-qid="' + escapeAttr(q.id) + '" id="' + attrId + '">' + opts + '</select>';
