@@ -1458,16 +1458,7 @@ function addTask(L, type, dueDate, note) {
 // ==========================================================
 function activityList(L) {
   if (!Array.isArray(L.activity)) L.activity = [];
-  // Normalize legacy entries ({type, text, ts}) to current schema ({kind, summary, at}).
-  return L.activity.map(function(a){
-    if (a && a.kind && a.summary && a.at) return a;
-    var kind = a.kind || a.type || 'note';
-    var summary = a.summary || a.text || '';
-    var at = a.at;
-    if (!at && a.ts) at = new Date(a.ts).toISOString();
-    if (!at) at = new Date().toISOString();
-    return { kind: kind, summary: summary, at: at };
-  });
+  return L.activity;
 }
 function logActivity(L, kind, summary) {
   activityList(L).unshift({ kind: kind, summary: summary, at: new Date().toISOString() });
