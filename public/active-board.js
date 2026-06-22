@@ -75,12 +75,12 @@ function renderActiveClientsBoard() {
     html += '<div style="display:flex;align-items:center;justify-content:flex-end;font-size:13px;color:var(--text-muted);font-weight:600;padding:0 6px;">' + r + '</div>';
     ['Projected','Paid'].forEach(function(col){
       var list = bucket[r][col];
-      html += '<div class="ac-cell" data-row="' + r + '" data-col="' + col + '" style="background:var(--panel);border:1px solid var(--border);border-radius:8px;min-height:80px;padding:8px;">';
+      html += '<div class="ac-cell" data-row="' + r + '" data-col="' + col + '" style="background:var(--panel);border:1px solid var(--border);border-radius:8px;min-height:50px;padding:6px;">';
       list.forEach(function(L){
         var sess = (L.billing && L.billing.sessions) ? L.billing.sessions : 0;
         var price = (L.billing && L.billing.rate) ? L.billing.rate : 0;
         var subtitle = sess + ' sess' + (price ? ' · $' + (sess*price) : '');
-        html += '<div class="ac-card" draggable="true" data-name="' + (L.name||'').replace(/"/g,'&quot;') + '" style="background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;cursor:grab;">';
+        html += '<div class="ac-card" draggable="true" data-name="' + (L.name||'').replace(/"/g,'&quot;') + '" style="background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;margin-bottom:4px;cursor:grab;">';
         html += '<div style="font-size:13px;font-weight:600;">' + (L.name||'(no name)') + '</div>';
         html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + subtitle + '</div>';
         html += '</div>';
@@ -103,6 +103,18 @@ function wireActiveToggle(){
 
 function wireActiveBoardDnD(){
   var dragName = null;
+  // Auto-scroll when dragging near top/bottom of viewport
+  var __dragScrollTimer = null;
+  function handleDragScroll(e){
+    var y = e.clientY;
+    var vh = window.innerHeight;
+    var edge = 80; // px from top/bottom that triggers scroll
+    var speed = 0;
+    if (y < edge) speed = -Math.max(6, (edge - y) / 4);
+    else if (y > vh - edge) speed = Math.max(6, (y - (vh - edge)) / 4);
+    if (speed !== 0) window.scrollBy(0, speed);
+  }
+  document.addEventListener('dragover', handleDragScroll);
   document.querySelectorAll('.ac-card').forEach(function(card){
     card.addEventListener('click', function(){
       if (card.__justDragged) { card.__justDragged = false; return; }
