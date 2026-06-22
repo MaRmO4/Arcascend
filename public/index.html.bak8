@@ -1023,8 +1023,7 @@ main { flex: 1; padding: 20px 24px; }
   <div class="header-actions">
     <button class="btn-save" id="save-btn" title="All changes auto-save. Click to confirm + see timestamp.">💾 Save</button>
     <button class="btn-add" id="add-lead-btn">+ Add Lead</button>
-    <button class="btn" id="refresh-btn" onclick="softRefresh()" title="Refresh leads from Supabase">↻ Refresh</button>
-<button class="btn" id="undo-btn" onclick="performUndo()" title="Undo last change (Cmd+Z)" style="opacity:0.5;">↩ Undo</button>
+    <button class="btn" id="undo-btn" onclick="performUndo()" title="Undo last change (Cmd+Z)" style="opacity:0.5;">↩ Undo</button>
     <button class="btn-settings" id="tabs-btn">✏️ Edit Tabs</button>
     <button class="btn-settings" id="settings-btn">⚙ Settings</button>
     <div class="profile-menu-wrap" style="position:relative;display:inline-block;">
@@ -2867,32 +2866,6 @@ function wireDynamicProfile(L) {
 // ============== /DYNAMIC PROFILE ==============
 
 
-
-function saveAndCloseLead() {
-  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  try {
-    if (typeof saveState === 'function') saveState();
-    if (typeof saveToSupabase === 'function') saveToSupabase();
-  } catch(e) { console.warn('saveAndCloseLead error:', e); }
-  if (typeof closeLead === 'function') closeLead();
-  if (typeof showToast === 'function') showToast('✅ Saved', 'success');
-}
-
-async function softRefresh() {
-  var btn = document.getElementById('refresh-btn');
-  var orig = btn ? btn.innerHTML : null;
-  if (btn) { btn.disabled = true; btn.innerHTML = '↻ Refreshing...'; }
-  try {
-    if (typeof loadFromSupabase === 'function') await loadFromSupabase();
-    if (typeof renderAll === 'function') renderAll();
-    if (typeof showToast === 'function') showToast('✅ Refreshed', 'success');
-  } catch(e) {
-    console.warn('softRefresh error:', e);
-    if (typeof showToast === 'function') showToast('Refresh failed', 'error');
-  }
-  if (btn) { btn.disabled = false; btn.innerHTML = orig || '↻ Refresh'; }
-}
-
 function renderMain() {
   var main = $("main");
   if (activeTab === "forms") {
@@ -3491,7 +3464,7 @@ function openLead(name) {
           '<div style="color:var(--muted);font-size:12px;margin-top:4px;">' + (L.date||"") + (L.phone?" · "+L.phone:"") + '</div>' +
         '</div>' +
       '</div>' +
-      '<button onclick="saveAndCloseLead()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;margin-right:8px;">💾 Save & Close</button><button class="modal-close" onclick="closeLead()">✕</button>' +
+      '<button class="modal-close" onclick="closeLead()">✕</button>' +
     '</div>' +
     '<div class="modal-body">' +
 
@@ -3571,8 +3544,7 @@ function openLead(name) {
 
       '<div class="section-title" style="color:var(--lost);border-color:var(--lost);margin-top:30px;">⚠ Danger Zone</div>' +
       '<div style="color:var(--muted);font-size:12px;margin-bottom:10px;">Permanently remove this lead and all their tasks, notes, billing, and activity. This cannot be undone.</div>' +
-      '<div style="margin-top:20px;text-align:center;"><button onclick="saveAndCloseLead()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:12px 28px;font-size:14px;font-weight:600;cursor:pointer;">💾 Save & Close</button></div>' +
-'<button class="btn-danger" id="delete-lead-btn" style="width:100%;">🗑 Delete This Lead</button>' +
+      '<button class="btn-danger" id="delete-lead-btn" style="width:100%;">🗑 Delete This Lead</button>' +
     '</div>';
 
   $("modal").classList.add("show");
