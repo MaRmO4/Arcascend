@@ -102,8 +102,6 @@
       } else {
         localStorage.clear()
         localStorage.setItem('arcascend_token', data.access_token)
-        localStorage.setItem('arcascend_refresh_token', data.refresh_token)
-        localStorage.setItem('arcascend_token_expires_at', String(Date.now() + (data.expires_in || 3600) * 1000))
         localStorage.setItem('arcascend_user_id', data.user.id)
         localStorage.setItem('arcascend_user_email', data.user.email)
         msg.className = 'message success'
