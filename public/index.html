@@ -2929,9 +2929,9 @@ function renderMain() {
   }
     
 
-  if (activeTab === "clients") { renderClientsTab(); return; }
+  if (activeTab === "clients" && typeof renderActiveClientsBoard === "function") { renderActiveClientsBoard(); return; }
+if (activeTab === "clients") { renderClientsTab(); return; }
   if (activeTab === "tasks") { renderTasksTab(); return; }
-if (activeTab === "active" && typeof renderActiveClientsBoard === "function") { renderActiveClientsBoard(); return; }
 if (activeTab === "calendar") { renderCalendarTab(); return; }
   if (activeTab === "campaigns") { renderCampaignsTab(); return; }
   if (activeTab === "buckets") { renderBucketsTab(); return; }
