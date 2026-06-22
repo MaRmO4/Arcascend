@@ -3,16 +3,7 @@ var __ACTIVE_VIEW = localStorage.getItem('arcascend_activeview') || 'list';
 
 function sessionsToRow(L) {
   if (L.weeklySessionsOverride) return L.weeklySessionsOverride;
-  // Prefer billing.package label since that's what drag now sets
-  var pkg = (L.billing && L.billing.package) || '';
-  if (pkg.indexOf('5x') === 0) return '5x+';
-  if (pkg.indexOf('4x') === 0) return '4x';
-  if (pkg.indexOf('3x') === 0) return '3x';
-  if (pkg.indexOf('2x') === 0) return '2x';
-  if (pkg.indexOf('1x') === 0) return '1x';
-  // Fall back to session-count buckets
   var n = parseInt((L.billing && L.billing.sessions) || 0, 10);
-  if (n >= 13) return '4x';
   if (n >= 9) return '3x';
   if (n >= 6) return '2x';
   return '1x';
@@ -152,14 +143,11 @@ function wireActiveBoardDnD(){
       if (!L) return;
       var newRow = cell.dataset.row;
       var newCol = cell.dataset.col;
-      // Map row -> package label and default sessions (matches existing PACKAGE dropdown options)
-      var ROW_TO_PACKAGE = { '1x':'1x/week', '2x':'2x/week', '3x':'3x/week', '4x':'4x/week', '5x+':'5x+/week' };
-      var ROW_TO_SESSIONS = { '1x':4, '2x':8, '3x':12, '4x':16, '5x+':20 };
-      if (!L.billing) L.billing = {};
-      L.billing.package = ROW_TO_PACKAGE[newRow] || L.billing.package;
-      L.billing.sessions = ROW_TO_SESSIONS[newRow] || L.billing.sessions;
-      // Clear the override since the row now matches sessions naturally
-      delete L.weeklySessionsOverride;
+      if (sessionsToRow(L) !== newRow) {
+        L.weeklySessionsOverride = newRow;
+      } else {
+        delete L.weeklySessionsOverride;
+      }
       setActivePaid(L, newCol === 'Paid');
       if (typeof saveState === 'function') saveState();
       renderActiveClientsBoard();
