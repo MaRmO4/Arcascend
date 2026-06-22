@@ -3506,11 +3506,11 @@ function openLead(name) {
 
       '<div class="reachout-bar"><div class="section-title" style="margin:0;border:none;padding:0;">📞 Reach Out</div><span class="service-pill">RingDNA · Demo</span></div>' +
       '<div class="reach-actions">' +
-        
+        '<button class="reach-btn call" data-r="call"><div class="ricon">📞</div>Call</button>' +
         '<button class="reach-btn text" data-r="text"><div class="ricon">💬</div>Text</button>' +
         '<button class="reach-btn email" data-r="email"><div class="ricon">✉️</div>Email</button>' +
-        
-        
+        '<button class="reach-btn video" data-r="video"><div class="ricon">🎥</div>Video</button>' +
+        '<button class="reach-btn voicemail" data-r="voicemail"><div class="ricon">🎙</div>VM</button>' +
       '</div>' +
       renderActivityLog(L) +
 
