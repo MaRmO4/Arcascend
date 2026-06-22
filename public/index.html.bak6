@@ -3576,7 +3576,45 @@ saveState(); renderAll(); openLead(name);
 });
 
   // Editable profile fields — auto-save on blur (text inputs) or change (selects)
-  // Legacy static profileFields loop removed — dynamic profile (renderDynamicProfile) handles all saves now.);
+  if (document.getElementById('p-name')) {
+var profileFields = [
+    {id:"p-name", key:"name", evt:"blur"},
+    {id:"p-phone", key:"phone", evt:"blur"},
+    {id:"p-date", key:"date", evt:"blur"},
+    {id:"p-level", key:"level", evt:"change"},
+    {id:"p-goal", key:"goal", evt:"blur"},
+    {id:"p-timeline", key:"timeline", evt:"change"},
+    {id:"p-style", key:"style", evt:"blur"},
+    {id:"p-availability", key:"availability", evt:"blur"},
+    {id:"p-injuries", key:"injuries", evt:"blur"},
+    {id:"p-whyNow", key:"whyNow", evt:"blur"},
+    {id:"p-outcomes", key:"outcomes", evt:"blur"},
+    {id:"p-other", key:"other", evt:"blur"}
+  ];
+  profileFields.forEach(function(f){
+    var el = $(f.id);
+    if (!el) return;
+    el.addEventListener(f.evt, function(e){
+      var newVal = e.target.value;
+      if (L[f.key] === newVal) return;
+      L[f.key] = newVal;
+      saveState();
+      // Update header title live if name changed
+      if (f.key === "name" || f.key === "phone") {
+        var titleEl = document.querySelector("#modal-content .modal-title");
+        if (titleEl && f.key === "name") {
+          var badge = titleEl.querySelector(".badge");
+          titleEl.firstChild.textContent = newVal + " ";
+          if (badge) titleEl.appendChild(badge);
+        }
+        var subEl = document.querySelector("#modal-content .modal-head div[style*='font-size:12px']");
+        // Just re-render — simpler than surgical updates
+      }
+      renderRevenueBanner();
+      renderTabCounts();
+    });
+}
+  });
 
   // Delete lead
   $("delete-lead-btn").addEventListener("click", function(){
