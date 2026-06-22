@@ -1508,8 +1508,11 @@ async function refreshAuthToken() {
     var data = await res.json();
     if (data.error || !data.access_token) {
       console.warn('Token refresh failed:', data.error || data);
-      // Don't auto-logout on refresh failure — the existing token may still be valid.
-      // The app will redirect to login.html naturally if/when the access token also fails.
+      if (res.status === 400 || res.status === 401) {
+        localStorage.removeItem('arcascend_token');
+        localStorage.removeItem('arcascend_refresh_token');
+        window.location.href = 'login.html';
+      }
       return false;
     }
     localStorage.setItem('arcascend_token', data.access_token);
@@ -1529,15 +1532,11 @@ async function ensureFreshToken() {
   }
 }
 
-// Refresh only when token is near expiry; recheck every 5 minutes
-function maybeRefresh() {
-  if (!localStorage.getItem('arcascend_refresh_token')) return;
-  var expiresAt = parseInt(localStorage.getItem('arcascend_token_expires_at') || '0', 10);
-  if (!expiresAt) return; // fresh login already valid; nothing to do yet
-  if (Date.now() > expiresAt - 5 * 60 * 1000) refreshAuthToken();
+// Refresh on boot and every 45 minutes
+if (localStorage.getItem('arcascend_refresh_token')) {
+  refreshAuthToken();
+  setInterval(refreshAuthToken, 45 * 60 * 1000);
 }
-maybeRefresh();
-setInterval(maybeRefresh, 5 * 60 * 1000);
 
 
 var calMonth = new Date(); calMonth.setDate(1);
