@@ -2931,7 +2931,6 @@ function renderMain() {
 
   if (activeTab === "clients") { renderClientsTab(); return; }
   if (activeTab === "tasks") { renderTasksTab(); return; }
-if (activeTab === "active" && typeof renderActiveClientsBoard === "function") { renderActiveClientsBoard(); return; }
 if (activeTab === "calendar") { renderCalendarTab(); return; }
   if (activeTab === "campaigns") { renderCampaignsTab(); return; }
   if (activeTab === "buckets") { renderBucketsTab(); return; }
@@ -4984,7 +4983,6 @@ async function formsSaveSettings() {
   </div>
 </div>
 
-<script src="active-board.js"></script>
 </body>
 </html>
 
