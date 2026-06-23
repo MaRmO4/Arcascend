@@ -1050,7 +1050,6 @@ main { flex: 1; padding: 20px 24px; }
   <div class="tab" data-tab="priority">⭐ Priority <span class="count" id="c-priority">0</span></div>
   <div class="tab" data-tab="tasks">📅 Tasks <span class="count" id="c-tasks">0</span></div>
 <div class="tab" data-tab="calendar">📆 Calendar</div>
-<div class="tab" data-tab="reports">📊 Reports</div>
   <div class="tab" data-tab="campaigns">🚀 Campaigns <span class="count" id="c-campaigns">0</span></div>
   <div class="tab" data-tab="buckets">🎯 Buckets <span class="count" id="c-buckets">0</span></div>
   <div class="tab" data-tab="sync">🔄 Sync <span class="count" id="c-sync">0</span></div>
@@ -2977,7 +2976,6 @@ function renderMain() {
   if (activeTab === "clients" && typeof renderActiveClientsBoard === "function") { renderActiveClientsBoard(); return; }
 if (activeTab === "clients") { renderClientsTab(); return; }
   if (activeTab === "tasks") { renderTasksTab(); return; }
-if (activeTab === "reports" && typeof renderReportsTab === "function") { renderReportsTab(); return; }
 if (activeTab === "calendar") { renderCalendarTab(); return; }
   if (activeTab === "campaigns") { renderCampaignsTab(); return; }
   if (activeTab === "buckets") { renderBucketsTab(); return; }
@@ -5031,7 +5029,6 @@ async function formsSaveSettings() {
 </div>
 
 <script src="active-board.js"></script>
-<script src="reports.js"></script>
 </body>
 </html>
 
