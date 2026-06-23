@@ -1966,6 +1966,61 @@ function loadHiddenTabs() {
 function saveHiddenTabs() {
   localStorage.setItem(HIDDEN_TABS_KEY, JSON.stringify(hiddenTabs));
 }
+
+// ===== Tab drag-reorder =====
+var TAB_ORDER_KEY = "arcascend_tab_order";
+var tabOrder = null;
+function loadTabOrder() {
+  var raw = localStorage.getItem(TAB_ORDER_KEY);
+  if (!raw) { tabOrder = null; return; }
+  try { tabOrder = JSON.parse(raw) || null; } catch(e) { tabOrder = null; }
+}
+function saveTabOrder() {
+  if (Array.isArray(tabOrder)) localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrder));
+}
+function applyTabOrder() {
+  if (!Array.isArray(tabOrder) || !tabOrder.length) return;
+  var nav = document.querySelector('.tabs');
+  if (!nav) return;
+  var byId = {};
+  nav.querySelectorAll('.tab[data-tab]').forEach(function(el){ byId[el.dataset.tab] = el; });
+  tabOrder.forEach(function(id){ if (byId[id]) nav.appendChild(byId[id]); });
+  Object.keys(byId).forEach(function(id){ if (tabOrder.indexOf(id) < 0) nav.appendChild(byId[id]); });
+}
+function wireTabDragReorder() {
+  var nav = document.querySelector('.tabs');
+  if (!nav) return;
+  var draggedId = null;
+  nav.querySelectorAll('.tab[data-tab]').forEach(function(el){
+    if (el.dataset.dragWired === '1') return;
+    el.dataset.dragWired = '1';
+    el.setAttribute('draggable', 'true');
+    el.style.cursor = 'grab';
+    el.addEventListener('dragstart', function(e){
+      draggedId = el.dataset.tab;
+      el.style.opacity = '0.5';
+      try { e.dataTransfer.setData('text/plain', draggedId); e.dataTransfer.effectAllowed = 'move'; } catch(_){}
+    });
+    el.addEventListener('dragend', function(){ el.style.opacity = '1'; });
+    el.addEventListener('dragover', function(e){
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    });
+    el.addEventListener('drop', function(e){
+      e.preventDefault();
+      var fromId = draggedId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+      if (!fromId || fromId === el.dataset.tab) return;
+      var fromEl = nav.querySelector('.tab[data-tab="' + fromId + '"]');
+      if (!fromEl) return;
+      nav.insertBefore(fromEl, el);
+      tabOrder = Array.from(nav.querySelectorAll('.tab[data-tab]')).map(function(t){ return t.dataset.tab; });
+      saveTabOrder();
+    });
+  });
+}
+setTimeout(function(){ loadTabOrder(); applyTabOrder(); wireTabDragReorder(); }, 600);
+setInterval(function(){ wireTabDragReorder(); }, 3000);
+
 function applyTabVisibility() {
   TAB_DEFS.forEach(function(t){
     var el = document.querySelector('.tab[data-tab="' + t.id + '"]');
