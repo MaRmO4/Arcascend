@@ -6,12 +6,41 @@ var __REPORTS_EVENTS = null;
 var __REPORTS_LOADING = false;
 var __REPORTS_CHART = null;
 
+var __REPORTS_PRESET = localStorage.getItem('arcascend_reports_preset_active') || localStorage.getItem('arcascend_reports_preset_default') || 'month';
+
+function reportsRangeFromPreset(p) {
+  var now = new Date();
+  var to = now.toISOString().slice(0,10);
+  var from;
+  if (p === 'day') from = to;
+  else if (p === 'week') {
+    var d = new Date(now); d.setDate(d.getDate() - 6);
+    from = d.toISOString().slice(0,10);
+  } else if (p === 'month') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  } else if (p === 'quarter') {
+    var q = Math.floor(now.getMonth() / 3);
+    from = new Date(now.getFullYear(), q*3, 1).toISOString().slice(0,10);
+  } else if (p === 'year') {
+    from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
+  } else {
+    from = to; // 'custom' fallback (will be replaced by inputs)
+  }
+  return { from: from, to: to };
+}
+
 function reportsInitRange() {
   if (__REPORTS_FROM && __REPORTS_TO) return;
-  var now = new Date();
-  var first = new Date(now.getFullYear(), now.getMonth(), 1);
-  __REPORTS_FROM = first.toISOString().slice(0,10);
-  __REPORTS_TO = now.toISOString().slice(0,10);
+  if (__REPORTS_PRESET && __REPORTS_PRESET !== 'custom') {
+    var r = reportsRangeFromPreset(__REPORTS_PRESET);
+    __REPORTS_FROM = r.from;
+    __REPORTS_TO = r.to;
+  } else {
+    var now = new Date();
+    var first = new Date(now.getFullYear(), now.getMonth(), 1);
+    __REPORTS_FROM = first.toISOString().slice(0,10);
+    __REPORTS_TO = now.toISOString().slice(0,10);
+  }
 }
 
 function reportsLoadEvents() {
@@ -50,6 +79,20 @@ function renderReportsTab() {
   html += '<button id="rep-apply" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;">Apply</button>';
   html += '</div></div>';
 
+  // Preset range buttons
+  var defaultPreset = localStorage.getItem('arcascend_reports_preset_default') || 'month';
+  var presets = [['day','Day'],['week','Week'],['month','Month'],['quarter','Quarter'],['year','Year'],['custom','Custom']];
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap;">';
+  presets.forEach(function(p){
+    var active = __REPORTS_PRESET === p[0];
+    var isDefault = defaultPreset === p[0];
+    var bg = active ? 'var(--accent)' : 'var(--panel)';
+    var color = active ? '#fff' : 'var(--text)';
+    html += '<button class="rep-preset" data-preset="' + p[0] + '" style="background:' + bg + ';color:' + color + ';border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">' + p[1] + (isDefault ? ' \u2605' : '') + '</button>';
+  });
+  html += '<button id="rep-save-default" title="Save current range as default" style="background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-left:6px;">\u2606 Save as default</button>';
+  html += '</div>';
+
   // Sub-tabs
   html += '<div style="display:flex;gap:4px;margin-top:14px;border-bottom:1px solid var(--border);">';
   ['leads','revenue','conversions','activity'].forEach(function(key){
@@ -65,8 +108,33 @@ function renderReportsTab() {
   document.getElementById('rep-apply').addEventListener('click', function(){
     __REPORTS_FROM = document.getElementById('rep-from').value;
     __REPORTS_TO = document.getElementById('rep-to').value;
+    __REPORTS_PRESET = 'custom';
+    localStorage.setItem('arcascend_reports_preset_active', 'custom');
     __REPORTS_EVENTS = null;
     renderReportsTab();
+  });
+
+  document.querySelectorAll('.rep-preset').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var p = btn.dataset.preset;
+      __REPORTS_PRESET = p;
+      localStorage.setItem('arcascend_reports_preset_active', p);
+      if (p !== 'custom') {
+        var r = reportsRangeFromPreset(p);
+        __REPORTS_FROM = r.from;
+        __REPORTS_TO = r.to;
+      }
+      __REPORTS_EVENTS = null;
+      renderReportsTab();
+    });
+  });
+
+  var sd = document.getElementById('rep-save-default');
+  if (sd) sd.addEventListener('click', function(){
+    localStorage.setItem('arcascend_reports_preset_default', __REPORTS_PRESET);
+    sd.innerHTML = '\u2605 Saved as default';
+    sd.style.color = 'var(--accent)';
+    setTimeout(function(){ renderReportsTab(); }, 700);
   });
   document.querySelectorAll('.rep-sub').forEach(function(btn){
     btn.addEventListener('click', function(){
