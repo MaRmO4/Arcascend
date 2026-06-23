@@ -278,9 +278,45 @@ function renderRepLeads(body) {
   var buckets = repDateBuckets();
   function newMap() { var m = {}; buckets.forEach(function(b){ m[b] = 0; }); return m; }
   var activeMap = newMap(), wonMap = newMap(), lostMap = newMap();
-  newActiveEv.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if (activeMap[k] !== undefined) activeMap[k]++; });
-  wonEv.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if (wonMap[k] !== undefined) wonMap[k]++; });
-  lostEv.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if (lostMap[k] !== undefined) lostMap[k]++; });
+
+  // Helper: parse L.date which is stored as 'M/D/YYYY' or 'M/D/YYYY HH:MM:SS'
+  function parseLeadDate(s) {
+    if (!s) return null;
+    if (typeof s !== 'string') return null;
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString();
+    return null;
+  }
+
+  // Track which lead names are already represented by events (so we don't double-count)
+  var eventNamesActive = {}, eventNamesWon = {}, eventNamesLost = {};
+  newActiveEv.forEach(function(e){
+    var k = repBucketKeyFor(e.created_at);
+    if (activeMap[k] !== undefined) activeMap[k]++;
+    if (e.lead_name) eventNamesActive[e.lead_name] = true;
+  });
+  wonEv.forEach(function(e){
+    var k = repBucketKeyFor(e.created_at);
+    if (wonMap[k] !== undefined) wonMap[k]++;
+    if (e.lead_name) eventNamesWon[e.lead_name] = true;
+  });
+  lostEv.forEach(function(e){
+    var k = repBucketKeyFor(e.created_at);
+    if (lostMap[k] !== undefined) lostMap[k]++;
+    if (e.lead_name) eventNamesLost[e.lead_name] = true;
+  });
+
+  // Fallback: walk LEADS, bucket by L.date if not already accounted for in events
+  (LEADS || []).forEach(function(L){
+    var iso = parseLeadDate(L.date);
+    if (!iso) return;
+    var k = repBucketKeyFor(iso);
+    if (activeMap[k] === undefined) return; // outside current range
+    var status = (L.status || '').toLowerCase();
+    if (L.billing && L.billing.active && !eventNamesActive[L.name]) activeMap[k]++;
+    if (status.indexOf('won') >= 0 && !eventNamesWon[L.name]) wonMap[k]++;
+    if (status.indexOf('lost') >= 0 && !eventNamesLost[L.name]) lostMap[k]++;
+  });
 
   var html = '';
   html += repStatsGrid([
