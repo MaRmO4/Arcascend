@@ -12,7 +12,11 @@ function reportsRangeFromPreset(p) {
   var now = new Date();
   var to = now.toISOString().slice(0,10);
   var from;
-  if (p === 'month') {
+  if (p === 'day') from = to;
+  else if (p === 'week') {
+    var d = new Date(now); d.setDate(d.getDate() - 6);
+    from = d.toISOString().slice(0,10);
+  } else if (p === 'month') {
     from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
   } else if (p === 'quarter') {
     var q = Math.floor(now.getMonth() / 3);
@@ -77,7 +81,7 @@ function renderReportsTab() {
 
   // Preset range buttons
   var defaultPreset = localStorage.getItem('arcascend_reports_preset_default') || 'month';
-  var presets = [['month','Month'],['quarter','Quarter'],['year','Year'],['custom','Custom']];
+  var presets = [['day','Day'],['week','Week'],['month','Month'],['quarter','Quarter'],['year','Year'],['custom','Custom']];
   html += '<div style="display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap;">';
   presets.forEach(function(p){
     var active = __REPORTS_PRESET === p[0];
@@ -177,50 +181,16 @@ function repBetweenRange(iso) {
   return d >= f && d <= t;
 }
 
-function repBucketGranularity() {
-  if (__REPORTS_PRESET === 'month') return 'week';
-  if (__REPORTS_PRESET === 'quarter' || __REPORTS_PRESET === 'year') return 'month';
-  // Custom: choose based on span
-  var f = new Date(__REPORTS_FROM + 'T00:00:00');
-  var t = new Date(__REPORTS_TO + 'T00:00:00');
-  var days = Math.round((t - f) / 86400000);
-  return days < 31 ? 'week' : 'month';
-}
-
 function repDateBuckets() {
-  // Returns array of bucket keys (YYYY-MM-DD for week-start or YYYY-MM for month)
-  var gran = repBucketGranularity();
+  // Returns array of YYYY-MM-DD strings from FROM to TO
   var out = [];
   var d = new Date(__REPORTS_FROM + 'T00:00:00');
   var end = new Date(__REPORTS_TO + 'T00:00:00');
-  if (gran === 'week') {
-    // Snap d to start of week (Sunday)
-    var w = new Date(d); w.setDate(w.getDate() - w.getDay());
-    while (w <= end) {
-      out.push(w.toISOString().slice(0,10));
-      w = new Date(w); w.setDate(w.getDate() + 7);
-    }
-  } else {
-    // Monthly
-    var m = new Date(d.getFullYear(), d.getMonth(), 1);
-    var endM = new Date(end.getFullYear(), end.getMonth(), 1);
-    while (m <= endM) {
-      out.push(m.toISOString().slice(0,7));
-      m = new Date(m.getFullYear(), m.getMonth()+1, 1);
-    }
+  while (d <= end) {
+    out.push(d.toISOString().slice(0,10));
+    d.setDate(d.getDate() + 1);
   }
   return out;
-}
-
-function repBucketKeyFor(iso) {
-  var gran = repBucketGranularity();
-  var d = new Date(iso);
-  if (gran === 'week') {
-    var w = new Date(d); w.setDate(w.getDate() - w.getDay());
-    return w.toISOString().slice(0,10);
-  } else {
-    return d.toISOString().slice(0,7);
-  }
 }
 
 function repLoadChartJs(cb) {
@@ -276,8 +246,8 @@ function renderRepLeads(body) {
   var seriesMap = {};
   buckets.forEach(function(d){ seriesMap[d] = 0; });
   created.forEach(function(e){
-    var k = repBucketKeyFor(e.created_at);
-    if (seriesMap[k] !== undefined) seriesMap[k]++;
+    var d = e.created_at.slice(0,10);
+    if (seriesMap[d] !== undefined) seriesMap[d]++;
   });
   var seriesData = buckets.map(function(d){ return seriesMap[d]; });
 
@@ -336,9 +306,9 @@ function renderRepRevenue(body) {
   var revMap = {};
   buckets.forEach(function(d){ revMap[d] = 0; });
   payments.forEach(function(e){
-    var k = repBucketKeyFor(e.created_at);
+    var d = e.created_at.slice(0,10);
     var amt = parseFloat((e.event_data && e.event_data.amount) || 0) || 0;
-    if (revMap[k] !== undefined) revMap[k] += amt;
+    if (revMap[d] !== undefined) revMap[d] += amt;
   });
   var revData = buckets.map(function(d){ return revMap[d]; });
 
@@ -371,8 +341,8 @@ function renderRepConversions(body) {
   var buckets = repDateBuckets();
   var wonMap = {}, lostMap = {};
   buckets.forEach(function(d){ wonMap[d] = 0; lostMap[d] = 0; });
-  won.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if(wonMap[k]!==undefined) wonMap[k]++; });
-  lost.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if(lostMap[k]!==undefined) lostMap[k]++; });
+  won.forEach(function(e){ var d = e.created_at.slice(0,10); if(wonMap[d]!==undefined) wonMap[d]++; });
+  lost.forEach(function(e){ var d = e.created_at.slice(0,10); if(lostMap[d]!==undefined) lostMap[d]++; });
 
   var html = '';
   html += repStatsGrid([
