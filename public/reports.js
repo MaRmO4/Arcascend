@@ -263,33 +263,35 @@ function renderRepLeads(body) {
   var created = ev.filter(function(e){ return e.event_type === 'lead_created'; });
   var intake = ev.filter(function(e){ return e.event_type === 'form_submitted'; });
   var statusChanges = ev.filter(function(e){ return e.event_type === 'status_changed'; });
+  var newActiveEv = ev.filter(function(e){ return e.event_type === 'active_client_marked'; });
+  var wonEv = statusChanges.filter(function(e){ var t = (e.event_data && e.event_data.to) || ''; return t.toLowerCase().indexOf('won') >= 0; });
+  var lostEv = statusChanges.filter(function(e){ var t = (e.event_data && e.event_data.to) || ''; return t.toLowerCase().indexOf('lost') >= 0; });
 
-  // Status distribution from current LEADS state (date range doesn't apply meaningfully here)
+  // Status distribution from current LEADS state
   var statusCounts = {};
   (LEADS || []).forEach(function(L){
     var s = (L.status || 'New');
     statusCounts[s] = (statusCounts[s] || 0) + 1;
   });
 
-  // Build daily series for "Leads added"
+  // Build bucket maps for all three series
   var buckets = repDateBuckets();
-  var seriesMap = {};
-  buckets.forEach(function(d){ seriesMap[d] = 0; });
-  created.forEach(function(e){
-    var k = repBucketKeyFor(e.created_at);
-    if (seriesMap[k] !== undefined) seriesMap[k]++;
-  });
-  var seriesData = buckets.map(function(d){ return seriesMap[d]; });
+  function newMap() { var m = {}; buckets.forEach(function(b){ m[b] = 0; }); return m; }
+  var activeMap = newMap(), wonMap = newMap(), lostMap = newMap();
+  newActiveEv.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if (activeMap[k] !== undefined) activeMap[k]++; });
+  wonEv.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if (wonMap[k] !== undefined) wonMap[k]++; });
+  lostEv.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if (lostMap[k] !== undefined) lostMap[k]++; });
 
   var html = '';
   html += repStatsGrid([
     { label:'Leads Added', value: created.length, color:'#4f9eff' },
-    { label:'Intake Forms Submitted', value: intake.length, color:'#22c55e' },
-    { label:'Status Changes', value: statusChanges.length, color:'#f59e0b' },
-    { label:'Total Leads (All Time)', value: (LEADS||[]).length }
+    { label:'Intake Forms', value: intake.length, color:'#a78bfa' },
+    { label:'New Active Clients', value: newActiveEv.length, color:'#22c55e' },
+    { label:'Closed Won', value: wonEv.length, color:'#22c55e' },
+    { label:'Closed Lost', value: lostEv.length, color:'#ef4444' }
   ]);
 
-  html += repCard('Leads Added Over Time', '<div style="height:260px;"><canvas id="rep-chart-leads"></canvas></div>');
+  html += repCard('Outcomes Over Time', '<div style="height:260px;"><canvas id="rep-chart-leads"></canvas></div>');
   html += repCard('Status Distribution (Current)', '<div>' + Object.keys(statusCounts).map(function(s){
     var pct = Math.round(statusCounts[s] / Math.max(1, (LEADS||[]).length) * 100);
     return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">'
@@ -300,7 +302,22 @@ function renderRepLeads(body) {
   }).join('') + '</div>');
 
   body.innerHTML = html;
-  repDrawLineChart('rep-chart-leads', 'Leads added', buckets, seriesData, '#4f9eff');
+
+  // Draw multi-line chart
+  repLoadChartJs(function(){
+    var ctx = document.getElementById('rep-chart-leads');
+    if (!ctx) return;
+    if (__REPORTS_CHART) { try { __REPORTS_CHART.destroy(); } catch(_){} }
+    __REPORTS_CHART = new Chart(ctx, {
+      type: 'line',
+      data: { labels: buckets, datasets: [
+        { label: 'New Active Clients', data: buckets.map(function(b){ return activeMap[b]; }), borderColor: '#22c55e', backgroundColor: '#22c55e22', tension: 0.3, fill: false },
+        { label: 'Closed Won', data: buckets.map(function(b){ return wonMap[b]; }), borderColor: '#4f9eff', backgroundColor: '#4f9eff22', tension: 0.3, fill: false },
+        { label: 'Closed Lost', data: buckets.map(function(b){ return lostMap[b]; }), borderColor: '#ef4444', backgroundColor: '#ef444422', tension: 0.3, fill: false }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { ticks: { color: '#888' }, grid: { color: '#333' } }, y: { ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
+    });
+  });
 }
 
 // ===== REVENUE sub-tab =====
