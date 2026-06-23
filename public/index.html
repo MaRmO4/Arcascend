@@ -1965,6 +1965,7 @@ function loadHiddenTabs() {
 }
 function saveHiddenTabs() {
   localStorage.setItem(HIDDEN_TABS_KEY, JSON.stringify(hiddenTabs));
+  saveTabPrefsToCloud();
 }
 
 // ===== Tab drag-reorder =====
@@ -1977,6 +1978,7 @@ function loadTabOrder() {
 }
 function saveTabOrder() {
   if (Array.isArray(tabOrder)) localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrder));
+  saveTabPrefsToCloud();
 }
 function applyTabOrder() {
   if (!Array.isArray(tabOrder) || !tabOrder.length) return;
@@ -2020,6 +2022,60 @@ function wireTabDragReorder() {
 }
 setTimeout(function(){ loadTabOrder(); applyTabOrder(); wireTabDragReorder(); }, 600);
 setInterval(function(){ wireTabDragReorder(); }, 3000);
+
+// ===== Tab prefs cloud sync (Supabase trainer_settings.tab_prefs) =====
+var __tabPrefsSaveDebounce = null;
+function saveTabPrefsToCloud() {
+  if (__tabPrefsSaveDebounce) clearTimeout(__tabPrefsSaveDebounce);
+  __tabPrefsSaveDebounce = setTimeout(function(){
+    var uid = localStorage.getItem('arcascend_user_id');
+    var token = localStorage.getItem('arcascend_token');
+    if (!uid || !token) return;
+    var payload = {
+      hidden_tabs: hiddenTabs || [],
+      tab_order: Array.isArray(tabOrder) ? tabOrder : null
+    };
+    fetch(SUPABASE_URL + '/rest/v1/trainer_settings?user_id=eq.' + uid, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ tab_prefs: payload })
+    }).catch(function(e){ console.warn('saveTabPrefsToCloud failed:', e); });
+  }, 400);
+}
+
+function loadTabPrefsFromCloud() {
+  return new Promise(function(resolve){
+    var uid = localStorage.getItem('arcascend_user_id');
+    var token = localStorage.getItem('arcascend_token');
+    if (!uid || !token) { resolve(false); return; }
+    fetch(SUPABASE_URL + '/rest/v1/trainer_settings?user_id=eq.' + uid + '&select=tab_prefs', {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + token }
+    }).then(function(r){ return r.ok ? r.json() : []; }).then(function(rows){
+      var prefs = (rows && rows[0] && rows[0].tab_prefs) || null;
+      if (!prefs) { resolve(false); return; }
+      if (Array.isArray(prefs.hidden_tabs)) {
+        hiddenTabs = prefs.hidden_tabs;
+        localStorage.setItem(HIDDEN_TABS_KEY, JSON.stringify(hiddenTabs));
+      }
+      if (Array.isArray(prefs.tab_order)) {
+        tabOrder = prefs.tab_order;
+        localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrder));
+      }
+      if (typeof applyTabVisibility === 'function') applyTabVisibility();
+      if (typeof applyTabOrder === 'function') applyTabOrder();
+      resolve(true);
+    }).catch(function(e){ console.warn('loadTabPrefsFromCloud failed:', e); resolve(false); });
+  });
+}
+
+// On boot, after the existing local-storage load runs, fetch the cloud copy and overwrite if found.
+setTimeout(function(){ loadTabPrefsFromCloud(); }, 1500);
+
 
 function applyTabVisibility() {
   TAB_DEFS.forEach(function(t){
