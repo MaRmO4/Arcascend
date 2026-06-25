@@ -2425,17 +2425,19 @@ function renderRevenueBanner() {
 }
 
 function renderTabCounts() {
-  function set(id, val){ var el = $(id); if (el) el.textContent = val; }
-  set("c-all", LEADS.length);
-  set("c-clients", activeClients().length);
-  set("c-priority", LEADS.filter(function(L){ return L.priority; }).length);
-  set("c-remaining", LEADS.filter(function(L){ return bucketFor(L) === "remaining"; }).length);
+  (function(){var _el=$("c-all");if(_el)_el.textContent=LEADS.length;})();
+  (function(){var _el=$("c-clients");if(_el)_el.textContent=activeClients().length;})();
+  (function(){var _el=$("c-priority");if(_el)_el.textContent=LEADS.filter(function(L){ return L.priority;})(); }).length;
+  $("c-won").textContent = LEADS.filter(function(L){ return bucketFor(L) === "won"; }).length;
+  $("c-remaining").textContent = LEADS.filter(function(L){ return bucketFor(L) === "remaining"; }).length;
+  $("c-notes").textContent = LEADS.filter(function(L){ return L.notes && L.notes.trim(); }).length;
   var tasks = 0;
   LEADS.forEach(function(L){ tasks += openTaskCount(L); });
-  set("c-tasks", tasks);
-  set("c-buckets", BUCKETS.length);
+  $("c-tasks").textContent = tasks;
+  $("c-campaigns").textContent = CAMPAIGNS.filter(function(c){ return c.status === "active"; }).length;
+  $("c-buckets").textContent = BUCKETS.length;
   var syncN = (localStorage.getItem(SHEET_URL_KEY) ? 1 : 0) + (localStorage.getItem(AUTO_SYNC_KEY) === "1" ? 1 : 0);
-  set("c-sync", syncN);
+  $("c-sync").textContent = syncN;
 }
 
 // ==========================================================
