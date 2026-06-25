@@ -1338,6 +1338,13 @@ main { flex: 1; padding: 20px 24px; }
 // DATA
 // ==========================================================
 var STORAGE_KEY = "arcascend_data";
+// Per-account cache key. The leads cache must NEVER be shared across accounts,
+// so it is namespaced by the logged-in user id. Returns null when no user is
+// known (logged out) — callers must no-op rather than touch a global blob.
+function leadsCacheKey() {
+  var uid = localStorage.getItem('arcascend_user_id');
+  return uid ? (STORAGE_KEY + '_' + uid) : null;
+}
 var BUCKETS_KEY = "arcascend_buckets";
 var CAMPAIGNS_KEY = "arcascend_campaigns";
 var GOAL_KEY = "arcascend_goal";
@@ -1593,7 +1600,8 @@ function maybeRefresh() {
 }
 maybeRefresh();
 setInterval(maybeRefresh, 5 * 60 * 1000);
-loadTrainerQuestions();
+// loadTrainerQuestions() is deferred to initApp (after checkAuth verifies the account)
+// so it can never fetch another account's intake schema with a stale id on boot.
 
 
 var calMonth = new Date(); calMonth.setDate(1);
@@ -1704,15 +1712,61 @@ var currentUser = null;
 var currentGymId = null;
 
 // Check if user is logged in
+// Resolve the active account from the AUTH SESSION itself — never a cached id alone.
+// The access token is a signed JWT for exactly one user; arcascend_user_id is only a
+// convenience copy. If they ever disagree, the token wins and we correct the copy.
+// Returns one of:
+//   'ok'          - token valid, its owner matches (or first-time sets) the stored id
+//   'mismatch'    - token valid but its real owner != stored id  → genuine identity conflict
+//   'invalid'     - token definitively rejected (401/403)        → dead session
+//   'unreachable' - network error/timeout/5xx/bad body           → TRANSIENT, must NOT log out
+async function verifySession() {
+  var token = localStorage.getItem('arcascend_token');
+  if (!token) return 'invalid';
+  var res;
+  try {
+    res = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + token }
+    });
+  } catch(e) {
+    return 'unreachable';                 // offline / DNS / timeout — never a logout reason
+  }
+  if (res.status === 401 || res.status === 403) return 'invalid';  // token genuinely rejected
+  if (!res.ok) return 'unreachable';      // 5xx / proxy error page — treat as transient
+  var u;
+  try { u = await res.json(); } catch(e) { return 'unreachable'; }
+  if (!u || !u.id) return 'unreachable';
+  var storedId = localStorage.getItem('arcascend_user_id');
+  if (storedId && storedId !== u.id) return 'mismatch';            // the data-isolation guard
+  // Confirmed owner — keep id/email aligned with the token (no-op when already equal).
+  localStorage.setItem('arcascend_user_id', u.id);
+  if (u.email) localStorage.setItem('arcascend_user_email', u.email);
+  return 'ok';
+}
+
+function clearSessionAndLogin() {
+  Object.keys(localStorage)
+    .filter(function(k){ return k.indexOf('arcascend') === 0; })
+    .forEach(function(k){ localStorage.removeItem(k); });
+  window.location.href = 'login.html';
+}
+
 async function checkAuth() {
   var token = localStorage.getItem('arcascend_token');
   var userId = localStorage.getItem('arcascend_user_id');
-  if (!token || !userId) {
-    window.location.href = 'login.html';
-    return false;
+  if (!token || !userId) { clearSessionAndLogin(); return false; }
+  // Confirm the stored token's real owner before loading ANY account data.
+  var status = await verifySession();
+  if (status === 'invalid') {
+    // Token rejected — most often just expired. Try one refresh, then re-check.
+    await refreshAuthToken();
+    status = await verifySession();
   }
-  currentUser = { 
-    id: userId,
+  // ONLY a genuine identity mismatch, or a still-dead token after refresh, forces logout.
+  // A network error/timeout returns 'unreachable' and we proceed with the existing session.
+  if (status === 'mismatch' || status === 'invalid') { clearSessionAndLogin(); return false; }
+  currentUser = {
+    id: localStorage.getItem('arcascend_user_id'),
     email: localStorage.getItem('arcascend_user_email')
   };
   return true;
@@ -1768,23 +1822,25 @@ async function loadFromSupabase() {
         'apikey': SUPABASE_KEY
       }
     });
+    if (!res.ok) return false;           // auth/network error → caller may fall back to THIS user's cache
     var rows = await res.json();
-    if (Array.isArray(rows) && rows.length > 0) {
-      var allLeads = rows.map(function(r) {
-  try { return JSON.parse(r.data); } catch(e) { return r; }
-});
-// Deduplicate by name+phone key
-var seen = {};
-LEADS = allLeads.filter(function(l) {
-  var key = (l.name || '').trim().toLowerCase() + '|' + (l.phone || '').replace(/\D/g,'').slice(-10);
-  if (seen[key]) return false;
-  seen[key] = true;
-  return true;
-});
-localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
-return true;
-    }
-    return false;
+    if (!Array.isArray(rows)) return false;
+    var allLeads = rows.map(function(r) {
+      try { return JSON.parse(r.data); } catch(e) { return r; }
+    });
+    // Deduplicate by name+phone key
+    var seen = {};
+    LEADS = allLeads.filter(function(l) {
+      var key = (l.name || '').trim().toLowerCase() + '|' + (l.phone || '').replace(/\D/g,'').slice(-10);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+    // Supabase is the source of truth: persist to the per-account cache, even when empty.
+    // An empty result therefore shows an empty board — never another account's cached leads.
+    var ck = leadsCacheKey();
+    if (ck) localStorage.setItem(ck, JSON.stringify(LEADS));
+    return true;
   } catch(e) {
     return false;
   }
@@ -1805,7 +1861,8 @@ function performUndo() {
   var restored = UNDO_STACK.pop();
   LEADS = JSON.parse(restored);
   UNDO_PREV_SNAPSHOT = restored;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
+  var __ck = leadsCacheKey();
+  if (__ck) localStorage.setItem(__ck, JSON.stringify(LEADS));
   saveToSupabase();
   renderAll();
   var btn = document.getElementById("undo-btn");
@@ -1828,7 +1885,8 @@ renderAll = function() {
 function saveState() {
   pushUndoSnapshot();
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(LEADS));
+    var __ck = leadsCacheKey();
+    if (__ck) localStorage.setItem(__ck, JSON.stringify(LEADS));
     saveToSupabase();
     lastSavedAt = Date.now();
     localStorage.setItem(LAST_SAVED_KEY, String(lastSavedAt));
@@ -1866,7 +1924,9 @@ function updateSavedIndicator() {
 setInterval(updateSavedIndicator, 10000);
 function loadState() {
   try {
-    var raw = localStorage.getItem(STORAGE_KEY);
+    var ck = leadsCacheKey();
+    if (!ck) { LEADS = []; return; }   // no logged-in user → never load a shared blob
+    var raw = localStorage.getItem(ck);
     if (raw) {
       var parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) LEADS = parsed;
@@ -4492,11 +4552,18 @@ function initApp() {
     return;
   }
 
-  loadState();
+  // One-time cleanup: the leads cache used to live under a single global key shared by
+  // EVERY account. It is no longer read anywhere; purge it on every boot so a stale blob
+  // from another account can never linger. Per-account caches (arcascend_data_<uid>) remain.
+  localStorage.removeItem(STORAGE_KEY);
+
+  // Do NOT loadState() before checkAuth — nothing should render until the account
+  // is verified, otherwise a stale cache could flash before the real data loads.
   checkAuth().then(function(loggedIn) {
     if (loggedIn) {
+      loadTrainerQuestions();
       loadFromSupabase().then(function(loaded) {
-        if (!loaded) loadState();
+        if (!loaded) loadState();   // network/auth error only → this verified user's own cache
         loadBuckets();
         loadCampaigns();
         loadGoal();
