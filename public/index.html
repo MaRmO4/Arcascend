@@ -2425,9 +2425,9 @@ function renderRevenueBanner() {
 }
 
 function renderTabCounts() {
-  $("c-all").textContent = LEADS.length;
-  $("c-clients").textContent = activeClients().length;
-  $("c-priority").textContent = LEADS.filter(function(L){ return L.priority; }).length;
+  (function(){var _el=$("c-all");if(_el)_el.textContent=LEADS.length;})();
+  (function(){var _el=$("c-clients");if(_el)_el.textContent=activeClients().length;})();
+  (function(){var _el=$("c-priority");if(_el)_el.textContent=LEADS.filter(function(L){ return L.priority;})(); }).length;
   $("c-won").textContent = LEADS.filter(function(L){ return bucketFor(L) === "won"; }).length;
   $("c-remaining").textContent = LEADS.filter(function(L){ return bucketFor(L) === "remaining"; }).length;
   $("c-notes").textContent = LEADS.filter(function(L){ return L.notes && L.notes.trim(); }).length;
