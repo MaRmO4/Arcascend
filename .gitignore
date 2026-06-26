@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Local data backups (contain client PII — never commit)
+leads-backup-*.json
+
+# Local pre-edit file backups
+*.C[0-9]*-bak
+index.html.*-bak
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
