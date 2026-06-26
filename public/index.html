@@ -1363,6 +1363,16 @@ var monthlyGoal = 0;
 // ==========================================================
 function $(id) { return document.getElementById(id); }
 function uuid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+// Leads upsert onto a Postgres `uuid` PK, so their id MUST be a valid RFC-4122 UUID
+// (the uuid() helper above is fine for tasks/buckets but is NOT a valid uuid for that column).
+function newLeadId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+    var r = (window.crypto && crypto.getRandomValues) ? (crypto.getRandomValues(new Uint8Array(1))[0] & 15) : Math.floor(Math.random()*16);
+    var v = c === 'x' ? r : ((r & 0x3) | 0x8);
+    return v.toString(16);
+  });
+}
 function leadKey(L) {
 var name = (L.name || "").trim().toLowerCase();
   var phone = (L.phone || "").replace(/\D/g, "").slice(-10);
@@ -1776,17 +1786,11 @@ async function saveToSupabase() {
   var token = localStorage.getItem('arcascend_token');
   if (!token || !currentUser) return;
   try {
-    await fetch(SUPABASE_URL + '/rest/v1/leads?user_id=eq.' + currentUser.id, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'apikey': SUPABASE_KEY,
-        'Content-Type': 'application/json'
-      }
-    });
-    if (!LEADS.length) return;
+    if (!LEADS.length) return;   // nothing in memory → do NOT touch the DB (never bulk-wipe)
     var rows = LEADS.map(function(L) {
+      if (!L.id) L.id = newLeadId();   // every lead must carry a stable uuid to upsert on
       return {
+        id: L.id,
         user_id: currentUser.id,
         name: L.name || '',
         phone: L.phone || '',
@@ -1796,18 +1800,40 @@ async function saveToSupabase() {
         data: JSON.stringify(L)
       };
     });
-    await fetch(SUPABASE_URL + '/rest/v1/leads', {
+    // UPSERT on the id PK: existing rows update, new in-memory rows insert, and rows that
+    // exist in Supabase but NOT in memory (e.g. a fresh public-intake lead) are left untouched.
+    await fetch(SUPABASE_URL + '/rest/v1/leads?on_conflict=id', {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer ' + token,
         'apikey': SUPABASE_KEY,
         'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
       },
       body: JSON.stringify(rows)
     });
   } catch(e) {
     console.log('Supabase save error:', e);
+  }
+}
+
+// Targeted delete — the ONLY path that removes a lead row from Supabase. Used by the
+// explicit "Delete This Lead" button and bulk delete. Scoped by user_id on top of RLS.
+async function deleteLeadFromSupabase(id) {
+  if (!id) return;
+  var token = localStorage.getItem('arcascend_token');
+  if (!token || !currentUser) return;
+  try {
+    await fetch(SUPABASE_URL + '/rest/v1/leads?id=eq.' + encodeURIComponent(id) + '&user_id=eq.' + currentUser.id, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch(e) {
+    console.log('Supabase delete error:', e);
   }
 }
 
@@ -1826,7 +1852,13 @@ async function loadFromSupabase() {
     var rows = await res.json();
     if (!Array.isArray(rows)) return false;
     var allLeads = rows.map(function(r) {
-      try { return JSON.parse(r.data); } catch(e) { return r; }
+      var L;
+      try { L = JSON.parse(r.data); } catch(e) { L = null; }
+      if (!L || typeof L !== 'object') L = r;
+      // Stable identity: the Supabase row PK is authoritative. Carry it onto the in-memory
+      // lead (and thus into the data blob on next save) so saves upsert instead of duplicating.
+      L.id = r.id || L.id || newLeadId();
+      return L;
     });
     // Deduplicate by name+phone key
     var seen = {};
@@ -3839,6 +3871,7 @@ saveState(); renderAll(); openLead(name);
   // Delete lead
   $("delete-lead-btn").addEventListener("click", function(){
     if (!confirm("Permanently delete \"" + L.name + "\"? This cannot be undone.")) return;
+    deleteLeadFromSupabase(L.id);   // targeted DELETE by id (not a bulk-wipe side effect)
     LEADS = LEADS.filter(function(x){ return x !== L; });
     saveState();
     closeLead();
@@ -4485,6 +4518,9 @@ function cancelSelection() {
 function deleteSelected() {
   if (selectedLeads.size === 0) return;
   if (!confirm('Delete ' + selectedLeads.size + ' lead(s)? This cannot be undone.')) return;
+  // Targeted DELETE each selected lead from Supabase before dropping it from memory.
+  LEADS.filter(function(L){ return selectedLeads.has(L.name); })
+       .forEach(function(L){ deleteLeadFromSupabase(L.id); });
   LEADS = LEADS.filter(function(L) {
     return !selectedLeads.has(L.name);
   });
