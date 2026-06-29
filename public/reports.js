@@ -41,10 +41,32 @@ function reportsInitRange() {
 
 function reportsLoadEvents() {
   __REPORTS_LOADING = true;
-  var token = localStorage.getItem('arcascend_token');
-  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
   var from = __REPORTS_FROM + 'T00:00:00';
   var to = __REPORTS_TO + 'T23:59:59';
+  var fromMs = new Date(from + 'Z').getTime();   // treat naive bounds as UTC (matches server)
+  var toMs = new Date(to + 'Z').getTime();
+
+  // Option (a): serve from the prefetched cache ONLY when the requested range is fully
+  // within the cached window. The cache holds the 5000 most-recent events (newest first),
+  // so the newest end is always covered; the risk is only the range START reaching past
+  // the oldest cached event when the cache is capped. Otherwise fall back to a live fetch
+  // so wide/old ranges are never served stale or incomplete.
+  if (typeof cachedEvents !== 'undefined' && cachedEvents) {
+    var capped = cachedEvents.length >= 5000;
+    var oldestMs = cachedEvents.length ? new Date(cachedEvents[cachedEvents.length - 1].created_at).getTime() : null;
+    var covered = !capped || (oldestMs !== null && fromMs >= oldestMs);
+    if (covered) {
+      __REPORTS_EVENTS = cachedEvents.filter(function(e){
+        var t = new Date(e.created_at).getTime();
+        return t >= fromMs && t <= toMs;
+      }).sort(function(a, b){ return new Date(a.created_at) - new Date(b.created_at); });
+      __REPORTS_LOADING = false;
+      return Promise.resolve(__REPORTS_EVENTS);
+    }
+  }
+
+  var token = localStorage.getItem('arcascend_token');
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
   var url = SUPABASE_URL + '/rest/v1/lead_events?user_id=eq.' + uid
     + '&created_at=gte.' + from + '&created_at=lte.' + to
     + '&select=event_type,lead_name,event_data,created_at&order=created_at.asc&limit=5000';

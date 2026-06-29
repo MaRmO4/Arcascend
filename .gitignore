@@ -16,6 +16,7 @@ dist-ssr
 leads-backup-*.json
 
 # Local pre-edit file backups
+*-bak
 *.C[0-9]*-bak
 index.html.*-bak
 

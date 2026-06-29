@@ -1356,6 +1356,7 @@ var currentTab = 'all';
 var LEADS = [];
 var BUCKETS = [];
 var CAMPAIGNS = [];
+var cachedEvents = null;   // prefetched lead_events, shared by Calendar and Reports
 var monthlyGoal = 0;
 
 // ==========================================================
@@ -1620,11 +1621,19 @@ function renderCalendarTab(){
   main.innerHTML = '<div style="padding:20px;color:var(--text-muted)">Loading calendar...</div>';
   var token = localStorage.getItem('arcascend_token');
 
-  fetch(SUPABASE_URL + '/rest/v1/lead_events?user_id=eq.' + (currentUser?currentUser.id:'') + '&event_type=eq.lead_created&select=lead_name,created_at&order=created_at.desc&limit=500', {
-    headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
-  }).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; }).then(function(events){
-    drawCalendar(events || []);
-  });
+  if (cachedEvents) {
+    // Use prefetched events — filter to lead_created client-side, no network round-trip.
+    var cachedLeadCreated = cachedEvents
+      .filter(function(e){ return e.event_type === 'lead_created'; })
+      .map(function(e){ return { lead_name: e.lead_name, created_at: e.created_at }; });
+    drawCalendar(cachedLeadCreated);
+  } else {
+    fetch(SUPABASE_URL + '/rest/v1/lead_events?user_id=eq.' + (currentUser?currentUser.id:'') + '&event_type=eq.lead_created&select=lead_name,created_at&order=created_at.desc&limit=500', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    }).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; }).then(function(events){
+      drawCalendar(events || []);
+    });
+  }
 
   function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
   function parseLeadDate(str){ if(!str) return null; var d = new Date(str); return isNaN(d.getTime()) ? null : d; }
@@ -1876,6 +1885,21 @@ async function loadFromSupabase() {
   } catch(e) {
     return false;
   }
+}
+
+// Prefetch lead_events once at startup so Calendar and Reports open instantly.
+// Raw fetch (no supabase-js client in this app), keyed on the user_id column.
+async function prefetchEvents() {
+  if (cachedEvents) return;  // already loaded
+  var token = localStorage.getItem('arcascend_token');
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
+  if (!token || !uid) return;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/lead_events?user_id=eq.' + uid + '&select=*&order=created_at.desc&limit=5000', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (res.ok) cachedEvents = await res.json();  // else leave null → tabs fall back to their own fetch
+  } catch(e) {}
 }
 // ==========================================
 var UNDO_STACK = [];
@@ -4600,6 +4624,7 @@ function initApp() {
       loadTrainerQuestions();
       loadFromSupabase().then(function(loaded) {
         if (!loaded) loadState();   // network/auth error only → this verified user's own cache
+        prefetchEvents();   // fire-and-forget — warms cachedEvents in background while Home renders
         loadBuckets();
         loadCampaigns();
         loadGoal();
@@ -5242,8 +5267,8 @@ async function formsSaveSettings() {
   </div>
 </div>
 
-<script src="active-board.js"></script>
-<script src="reports.js"></script>
+<script src="active-board.js?v=1"></script>
+<script src="reports.js?v=1"></script>
 </body>
 </html>
 
