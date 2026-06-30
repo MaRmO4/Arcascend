@@ -1056,7 +1056,8 @@ main { flex: 1; padding: 20px 24px; }
   <div class="tab" data-tab="sync">🔄 Sync <span class="count" id="c-sync">0</span></div>
   
   <div class="tab" data-tab="remaining">○ Pipeline <span class="count" id="c-remaining">0</span></div>
-  <div class="tab" data-tab="forms">📋 Forms</div>
+  <div class="tab" data-tab="forms">📝 Create Form</div>
+  <div class="tab" data-tab="forms-library">📚 Forms <span class="count" id="c-forms-library">0</span></div>
 </nav>
 
 <div class="toolbar">
@@ -1168,7 +1169,9 @@ main { flex: 1; padding: 20px 24px; }
       </div>
       <div style="margin-top:20px;display:flex;gap:10px;align-items:center">
         <button onclick="formsSaveSettings()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Settings</button>
+        <button onclick="formsSaveAs()" style="padding:10px 20px;background:transparent;color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save as New Form</button>
         <span id="forms-save-status" style="font-size:13px;color:var(--text-muted)"></span>
+        <span id="forms-saveas-status" style="font-size:13px;color:var(--text-muted)"></span>
       </div>
     </div>
     <div class="card" style="padding:20px;margin-bottom:20px">
@@ -2549,7 +2552,7 @@ function renderTabCounts() {
   var tasks = 0;
   LEADS.forEach(function(L){ tasks += openTaskCount(L); });
   set("c-tasks", tasks);
-  set("c-buckets", BUCKETS.length);
+  set("c-buckets", bucketsCount);
   var syncN = (localStorage.getItem(SHEET_URL_KEY) ? 1 : 0) + (localStorage.getItem(AUTO_SYNC_KEY) === "1" ? 1 : 0);
   set("c-sync", syncN);
 }
@@ -3056,7 +3059,7 @@ function renderDynamicProfile(L) {
   if (!__TRAINER_QUESTIONS) return '<div style="padding:10px;color:var(--text-muted)">Loading profile…</div>';
   var qs = __TRAINER_QUESTIONS;
   var html = '';
-  html += '<div class="section-title" style="margin-top:20px;">\u270F\uFE0F PROFILE <span style="font-weight:normal;color:var(--text-muted);font-size:11px;text-transform:none;letter-spacing:0;">— click any field to edit, auto-saves on blur. Questions sync from your Forms tab.</span></div>';
+  html += '<div class="section-title" style="margin-top:20px;">\u270F\uFE0F PROFILE <span style="font-weight:normal;color:var(--text-muted);font-size:11px;text-transform:none;letter-spacing:0;">— click any field to edit, auto-saves on blur. Questions sync from your Create Form tab.</span></div>';
   html += '<div class="field-grid">';
   qs.forEach(function(q){
     var val = getAnswerValue(L, q);
@@ -3186,6 +3189,12 @@ function renderMain() {
   main.style.display = "";
   var tb2 = document.querySelector(".toolbar"); if(tb2) tb2.style.display = "";
   var fp2 = document.getElementById("tab-forms"); if(fp2) fp2.style.display = "none";
+
+  if (activeTab === "forms-library") {
+    var tb3 = document.querySelector(".toolbar"); if (tb3) tb3.style.display = "none";
+    renderFormsLibrary();
+    return;
+  }
 
   if (activeTab && activeTab.indexOf("custom-") === 0) {
     var bid = activeTab.slice("custom-".length);
@@ -3439,58 +3448,67 @@ function closeCampaign() { $("campaign-modal").classList.remove("show"); }
 // ==========================================================
 // BUCKETS TAB
 // ==========================================================
-function renderBucketsTab() {
+// Cached count of NEW-table buckets, owned by renderBucketsTab() and read by
+// renderTabCounts() for the #c-buckets badge (replaces the old BUCKETS.length).
+var bucketsCount = 0;
+
+// Rebuilt Buckets tab: real buckets from the `buckets` table (owner-scoped),
+// each showing the leads that deposited into it, matched by name
+// (lead's data.bucket === bucket.name). The old localStorage rule-based system
+// is left dormant (renderCustomTabs / pinned tabs still work off it).
+async function renderBucketsTab() {
   var main = $("main");
-  var cards = BUCKETS.map(function(b){
-    var cnt = leadsInBucket(b).length;
-    return '<div class="bucket-card" data-bid="' + b.id + '">' +
-      '<div class="bucket-icon">' + b.icon + '</div>' +
-      '<div class="bucket-name">' + b.name + '</div>' +
-      '<div class="bucket-desc">' + (b.desc || "") + '</div>' +
-      '<div class="bucket-count-row"><div>' +
-        '<div class="bucket-count">' + cnt + '</div>' +
-        '<div class="bucket-count-label">leads match</div>' +
-      '</div><div class="bucket-actions">' +
-        '<button class="bucket-action" data-pin="' + b.id + '">' + (b.pinAsTab?"📌 Pinned":"📌 Pin") + '</button>' +
-        '<button class="bucket-action" data-editbk="' + b.id + '">Edit</button>' +
-        '<button class="bucket-action delete" data-delbk="' + b.id + '">Del</button>' +
-      '</div></div></div>';
-  }).join("");
   main.innerHTML =
     '<div class="page-header"><div>' +
       '<div class="page-title">🎯 Lead Buckets</div>' +
-      '<div class="page-subtitle">Filter the pipeline by any combination. Pin any bucket as a nav tab.</div>' +
-    '</div><button class="btn" id="new-bk">+ Create Bucket</button></div>' +
-    '<div class="bucket-grid">' + cards + '</div>';
+      '<div class="page-subtitle">Leads that arrived through each form’s public link.</div>' +
+    '</div></div>' +
+    '<div id="buckets-body"><div style="padding:24px;color:var(--text-muted);font-size:13px">Loading…</div></div>';
 
-  $("new-bk").addEventListener("click", function(){ openBk(); });
-  main.querySelectorAll(".bucket-card").forEach(function(el){
-    el.addEventListener("click", function(e){
-      if (e.target.closest(".bucket-action")) return;
-      activeTab = "custom-" + el.dataset.bid;
-      renderAll();
+  if (!currentUser) return;
+  var token = localStorage.getItem('arcascend_token');
+  var buckets = [];
+  var failed = false;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/buckets?user_id=eq.' + currentUser.id + '&select=id,name,form_id,created_at&order=created_at.desc', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
     });
-  });
-  main.querySelectorAll("[data-editbk]").forEach(function(b){
-    b.addEventListener("click", function(e){ e.stopPropagation(); openBk(b.dataset.editbk); });
-  });
-  main.querySelectorAll("[data-pin]").forEach(function(b){
-    b.addEventListener("click", function(e){
-      e.stopPropagation();
-      var bk = BUCKETS.find(function(x){ return x.id === b.dataset.pin; });
-      if (!bk) return;
-      bk.pinAsTab = !bk.pinAsTab;
-      saveBuckets(); renderAll();
-    });
-  });
-  main.querySelectorAll("[data-delbk]").forEach(function(b){
-    b.addEventListener("click", function(e){
-      e.stopPropagation();
-      if (!confirm("Delete this bucket?")) return;
-      BUCKETS = BUCKETS.filter(function(x){ return x.id !== b.dataset.delbk; });
-      saveBuckets(); renderAll();
-    });
-  });
+    if (res.ok) { buckets = await res.json(); if (!Array.isArray(buckets)) buckets = []; }
+    else failed = true;
+  } catch(e) { failed = true; }
+
+  // Tab may have changed while the fetch was in flight.
+  if (activeTab !== "buckets") return;
+  var body = $("buckets-body");
+  if (!body) return;
+
+  if (failed) {
+    body.innerHTML = '<div style="padding:24px;color:var(--lost);font-size:13px">Could not load your buckets. Please try again.</div>';
+    return;
+  }
+
+  bucketsCount = buckets.length;
+  var badge = $("c-buckets"); if (badge) badge.textContent = bucketsCount;
+
+  if (!buckets.length) {
+    body.innerHTML = emptyState("🎯", "No buckets yet. On the Create Form tab, set a bucket and use “Save as New Form” — submissions to that form’s link will collect here.");
+    return;
+  }
+
+  body.innerHTML = buckets.map(function(b){
+    var matched = LEADS.filter(function(L){ return (L.bucket || '') === b.name; });
+    var header =
+      '<div style="display:flex;align-items:baseline;gap:10px;margin:24px 0 12px">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--text-primary)">' + escapeHtml(b.name) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted)">' + matched.length + (matched.length === 1 ? ' lead' : ' leads') + '</div>' +
+      '</div>';
+    var inner = matched.length
+      ? '<div class="lead-grid">' + matched.map(leadCard).join("") + '</div>'
+      : '<div style="padding:16px;color:var(--text-muted);font-size:13px;border:1px dashed var(--border);border-radius:10px">No leads yet — submissions to this form’s link will appear here.</div>';
+    return '<div>' + header + inner + '</div>';
+  }).join("");
+
+  wireCards();
 }
 
 // ==========================================================
@@ -4947,6 +4965,185 @@ const INTAKE_DEFAULT_QUESTIONS = [
 let formsSettings = {};
 let formsQuestions = [];
 let formsDragSrc = null;
+
+// ==========================================================
+// FORMS LIBRARY TAB (saved forms from the `forms` table)
+// ==========================================================
+function formsLibraryLink(publicId) {
+  return 'https://arcascend.app/intake.html?form=' + publicId;
+}
+
+function setFormsLibraryCount(n) {
+  var el = $("c-forms-library");
+  if (el) el.textContent = n;
+}
+
+async function renderFormsLibrary() {
+  var main = $("main");
+  main.innerHTML =
+    '<div class="page-header"><div>' +
+      '<div class="page-title">📚 Forms</div>' +
+      '<div class="page-subtitle">Your saved intake forms. Each has its own public link.</div>' +
+    '</div></div>' +
+    '<div id="forms-library-list"><div style="padding:24px;color:var(--text-muted);font-size:13px">Loading…</div></div>';
+
+  if (!currentUser) return;
+  var token = localStorage.getItem('arcascend_token');
+  var listEl = $("forms-library-list");
+  var forms = [];
+  var failed = false;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/forms?user_id=eq.' + currentUser.id + '&select=id,title,public_id,created_at&order=created_at.desc', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (res.ok) { forms = await res.json(); if (!Array.isArray(forms)) forms = []; }
+    else failed = true;
+  } catch(e) { failed = true; }
+
+  // Tab may have changed while the fetch was in flight.
+  if (activeTab !== "forms-library") return;
+  listEl = $("forms-library-list");
+  if (!listEl) return;
+
+  if (failed) {
+    listEl.innerHTML = '<div style="padding:24px;color:var(--lost);font-size:13px">Could not load your forms. Please try again.</div>';
+    return;
+  }
+
+  setFormsLibraryCount(forms.length);
+
+  if (!forms.length) {
+    listEl.innerHTML = emptyState("📚", "No saved forms yet. Use “Save as New Form” on the Create Form tab.");
+    return;
+  }
+
+  listEl.innerHTML = '<div class="lead-grid">' + forms.map(function(f){
+    var link = formsLibraryLink(f.public_id);
+    var created = f.created_at ? new Date(f.created_at).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}) : "";
+    return '<div class="card" style="padding:18px;display:flex;flex-direction:column;gap:10px">' +
+      '<div>' +
+        '<div style="font-size:15px;font-weight:700;color:var(--text-primary)">' + escapeHtml(f.title || "Untitled Form") + '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">Created ' + escapeHtml(created) + '</div>' +
+      '</div>' +
+      '<input readonly value="' + escapeAttr(link) + '" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text-primary);font-size:12px;font-family:monospace;box-sizing:border-box" />' +
+      '<div style="display:flex;gap:8px">' +
+        '<button class="btn" data-fl-copy="' + escapeAttr(link) + '" style="flex:1">Copy Link</button>' +
+        '<a class="btn btn-ghost" href="' + escapeAttr(link) + '" target="_blank" style="flex:0 0 auto;text-decoration:none">Open ↗</a>' +
+        '<button class="btn btn-ghost" data-fl-del="' + escapeAttr(f.id) + '" data-fl-title="' + escapeAttr(f.title || "Untitled Form") + '" style="flex:0 0 auto">Delete</button>' +
+      '</div>' +
+    '</div>';
+  }).join("") + '</div>';
+
+  listEl.querySelectorAll("[data-fl-copy]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      navigator.clipboard.writeText(btn.dataset.flCopy).then(function(){
+        var prev = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(function(){ btn.textContent = prev; }, 1800);
+      });
+    });
+  });
+
+  listEl.querySelectorAll("[data-fl-del]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var id = btn.dataset.flDel;
+      var title = btn.dataset.flTitle || "this form";
+      if (!confirm('Delete "' + title + '"?\n\nThis removes only the form from your library. Leads that already came through it are NOT affected.')) return;
+      formsLibraryDelete(id);
+    });
+  });
+}
+
+// Deletes ONLY the row in the `forms` table, double-scoped to the form id
+// AND the current user_id. It never touches the `leads` table, so any leads
+// that were submitted through this form remain intact in All Leads.
+async function formsLibraryDelete(id) {
+  if (!id || !currentUser) return;
+  var token = localStorage.getItem('arcascend_token');
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/forms?id=eq.' + encodeURIComponent(id) + '&user_id=eq.' + currentUser.id, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (!res.ok) { alert('Could not delete the form. Please try again.'); return; }
+  } catch(e) { alert('Error deleting form: ' + e.message); return; }
+  renderFormsLibrary();
+}
+
+// Save the current Create Form editor state as a NEW row in the `forms` table
+// (the library). This is entirely separate from formsSaveSettings(), which owns
+// the DEFAULT form in `trainer_settings`. formsSaveAs() NEVER touches
+// trainer_settings — it only INSERTs into `forms` (and auto-creates a `buckets`
+// row when a bucket name is set).
+async function formsSaveAs() {
+  if (!currentUser) return;
+  var statusEl = document.getElementById('forms-saveas-status');
+  var token = localStorage.getItem('arcascend_token');
+  var bucketName = (document.getElementById('forms-bucket').value || '').trim();
+  var payload = {
+    user_id: currentUser.id,
+    title: (document.getElementById('forms-form-title').value || '').trim() || 'Untitled Form',
+    gym_name: (document.getElementById('forms-gym-name').value || '').trim(),
+    form_description: (document.getElementById('forms-form-desc').value || '').trim(),
+    logo_url: (document.getElementById('forms-logo-url').value || '').trim(),
+    questions: formsQuestions,
+    bucket_name: bucketName || null,
+    is_default: false
+  };
+  if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = 'var(--text-muted)'; statusEl.style.fontWeight = ''; }
+
+  var newForm = null;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/forms', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      var err = await res.text();
+      if (statusEl) { statusEl.textContent = 'Error: ' + err; statusEl.style.color = 'var(--lost)'; }
+      return;
+    }
+    var rows = await res.json();
+    newForm = Array.isArray(rows) ? rows[0] : rows;
+  } catch(e) {
+    if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--lost)'; }
+    return;
+  }
+
+  // Auto-create the matching bucket, only when a name is set. on_conflict on the
+  // unique(user_id,name) constraint + ignore-duplicates means re-saving the same
+  // bucket name does NOT duplicate it and leaves an existing bucket's form_id intact.
+  if (bucketName && newForm && newForm.id) {
+    try {
+      await fetch(SUPABASE_URL + '/rest/v1/buckets?on_conflict=user_id,name', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'apikey': SUPABASE_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=ignore-duplicates,return=minimal'
+        },
+        body: JSON.stringify({ user_id: currentUser.id, name: bucketName, form_id: newForm.id })
+      });
+    } catch(e) { /* bucket is best-effort; the form itself already saved */ }
+  }
+
+  if (statusEl) {
+    statusEl.textContent = '✓ Saved to Forms library';
+    statusEl.style.color = '#22c55e';
+    statusEl.style.fontWeight = '600';
+    setTimeout(function(){ statusEl.textContent = ''; statusEl.style.color = ''; statusEl.style.fontWeight = ''; }, 2500);
+  }
+
+  // Refresh the library list if it happens to be the active tab.
+  if (activeTab === 'forms-library') renderFormsLibrary();
+}
 
 async function formsInit() {
   if (!currentUser) return;

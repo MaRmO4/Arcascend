@@ -83,7 +83,38 @@ var FALLBACK_QUESTIONS = [
 var loadedQuestions = [];
 var loadedBucket = '';
 
+// Per-form public link: ?form=<public_id> reads ONE published form via the
+// get_public_form RPC (anon key). Sets TRAINER_ID from the form's owner so the
+// submitted lead is attributed correctly, and loadedBucket from the form's
+// bucket_name so the lead carries the right bucket (used in 3b).
+async function loadPublicForm(formId) {
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/rpc/get_public_form', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_public_id: formId })
+    });
+    var rows = res.ok ? await res.json() : null;
+    var s = (rows && rows.length) ? rows[0] : null;
+    if (!s) { showFormNotFound(); return; }
+    if (s.user_id) TRAINER_ID = s.user_id;
+    if (s.title) { document.getElementById('form-title').textContent = s.title; document.title = s.title; }
+    if (s.form_description) document.getElementById('form-desc').textContent = s.form_description;
+    if (s.logo_url) { var img = document.getElementById('header-img'); img.src = s.logo_url; img.style.objectFit = 'contain'; img.style.background = '#111'; img.style.maxHeight = '200px'; }
+    loadedBucket = s.bucket_name || '';
+    loadedQuestions = (s.questions && s.questions.length > 0) ? s.questions : FALLBACK_QUESTIONS;
+  } catch(e) { showFormNotFound(); return; }
+  renderFields();
+}
+
+function showFormNotFound() {
+  var wrap = document.getElementById('form-wrap');
+  if (wrap) wrap.innerHTML = '<div class="success"><div class="success-icon">🔍</div><h2>Form not found</h2><p>This form link is invalid or no longer active. Please check with whoever shared it.</p></div>';
+}
+
 async function loadForm() {
+  var formId = params.get('form');
+  if (formId) { await loadPublicForm(formId); return; }
   try {
     var res = await fetch(SUPABASE_URL + '/rest/v1/trainer_settings?user_id=eq.' + TRAINER_ID + '&select=gym_name,form_title,form_description,logo_url,questions,default_bucket', {
       headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
