@@ -3502,9 +3502,10 @@ async function renderBucketsTab() {
   body.innerHTML = buckets.map(function(b){
     var matched = LEADS.filter(function(L){ return (L.bucket || '') === b.name; });
     var header =
-      '<div style="display:flex;align-items:baseline;gap:10px;margin:24px 0 12px">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin:24px 0 12px">' +
         '<div style="font-size:16px;font-weight:700;color:var(--text-primary)">' + escapeHtml(b.name) + '</div>' +
         '<div style="font-size:12px;color:var(--text-muted)">' + matched.length + (matched.length === 1 ? ' lead' : ' leads') + '</div>' +
+        '<button class="btn btn-ghost" data-bk-del="' + escapeAttr(b.id) + '" data-bk-name="' + escapeAttr(b.name) + '" style="margin-left:auto;padding:5px 12px;font-size:12px">Delete</button>' +
       '</div>';
     var inner = matched.length
       ? '<div class="lead-grid">' + matched.map(leadCard).join("") + '</div>'
@@ -3513,6 +3514,32 @@ async function renderBucketsTab() {
   }).join("");
 
   wireCards();
+
+  body.querySelectorAll("[data-bk-del]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var id = btn.dataset.bkDel;
+      var name = btn.dataset.bkName || "this bucket";
+      if (!confirm("Delete the bucket '" + name + "'? This removes only the bucket — leads stay in All Leads.")) return;
+      deleteBucket(id);
+    });
+  });
+}
+
+// Deletes ONLY the row in the `buckets` table, double-scoped to the bucket id
+// AND the current user_id. It NEVER issues a DELETE against /rest/v1/leads —
+// leads keep their data.bucket value and remain untouched in All Leads; the
+// bucket is just a grouping/folder.
+async function deleteBucket(id) {
+  if (!id || !currentUser) return;
+  var token = localStorage.getItem('arcascend_token');
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/buckets?id=eq.' + encodeURIComponent(id) + '&user_id=eq.' + currentUser.id, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (!res.ok) { alert('Could not delete the bucket. Please try again.'); return; }
+  } catch(e) { alert('Error deleting bucket: ' + e.message); return; }
+  renderBucketsTab();
 }
 
 // ==========================================================
