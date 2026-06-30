@@ -1148,10 +1148,14 @@ main { flex: 1; padding: 20px 24px; }
       </div>
     </div>
     <div class="card" style="padding:20px;margin-bottom:20px">
-      <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px">Form Branding</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Branding</div>
+        <button onclick="formsClearBranding()" style="padding:5px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">Clear</button>
+      </div>
       <div style="display:grid;gap:14px">
         <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Gym / Business Name</label><input id="forms-gym-name" placeholder="e.g. Fit Club" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
-        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Title</label><input id="forms-form-title" placeholder="e.g. Client Intake Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
+        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Title <span style="color:var(--text-muted);font-weight:400">(clients see this on the form)</span></label><input id="forms-form-title" placeholder="e.g. Client Intake Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
+        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Internal Label <span style="color:var(--text-muted);font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
         <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Description</label><textarea id="forms-form-desc" rows="2" placeholder="e.g. Fill out the form and we will be in touch shortly." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;resize:vertical;box-sizing:border-box"></textarea></div>
         <div>
   <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Header Image</label>
@@ -4993,7 +4997,7 @@ async function renderFormsLibrary() {
   var forms = [];
   var failed = false;
   try {
-    var res = await fetch(SUPABASE_URL + '/rest/v1/forms?user_id=eq.' + currentUser.id + '&select=id,title,public_id,created_at&order=created_at.desc', {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/forms?user_id=eq.' + currentUser.id + '&select=id,title,bucket_name,public_id,created_at&order=created_at.desc', {
       headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
     });
     if (res.ok) { forms = await res.json(); if (!Array.isArray(forms)) forms = []; }
@@ -5022,14 +5026,14 @@ async function renderFormsLibrary() {
     var created = f.created_at ? new Date(f.created_at).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}) : "";
     return '<div class="card" style="padding:18px;display:flex;flex-direction:column;gap:10px">' +
       '<div>' +
-        '<div style="font-size:15px;font-weight:700;color:var(--text-primary)">' + escapeHtml(f.title || "Untitled Form") + '</div>' +
+        '<div style="font-size:15px;font-weight:700;color:var(--text-primary)">' + escapeHtml(f.bucket_name || f.title || "Untitled Form") + '</div>' +
         '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">Created ' + escapeHtml(created) + '</div>' +
       '</div>' +
       '<input readonly value="' + escapeAttr(link) + '" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text-primary);font-size:12px;font-family:monospace;box-sizing:border-box" />' +
       '<div style="display:flex;gap:8px">' +
         '<button class="btn" data-fl-copy="' + escapeAttr(link) + '" style="flex:1">Copy Link</button>' +
         '<a class="btn btn-ghost" href="' + escapeAttr(link) + '" target="_blank" style="flex:0 0 auto;text-decoration:none">Open ↗</a>' +
-        '<button class="btn btn-ghost" data-fl-del="' + escapeAttr(f.id) + '" data-fl-title="' + escapeAttr(f.title || "Untitled Form") + '" style="flex:0 0 auto">Delete</button>' +
+        '<button class="btn btn-ghost" data-fl-del="' + escapeAttr(f.id) + '" data-fl-title="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto">Delete</button>' +
       '</div>' +
     '</div>';
   }).join("") + '</div>';
@@ -5070,6 +5074,18 @@ async function formsLibraryDelete(id) {
   renderFormsLibrary();
 }
 
+// Clear ONLY the branding fields back to defaults. Leaves Bucket Routing
+// (#forms-bucket, default-form only) and the questions untouched.
+function formsClearBranding() {
+  if (!confirm('Clear the branding fields? This resets gym name, form title, internal label, description, and logo. Bucket routing and questions are not affected.')) return;
+  document.getElementById('forms-gym-name').value = '';
+  document.getElementById('forms-form-title').value = 'Client Intake Form';
+  document.getElementById('forms-internal-label').value = '';
+  document.getElementById('forms-form-desc').value = '';
+  document.getElementById('forms-logo-url').value = '';
+  formsPreviewLogo('');
+}
+
 // Save the current Create Form editor state as a NEW row in the `forms` table
 // (the library). This is entirely separate from formsSaveSettings(), which owns
 // the DEFAULT form in `trainer_settings`. formsSaveAs() NEVER touches
@@ -5079,15 +5095,37 @@ async function formsSaveAs() {
   if (!currentUser) return;
   var statusEl = document.getElementById('forms-saveas-status');
   var token = localStorage.getItem('arcascend_token');
-  var bucketName = (document.getElementById('forms-bucket').value || '').trim();
+  var publicTitle = (document.getElementById('forms-form-title').value || '').trim() || 'Untitled Form';
+  var internalLabel = (document.getElementById('forms-internal-label').value || '').trim();
+  // Internal Label names the form (in the Forms library) and its bucket. Fall back
+  // to the public title, then 'Untitled Form', so a bucket name always exists.
+  var bucketName = internalLabel || publicTitle || 'Untitled Form';
+
+  // Duplicate-label check (owner-scoped): warn — but don't block — if another form
+  // already uses this internal label, since both would share the same bucket.
+  try {
+    var dupRes = await fetch(SUPABASE_URL + '/rest/v1/forms?user_id=eq.' + currentUser.id + '&bucket_name=eq.' + encodeURIComponent(bucketName) + '&select=id&limit=1', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (dupRes.ok) {
+      var dups = await dupRes.json();
+      if (Array.isArray(dups) && dups.length) {
+        if (!confirm('A form already uses the internal label "' + bucketName + '" — its leads will share that bucket. Continue?')) {
+          if (statusEl) { statusEl.textContent = ''; }
+          return;
+        }
+      }
+    }
+  } catch(e) { /* if the check fails, proceed with the save rather than block it */ }
+
   var payload = {
     user_id: currentUser.id,
-    title: (document.getElementById('forms-form-title').value || '').trim() || 'Untitled Form',
+    title: publicTitle,
     gym_name: (document.getElementById('forms-gym-name').value || '').trim(),
     form_description: (document.getElementById('forms-form-desc').value || '').trim(),
     logo_url: (document.getElementById('forms-logo-url').value || '').trim(),
     questions: formsQuestions,
-    bucket_name: bucketName || null,
+    bucket_name: bucketName,
     is_default: false
   };
   if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = 'var(--text-muted)'; statusEl.style.fontWeight = ''; }
