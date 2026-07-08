@@ -294,6 +294,14 @@ main { flex: 1; padding: 20px 24px; }
   width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 16px;
 }
 .modal-body { padding: 20px 24px; }
+@media print {
+  body * { visibility: hidden !important; }
+  #qr-modal, #qr-modal * { visibility: visible !important; }
+  #qr-modal { position: absolute !important; inset: 0 !important; display: block !important; background: #fff !important; padding: 40px !important; }
+  #qr-modal .modal { box-shadow: none !important; border: none !important; max-width: none !important; background: #fff !important; }
+  #qr-modal .modal-head, #qr-modal .qr-no-print { display: none !important; }
+  #qr-modal-name, #qr-modal-url { color: #000 !important; }
+}
 .section-title {
   font-size: 12px; font-weight: 600; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.5px;
@@ -1299,6 +1307,24 @@ main { flex: 1; padding: 20px 24px; }
 
       <div class="form-actions">
         <button class="btn" onclick="closeTabsModal()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="qr-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-head">
+      <div class="modal-title">Form QR Code</div>
+      <button class="modal-close" onclick="closeQrModal()">✕</button>
+    </div>
+    <div class="modal-body" style="text-align:center">
+      <div id="qr-modal-name" style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:14px;word-break:break-word"></div>
+      <div id="qr-modal-code" style="background:#fff;padding:16px;border-radius:10px;display:inline-block"></div>
+      <div id="qr-modal-url" style="font-size:12px;color:var(--muted);margin-top:14px;word-break:break-all;font-family:monospace"></div>
+      <div class="qr-no-print" style="margin-top:18px;display:flex;gap:10px;justify-content:center">
+        <button class="btn" onclick="window.print()">🖨 Print</button>
+        <button class="btn btn-ghost" onclick="closeQrModal()">Close</button>
       </div>
     </div>
   </div>
@@ -5110,6 +5136,7 @@ async function renderFormsLibrary() {
       '<div style="display:flex;gap:8px">' +
         '<button class="btn" data-fl-copy="' + escapeAttr(link) + '" style="flex:1">Copy Link</button>' +
         '<a class="btn btn-ghost" href="' + escapeAttr(link) + '" target="_blank" style="flex:0 0 auto;text-decoration:none">Open ↗</a>' +
+        '<button class="btn btn-ghost" data-fl-qr="' + escapeAttr(link) + '" data-fl-qrname="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto">🔲 QR</button>' +
         '<button class="btn btn-ghost" data-fl-del="' + escapeAttr(f.id) + '" data-fl-title="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto">Delete</button>' +
       '</div>' +
     '</div>';
@@ -5125,6 +5152,10 @@ async function renderFormsLibrary() {
     });
   });
 
+  listEl.querySelectorAll("[data-fl-qr]").forEach(function(btn){
+    btn.addEventListener("click", function(){ openFormQr(btn.dataset.flQr, btn.dataset.flQrname); });
+  });
+
   listEl.querySelectorAll("[data-fl-del]").forEach(function(btn){
     btn.addEventListener("click", function(){
       var id = btn.dataset.flDel;
@@ -5134,6 +5165,26 @@ async function renderFormsLibrary() {
     });
   });
 }
+
+// Opens a print-friendly QR modal for a form's public link. Reuses qrcodejs
+// (same lib as the default-form QR), rendered large (~300px) for print/screenshot.
+function openFormQr(link, name) {
+  var nameEl = document.getElementById('qr-modal-name');
+  var urlEl = document.getElementById('qr-modal-url');
+  var codeEl = document.getElementById('qr-modal-code');
+  if (nameEl) nameEl.textContent = name || 'Intake Form';
+  if (urlEl) urlEl.textContent = link;
+  if (codeEl) {
+    codeEl.innerHTML = '';
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(codeEl, { text: link, width: 300, height: 300, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M });
+    } else {
+      codeEl.textContent = 'QR library not loaded';
+    }
+  }
+  document.getElementById('qr-modal').classList.add('show');
+}
+function closeQrModal() { document.getElementById('qr-modal').classList.remove('show'); }
 
 // Deletes ONLY the row in the `forms` table, double-scoped to the form id
 // AND the current user_id. It never touches the `leads` table, so any leads
