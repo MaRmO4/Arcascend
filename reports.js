@@ -379,55 +379,58 @@ function renderRepLeads(body) {
 }
 
 // ===== REVENUE sub-tab =====
-function renderRepRevenue(body) {
-  var ev = __REPORTS_EVENTS || [];
-  var payments = ev.filter(function(e){ return e.event_type === 'payment_marked'; });
-  var totalPaid = payments.reduce(function(acc, e){
-    var amt = (e.event_data && e.event_data.amount) || 0;
-    return acc + (parseFloat(amt) || 0);
-  }, 0);
+// Months (YYYY-MM) spanned by the current From/To range, inclusive.
+function repMonthsInRange() {
+  var out = [];
+  var f = __REPORTS_FROM ? new Date(__REPORTS_FROM + 'T00:00:00') : null;
+  var t = __REPORTS_TO ? new Date(__REPORTS_TO + 'T00:00:00') : null;
+  // Range not ready / invalid → fall back to the current month so the KPI + chart
+  // always reflect at least this month (matches paidNow's default-view value).
+  if (!f || !t || isNaN(f) || isNaN(t)) {
+    return (typeof currentMonthKey === 'function') ? [currentMonthKey()] : out;
+  }
+  var m = new Date(f.getFullYear(), f.getMonth(), 1);
+  var endM = new Date(t.getFullYear(), t.getMonth(), 1);
+  while (m <= endM) {
+    out.push(m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0'));
+    m = new Date(m.getFullYear(), m.getMonth() + 1, 1);
+  }
+  return out;
+}
 
-  // Current monthly projection (uses live LEADS billing)
+// Revenue = billing.confirmations summed by month (NOT the old event log).
+// De-dupes by construction (one amount per lead per month) and ignores zeros.
+function renderRepRevenue(body) {
+  var CR = (typeof confirmedRevenueForMonth === 'function') ? confirmedRevenueForMonth : function(){ return 0; };
+  var curKey = (typeof currentMonthKey === 'function') ? currentMonthKey() : null;
   var activeC = (LEADS || []).filter(function(L){ return L.billing && L.billing.active; });
+
+  // Current-month projection (live billing) vs confirmed (from the month-map)
   var projection = activeC.reduce(function(acc, L){
     var sess = parseFloat(L.billing.sessions) || 0;
     var rate = parseFloat(L.billing.rate) || 0;
     return acc + sess * rate;
   }, 0);
-  var paidNow = activeC.filter(function(L){ return L.billing.paid; }).reduce(function(acc, L){
-    var sess = parseFloat(L.billing.sessions) || 0;
-    var rate = parseFloat(L.billing.rate) || 0;
-    return acc + sess * rate;
-  }, 0);
+  var paidNow = curKey ? CR(curKey) : 0;
   var outstanding = projection - paidNow;
 
-  // YTD payments
-  var yStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
-  // We only have events from the range; YTD shown is over the active range
-  // To do a true YTD we'd need to re-fetch — for now we annotate honestly.
-
-  // Daily revenue series in range
-  var buckets = repDateBuckets();
-  var revMap = {};
-  buckets.forEach(function(d){ revMap[d] = 0; });
-  payments.forEach(function(e){
-    var k = repBucketKeyFor(e.created_at);
-    var amt = parseFloat((e.event_data && e.event_data.amount) || 0) || 0;
-    if (revMap[k] !== undefined) revMap[k] += amt;
-  });
-  var revData = buckets.map(function(d){ return revMap[d]; });
+  // Confirmed revenue over the selected range, one bucket per month
+  var months = repMonthsInRange();
+  var revData = months.map(function(M){ return CR(M); });
+  var rangeTotal = revData.reduce(function(a, b){ return a + b; }, 0);
+  var clientsPaid = curKey ? activeC.filter(function(L){ return (typeof isConfirmed === 'function') && isConfirmed(L, curKey); }).length : 0;
 
   var html = '';
   html += repStatsGrid([
     { label: currentMonthLabel() + ' Projection', value: '$' + projection.toLocaleString(), color:'#4f9eff' },
     { label: currentMonthLabel() + ' Paid', value: '$' + paidNow.toLocaleString(), color:'#22c55e' },
     { label: 'Outstanding', value: '$' + outstanding.toLocaleString(), color:'#f59e0b' },
-    { label: 'Payments Logged (range)', value: '$' + totalPaid.toLocaleString() },
-    { label: 'Clients Paid', value: activeC.filter(function(L){return L.billing.paid;}).length + ' / ' + activeC.length }
+    { label: 'Payments Logged (range)', value: '$' + rangeTotal.toLocaleString() },
+    { label: 'Clients Paid', value: clientsPaid + ' / ' + activeC.length }
   ]);
   html += repCard('Revenue Logged Over Time (range)', '<div style="height:260px;"><canvas id="rep-chart-revenue"></canvas></div>');
   body.innerHTML = html;
-  repDrawLineChart('rep-chart-revenue', 'Revenue ($)', buckets, revData, '#22c55e');
+  repDrawLineChart('rep-chart-revenue', 'Revenue ($)', months, revData, '#22c55e');
 }
 
 // ===== CONVERSIONS sub-tab =====
@@ -482,7 +485,6 @@ function renderRepActivity(body) {
     lead_created: '\u2728',
     status_changed: '\ud83d\udd04',
     active_client_marked: '\ud83d\udcaa',
-    payment_marked: '\ud83d\udcb0',
     form_submitted: '\ud83d\udcdd',
     consultation_completed: '\u2705',
     follow_up_scheduled: '\ud83d\udcc5'
@@ -493,7 +495,7 @@ function renderRepActivity(body) {
   var statHtml = repStatsGrid([
     { label: 'Total Events', value: ev.length, color: '#4f9eff' },
     { label: 'Lead Activity', value: (byType.lead_created||0) + (byType.status_changed||0) },
-    { label: 'Payments', value: byType.payment_marked || 0, color: '#22c55e' },
+    { label: 'New Active Clients', value: byType.active_client_marked || 0, color: '#22c55e' },
     { label: 'Consultations', value: byType.consultation_completed || 0 }
   ]);
 
@@ -505,8 +507,6 @@ function renderRepActivity(body) {
     var detail = '';
     if (e.event_type === 'status_changed' && e.event_data) {
       detail = ((e.event_data.from || '?') + ' \u2192 ' + (e.event_data.to || '?'));
-    } else if (e.event_type === 'payment_marked' && e.event_data && e.event_data.amount) {
-      detail = '$' + e.event_data.amount;
     }
     listHtml += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">'
       + '<div style="font-size:16px;">' + emoji + '</div>'

@@ -1436,12 +1436,48 @@ function fmt$(n) {
 function ensureBilling(L) {
   if (!L.billing) L.billing = { active: false, sessions: 0, rate: 0, package: "", paid: false };
   if (L.billing.paid === undefined) L.billing.paid = false;
+  if (!L.billing.confirmations) L.billing.confirmations = {};   // month-map: { "YYYY-MM": { amount, at } }
   return L.billing;
 }
 function leadTotal(L) {
   var b = ensureBilling(L);
   return (b.sessions || 0) * (b.rate || 0);
 }
+
+// ===== Per-month revenue confirmations (replaces the lifetime "Paid" flag) =====
+// A lead is "confirmed for a month" when billing.confirmations[monthKey] exists.
+// b.paid is kept as a DERIVED compat field (= confirmed for the CURRENT month) so
+// existing readers don't break until Reports/roster are migrated in later phases.
+function isConfirmed(L, monthKey) {
+  var b = ensureBilling(L);
+  return !!(b.confirmations && b.confirmations[monthKey]);
+}
+function confirmMonth(L, monthKey) {
+  var b = ensureBilling(L);
+  if (leadTotal(L) <= 0) return false;   // GUARD: $0 can never be confirmed
+  b.confirmations[monthKey] = { amount: leadTotal(L), at: new Date().toISOString() };
+  b.paid = isConfirmed(L, currentMonthKey());   // derived compat field
+  return true;
+}
+function unconfirmMonth(L, monthKey) {
+  var b = ensureBilling(L);
+  if (b.confirmations) delete b.confirmations[monthKey];
+  b.paid = isConfirmed(L, currentMonthKey());   // derived compat field
+}
+// Confirmed revenue helpers — the single source of truth for "paid" money,
+// summed straight from the month-map. Used by the home/Active KPIs and Reports.
+function confirmedAmount(L, monthKey) {
+  var b = L.billing;
+  return (b && b.confirmations && b.confirmations[monthKey]) ? (b.confirmations[monthKey].amount || 0) : 0;
+}
+function confirmedRevenueForMonth(monthKey) {
+  return (LEADS || []).reduce(function(acc, L){ return acc + confirmedAmount(L, monthKey); }, 0);
+}
+// These are already globals (this is one top-level <script>, same as LEADS/isConfirmed/
+// currentMonthKey that reports.js already reads). Assigned to window explicitly as
+// belt-and-suspenders so reports.js's CR can never fall back to the stub.
+window.confirmedAmount = confirmedAmount;
+window.confirmedRevenueForMonth = confirmedRevenueForMonth;
 function activeClients() {
   return LEADS.filter(function(L){ return L.billing && L.billing.active; });
 }
@@ -1451,9 +1487,8 @@ function totalRevenue() {
   return t;
 }
 function totalPaid() {
-  var t = 0;
-  activeClients().forEach(function(L){ if (L.billing.paid) t += leadTotal(L); });
-  return t;
+  // Confirmed revenue for the current month, from the month-map (not the stale flag).
+  return confirmedRevenueForMonth(currentMonthKey());
 }
 function totalOutstanding() {
   return totalRevenue() - totalPaid();
@@ -1522,6 +1557,8 @@ function currentMonthKey(){
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
 }
 function runMonthlyPaidResetIfNeeded(){
+  return;   // RETIRED (Phase 3): billing.confirmations is month-scoped, so the monthly
+            // paid-wipe is obsolete. Kept as an inert no-op in case anything calls it.
   try {
     var thisMonth = currentMonthKey();
     var lastReset = localStorage.getItem('arcascend_last_paid_reset');
@@ -1552,9 +1589,9 @@ function runMonthlyPaidResetIfNeeded(){
     }
   } catch(e) { console.warn('runMonthlyPaidResetIfNeeded error:', e); }
 }
-// Run on app boot (after LEADS loads) and check again every hour for long-running tabs
-setTimeout(runMonthlyPaidResetIfNeeded, 3000);
-setInterval(runMonthlyPaidResetIfNeeded, 60 * 60 * 1000);
+// RETIRED (Phase 3): the monthly paid-reset wipe is obsolete — billing.confirmations
+// is inherently month-scoped, so a new month simply shows no confirmation. Boot/hourly
+// calls removed.
 
 function logEvent(eventType, leadName, extraData) {
   try {
@@ -3258,10 +3295,11 @@ function renderClientsTab() {
   });
 
   var totalRev = 0, totalSess = 0, paidRev = 0, paidCount = 0;
+  var __mk = currentMonthKey();
   clients.forEach(function(L){
     totalRev += leadTotal(L);
     totalSess += (L.billing.sessions || 0);
-    if (L.billing.paid) { paidRev += leadTotal(L); paidCount++; }
+    if (isConfirmed(L, __mk)) { paidRev += confirmedAmount(L, __mk); paidCount++; }
   });
   var outstandingRev = totalRev - paidRev;
   var avg = clients.length ? Math.round(totalRev / clients.length) : 0;
@@ -3861,10 +3899,17 @@ function openLead(name) {
           '<div class="billing-total-label">Total This Month</div>' +
           '<div class="billing-total-value" id="b-total">' + fmt$(leadTotal(L)) + '</div>' +
         '</div>' +
-        '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (b.paid?"rgba(34,197,94,0.12)":"var(--panel)") + ';border:1px solid ' + (b.paid?"rgba(34,197,94,0.4)":"var(--border)") + ';">' +
-          '<input type="checkbox" id="b-paid" ' + (b.paid?"checked":"") + '>' +
-          '<label for="b-paid" style="font-weight:600;cursor:pointer;color:' + (b.paid?"var(--won)":"var(--text)") + ';">' + (b.paid?"✓ Paid for this month":"Mark as Paid for this month") + '</label>' +
-        '</div>' +
+        (function(){
+          var mk = currentMonthKey();
+          var confirmed = isConfirmed(L, mk);
+          var canConfirm = leadTotal(L) > 0;
+          var lbl = confirmed ? ("✓ Confirmed for " + currentMonthLabel()) : ("Confirm for " + currentMonthLabel());
+          return '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (confirmed?"rgba(34,197,94,0.12)":"var(--panel)") + ';border:1px solid ' + (confirmed?"rgba(34,197,94,0.4)":"var(--border)") + ';">' +
+            '<input type="checkbox" id="b-paid" ' + (confirmed?"checked":"") + (canConfirm?"":" disabled") + '>' +
+            '<label for="b-paid" style="font-weight:600;cursor:' + (canConfirm?"pointer":"not-allowed") + ';color:' + (confirmed?"var(--won)":(canConfirm?"var(--text)":"var(--text-muted)")) + ';">' + lbl + '</label>' +
+            (canConfirm ? "" : '<span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Set a rate &amp; sessions to confirm</span>') +
+          '</div>';
+        })() +
       '</div>' +
 
       '<div class="section-title">Deal Status</div>' +
@@ -3982,23 +4027,29 @@ updateTotal();
     saveState(); renderAll();
   });
   $("b-paid").addEventListener("change", function(e){
-    b.paid = e.target.checked;
-if (b.paid) logEvent('payment_marked', L.name, { amount: leadTotal(L) });
-saveState();
-renderRevenueBanner();
-    // Live-update the paid row styling + label
+    var mk = currentMonthKey();
+    if (e.target.checked) {
+      // confirmMonth guards $0 (box is also disabled at $0 — belt and suspenders).
+      if (!confirmMonth(L, mk)) { e.target.checked = false; return; }
+    } else {
+      unconfirmMonth(L, mk);
+    }
+    saveState();            // saveState() already persists to Supabase internally
+    renderRevenueBanner();
+    renderTabCounts();
+    // Live-update the confirm row styling + label
     var row = $("b-paid-row");
     var lbl = row.querySelector("label");
-    if (b.paid) {
+    if (isConfirmed(L, mk)) {
       row.style.background = "rgba(34,197,94,0.12)";
       row.style.borderColor = "rgba(34,197,94,0.4)";
       lbl.style.color = "var(--won)";
-      lbl.textContent = "✓ Paid for this month";
+      lbl.textContent = "✓ Confirmed for " + currentMonthLabel();
     } else {
       row.style.background = "var(--panel)";
       row.style.borderColor = "var(--border)";
       lbl.style.color = "var(--text)";
-      lbl.textContent = "Mark as Paid for this month";
+      lbl.textContent = "Confirm for " + currentMonthLabel();
     }
   });
 
@@ -4386,8 +4437,7 @@ document.getElementById('main').style.display = 'none';
   return sum + ((b.sessions || 0) * (b.rate || 0));
 }, 0);
 var totalPaid = LEADS.reduce(function(sum, l) {
-  var b = l.billing || {};
-  return sum + (b.paid ? ((b.sessions || 0) * (b.rate || 0)) : 0);
+  return sum + confirmedAmount(l, currentMonthKey());
 }, 0);
   var outstanding = Math.max(0, totalProjection - totalPaid);
 
@@ -5529,8 +5579,855 @@ async function formsSaveSettings() {
   </div>
 </div>
 
-<script src="active-board.js?v=1"></script>
-<script src="reports.js?v=1"></script>
+<script>
+/* ===== inlined from active-board.js (Phase 3: eliminate stale-file JS caching) ===== */
+// ============== ACTIVE CLIENTS BOARD ==============
+var __ACTIVE_VIEW = localStorage.getItem('arcascend_activeview') || 'list';
+var selectedRosterMonth = null;   // "YYYY-MM" — the month the roster panel is confirming
+
+function sessionsToRow(L) {
+  if (L.weeklySessionsOverride) return L.weeklySessionsOverride;
+  // Prefer billing.package label since that's what drag now sets
+  var pkg = (L.billing && L.billing.package) || '';
+  if (pkg.indexOf('5x') === 0) return '5x+';
+  if (pkg.indexOf('4x') === 0) return '4x';
+  if (pkg.indexOf('3x') === 0) return '3x';
+  if (pkg.indexOf('2x') === 0) return '2x';
+  if (pkg.indexOf('1x') === 0) return '1x';
+  // Fall back to session-count buckets
+  var n = parseInt((L.billing && L.billing.sessions) || 0, 10);
+  if (n >= 13) return '4x';
+  if (n >= 9) return '3x';
+  if (n >= 6) return '2x';
+  return '1x';
+}
+
+function activeIsPaid(L) {
+  // Routed through the month-confirmation model; fall back to the legacy flag
+  // only if the helpers aren't loaded yet.
+  if (typeof isConfirmed === 'function' && typeof currentMonthKey === 'function') {
+    return isConfirmed(L, currentMonthKey());
+  }
+  return !!(L.billing && L.billing.paid);
+}
+
+function setActivePaid(L, paid) {
+  if (!L.billing) L.billing = {};
+  var mk = (typeof currentMonthKey === 'function') ? currentMonthKey() : null;
+  if (paid) {
+    // $0 guard: confirmMonth returns false when leadTotal <= 0 — do nothing (no paid,
+    // no log) so the card returns to Projected on the caller's re-render.
+    if (typeof confirmMonth === 'function' && mk) {
+      if (!confirmMonth(L, mk)) return;
+    } else {
+      L.billing.paid = true;   // fallback if helpers unavailable
+    }
+    // payment_marked write RETIRED (Phase 3) — confirmations are the source of truth.
+  } else {
+    if (typeof unconfirmMonth === 'function' && mk) {
+      unconfirmMonth(L, mk);
+    } else {
+      L.billing.paid = false;  // fallback if helpers unavailable
+    }
+  }
+}
+
+// ===== Monthly roster (bulk per-month confirmations) =====
+function rosterMonthOptions() {
+  var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var base = new Date();
+  var out = [];
+  for (var i = 0; i < 6; i++) {
+    var dd = new Date(base.getFullYear(), base.getMonth() - i, 1);   // current + previous 5
+    out.push({
+      key: dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0'),
+      label: monthNames[dd.getMonth()] + ' ' + dd.getFullYear()
+    });
+  }
+  return out;
+}
+function rosterMonthLabel(mk) {
+  var m = rosterMonthOptions().filter(function(o){ return o.key === mk; })[0];
+  return m ? m.label : mk;
+}
+function rosterPanelHTML() {
+  var mk = selectedRosterMonth;
+  var f$ = (typeof fmt$ === 'function') ? fmt$ : function(n){ return '$' + (n || 0); };
+  var lt = function(L){ return (typeof leadTotal === 'function') ? leadTotal(L) : ((L.billing && L.billing.sessions || 0) * (L.billing && L.billing.rate || 0)); };
+  var confd = function(L){ return (typeof isConfirmed === 'function') && isConfirmed(L, mk); };
+  var clients = (typeof activeClients === 'function') ? activeClients() : LEADS.filter(function(L){ return L.billing && L.billing.active; });
+
+  var confirmedTotal = 0, projectedTotal = 0, confirmedCount = 0;
+  clients.forEach(function(L){
+    projectedTotal += lt(L);
+    if (confd(L)) { confirmedTotal += (L.billing.confirmations[mk].amount || 0); confirmedCount++; }
+  });
+
+  var opts = rosterMonthOptions().map(function(o){
+    return '<option value="' + o.key + '"' + (o.key === mk ? ' selected' : '') + '>' + o.label + '</option>';
+  }).join('');
+
+  var rowsHtml = clients.map(function(L){
+    var amt = lt(L);
+    var conf = confd(L);
+    var canConfirm = amt > 0;
+    var nm = (L.name || '(no name)');
+    return '<div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);">' +
+      '<div style="font-size:13px;font-weight:600;">' + nm + '</div>' +
+      '<div style="font-size:13px;color:var(--text-muted);min-width:60px;text-align:right;">' + f$(amt) + '</div>' +
+      '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;cursor:' + (canConfirm ? 'pointer' : 'not-allowed') + ';color:' + (conf ? 'var(--won)' : (canConfirm ? 'var(--text)' : 'var(--text-muted)')) + ';">' +
+        '<input type="checkbox" class="roster-confirm" data-name="' + nm.replace(/"/g,'&quot;') + '" ' + (conf ? 'checked' : '') + (canConfirm ? '' : ' disabled') + '> ' +
+        (conf ? 'Confirmed' : (canConfirm ? 'Confirm' : 'No rate')) +
+      '</label>' +
+    '</div>';
+  }).join('');
+
+  return '<div id="ac-roster" style="margin:6px 20px 10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);">' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span style="font-size:13px;font-weight:600;">Monthly confirmations</span>' +
+        '<select id="roster-month" style="background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;">' + opts + '</select>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+        '<span style="font-size:12px;color:var(--text-muted);">Confirmed <b style="color:var(--won);">' + f$(confirmedTotal) + '</b> of ' + f$(projectedTotal) + ' projected · ' + confirmedCount + '/' + clients.length + ' clients</span>' +
+        '<button id="roster-confirm-all" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">Confirm all</button>' +
+      '</div>' +
+    '</div>' +
+    '<div>' + (rowsHtml || '<div style="padding:14px;color:var(--text-muted);font-size:13px;">No active clients.</div>') + '</div>' +
+  '</div>';
+}
+function wireRoster() {
+  var sel = document.getElementById('roster-month');
+  if (sel) sel.addEventListener('change', function(){ selectedRosterMonth = sel.value; renderActiveClientsBoard(); });
+
+  document.querySelectorAll('.roster-confirm').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var L = LEADS.find(function(x){ return (x.name || '') === cb.dataset.name; });
+      if (!L) return;
+      var mk = selectedRosterMonth;
+      if (cb.checked) {
+        // $0 guard: revert the box if confirmMonth refuses (leadTotal <= 0)
+        if (typeof confirmMonth === 'function' && !confirmMonth(L, mk)) { cb.checked = false; return; }
+      } else {
+        if (typeof unconfirmMonth === 'function') unconfirmMonth(L, mk);
+      }
+      if (typeof saveState === 'function') saveState();
+      if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
+      if (typeof renderTabCounts === 'function') renderTabCounts();
+      renderActiveClientsBoard();
+    });
+  });
+
+  var all = document.getElementById('roster-confirm-all');
+  if (all) all.addEventListener('click', function(){
+    var mk = selectedRosterMonth;
+    var clients = (typeof activeClients === 'function') ? activeClients() : LEADS.filter(function(L){ return L.billing && L.billing.active; });
+    var confirmed = 0, skipped = 0;
+    clients.forEach(function(L){
+      if (typeof confirmMonth === 'function' && confirmMonth(L, mk)) confirmed++;   // guard skips $0
+      else skipped++;
+    });
+    if (typeof saveState === 'function') saveState();
+    if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
+    if (typeof renderTabCounts === 'function') renderTabCounts();
+    renderActiveClientsBoard();
+    alert('Confirmed ' + confirmed + ' client' + (confirmed === 1 ? '' : 's') +
+          (skipped ? (', skipped ' + skipped + ' with no rate/sessions') : '') +
+          ' for ' + rosterMonthLabel(mk) + '.');
+  });
+}
+
+function renderActiveClientsBoard() {
+  var main = document.getElementById('main');
+  if (!main) return;
+  if (!selectedRosterMonth) selectedRosterMonth = (typeof currentMonthKey === 'function') ? currentMonthKey() : null;
+  var rows = ['1x','2x','3x','4x','5x+'];
+  var clients = (typeof activeClients === 'function') ? activeClients() : LEADS.filter(function(L){ return L.billing && L.billing.active; });
+
+  var bucket = {};
+  rows.forEach(function(r){ bucket[r] = { Projected:[], Paid:[] }; });
+  clients.forEach(function(L){
+    var r = sessionsToRow(L);
+    if (rows.indexOf(r) < 0) r = '1x';
+    var col = activeIsPaid(L) ? 'Paid' : 'Projected';
+    bucket[r][col].push(L);
+  });
+
+  var html = '';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 4px;">';
+  html += '<div style="font-size:18px;font-weight:600;">Active Clients <span style="color:var(--text-muted);font-weight:normal;font-size:13px;">(' + clients.length + ')</span></div>';
+  html += '<div style="display:inline-flex;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;">';
+  html += '<button id="ac-view-list" style="padding:6px 14px;border:none;background:' + (__ACTIVE_VIEW==='list'?'var(--accent)':'transparent') + ';color:' + (__ACTIVE_VIEW==='list'?'#fff':'var(--text)') + ';font-size:13px;cursor:pointer;">List</button>';
+  html += '<button id="ac-view-board" style="padding:6px 14px;border:none;background:' + (__ACTIVE_VIEW==='board'?'var(--accent)':'transparent') + ';color:' + (__ACTIVE_VIEW==='board'?'#fff':'var(--text)') + ';font-size:13px;cursor:pointer;">Board</button>';
+  html += '</div></div>';
+
+  if (__ACTIVE_VIEW === 'list') {
+    // Inject our List/Board toggle above main, then defer to the existing rich card renderer.
+    main.innerHTML = html;
+    var listMount = document.createElement('div');
+    listMount.id = 'ac-list-mount';
+    main.appendChild(listMount);
+    if (typeof renderClientsTab === 'function') {
+      // renderClientsTab() rewrites #main internals; capture, then prepend our toggle bar back
+      var toggleBar = main.firstChild.cloneNode(true);
+      renderClientsTab();
+      // Re-inject the toggle bar at the top of #main
+      if (main.firstChild) {
+        main.insertBefore(toggleBar, main.firstChild);
+      }
+      // Roster panel sits just below the toggle bar (renderClientsTab wiped it out).
+      toggleBar.insertAdjacentHTML('afterend', rosterPanelHTML());
+      // Re-wire the buttons in the freshly inserted toggle bar + roster
+      wireActiveToggle();
+      wireRoster();
+    } else {
+      wireActiveToggle();
+    }
+    return;
+  }
+
+  html += rosterPanelHTML();
+  html += '<div style="padding:14px 20px 30px;">';
+  html += '<div style="display:grid;grid-template-columns:60px 1fr 1fr;gap:8px;align-items:stretch;">';
+  html += '<div></div>';
+  html += '<div style="text-align:center;font-size:12px;font-weight:600;color:var(--text-muted);padding:4px;">PROJECTED</div>';
+  html += '<div style="text-align:center;font-size:12px;font-weight:600;color:var(--won);padding:4px;">PAID</div>';
+  rows.forEach(function(r){
+    html += '<div style="display:flex;align-items:center;justify-content:flex-end;font-size:13px;color:var(--text-muted);font-weight:600;padding:0 6px;">' + r + '</div>';
+    ['Projected','Paid'].forEach(function(col){
+      var list = bucket[r][col];
+      html += '<div class="ac-cell" data-row="' + r + '" data-col="' + col + '" style="background:var(--panel);border:1px solid var(--border);border-radius:8px;min-height:50px;padding:6px;">';
+      list.forEach(function(L){
+        var sess = (L.billing && L.billing.sessions) ? L.billing.sessions : 0;
+        var price = (L.billing && L.billing.rate) ? L.billing.rate : 0;
+        var subtitle = sess + ' sess' + (price ? ' · $' + (sess*price) : '');
+        html += '<div class="ac-card" draggable="true" data-name="' + (L.name||'').replace(/"/g,'&quot;') + '" style="background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;margin-bottom:4px;cursor:grab;">';
+        html += '<div style="font-size:13px;font-weight:600;">' + (L.name||'(no name)') + '</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + subtitle + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    });
+  });
+  html += '</div></div>';
+  main.innerHTML = html;
+  wireActiveToggle();
+  wireActiveBoardDnD();
+  wireRoster();
+}
+
+function wireActiveToggle(){
+  var b1 = document.getElementById('ac-view-list');
+  var b2 = document.getElementById('ac-view-board');
+  if (b1) b1.addEventListener('click', function(){ __ACTIVE_VIEW='list'; localStorage.setItem('arcascend_activeview','list'); renderActiveClientsBoard(); });
+  if (b2) b2.addEventListener('click', function(){ __ACTIVE_VIEW='board'; localStorage.setItem('arcascend_activeview','board'); renderActiveClientsBoard(); });
+}
+
+function wireActiveBoardDnD(){
+  var dragName = null;
+  // Auto-scroll when dragging near top/bottom of viewport
+  var __dragScrollTimer = null;
+  function handleDragScroll(e){
+    var y = e.clientY;
+    var vh = window.innerHeight;
+    var edge = 80; // px from top/bottom that triggers scroll
+    var speed = 0;
+    if (y < edge) speed = -Math.max(6, (edge - y) / 4);
+    else if (y > vh - edge) speed = Math.max(6, (y - (vh - edge)) / 4);
+    if (speed !== 0) window.scrollBy(0, speed);
+  }
+  document.addEventListener('dragover', handleDragScroll);
+  document.querySelectorAll('.ac-card').forEach(function(card){
+    card.addEventListener('click', function(){
+      if (card.__justDragged) { card.__justDragged = false; return; }
+      if (typeof openLead === 'function') openLead(card.dataset.name);
+    });
+    card.addEventListener('dragstart', function(e){
+      dragName = card.dataset.name;
+      card.style.opacity = '0.5';
+      try { e.dataTransfer.setData('text/plain', dragName); } catch(_){}
+    });
+    card.addEventListener('dragend', function(){
+      card.style.opacity = '1';
+      card.__justDragged = true;
+      setTimeout(function(){ card.__justDragged = false; }, 300);
+    });
+  });
+  document.querySelectorAll('.ac-cell').forEach(function(cell){
+    cell.addEventListener('dragover', function(e){ e.preventDefault(); cell.style.outline = '2px dashed var(--accent)'; });
+    cell.addEventListener('dragleave', function(){ cell.style.outline = 'none'; });
+    cell.addEventListener('drop', function(e){
+      e.preventDefault();
+      cell.style.outline = 'none';
+      var name = dragName || e.dataTransfer.getData('text/plain');
+      if (!name) return;
+      var L = LEADS.find(function(x){ return x.name === name; });
+      if (!L) return;
+      var newRow = cell.dataset.row;
+      var newCol = cell.dataset.col;
+      // Map row -> package label and default sessions (matches existing PACKAGE dropdown options)
+      var ROW_TO_PACKAGE = { '1x':'1x/week', '2x':'2x/week', '3x':'3x/week', '4x':'4x/week', '5x+':'5x+/week' };
+      var ROW_TO_SESSIONS = { '1x':4, '2x':8, '3x':12, '4x':16, '5x+':20 };
+      if (!L.billing) L.billing = {};
+      L.billing.package = ROW_TO_PACKAGE[newRow] || L.billing.package;
+      L.billing.sessions = ROW_TO_SESSIONS[newRow] || L.billing.sessions;
+      // Clear the override since the row now matches sessions naturally
+      delete L.weeklySessionsOverride;
+      setActivePaid(L, newCol === 'Paid');
+      if (typeof saveState === 'function') saveState();
+      renderActiveClientsBoard();
+    });
+  });
+}
+
+// Auto-refresh: while Board view is visible, watch for paid changes elsewhere (e.g. lead modal checkbox) and re-render.
+var __activeBoardPaidSnapshot = '';
+function __snapshotActiveBoardState() {
+  return LEADS.filter(function(L){ return L.billing && L.billing.active; })
+    .map(function(L){ return (L.name||'') + ':' + (L.billing.paid?'1':'0') + ':' + (L.billing.sessions||0); })
+    .join('|');
+}
+setInterval(function(){
+  if (typeof __ACTIVE_VIEW === 'undefined' || __ACTIVE_VIEW !== 'board') return;
+  if (typeof activeTab !== 'undefined' && activeTab !== 'clients') return;
+  // Don't re-render while the lead modal is open (would close it)
+  var modal = document.getElementById('modal');
+  if (modal && modal.classList.contains('show')) return;
+  var snap = __snapshotActiveBoardState();
+  if (__activeBoardPaidSnapshot && snap !== __activeBoardPaidSnapshot) {
+    __activeBoardPaidSnapshot = snap;
+    if (typeof renderActiveClientsBoard === 'function') renderActiveClientsBoard();
+  } else {
+    __activeBoardPaidSnapshot = snap;
+  }
+}, 1500);
+</script>
+<script>
+/* ===== inlined from reports.js (Phase 3: eliminate stale-file JS caching) ===== */
+// ============== REPORTS TAB ==============
+var __REPORTS_SUB = localStorage.getItem('arcascend_reports_sub') || 'leads';
+var __REPORTS_FROM = null;
+var __REPORTS_TO = null;
+var __REPORTS_EVENTS = null;
+var __REPORTS_LOADING = false;
+var __REPORTS_CHART = null;
+
+var __REPORTS_PRESET = localStorage.getItem('arcascend_reports_preset_active') || localStorage.getItem('arcascend_reports_preset_default') || 'month';
+
+function reportsRangeFromPreset(p) {
+  var now = new Date();
+  var to = now.toISOString().slice(0,10);
+  var from;
+  if (p === 'month') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  } else if (p === 'quarter') {
+    var q = Math.floor(now.getMonth() / 3);
+    from = new Date(now.getFullYear(), q*3, 1).toISOString().slice(0,10);
+  } else if (p === 'year') {
+    from = new Date(now.getFullYear(), 0, 1).toISOString().slice(0,10);
+  } else {
+    from = to; // 'custom' fallback (will be replaced by inputs)
+  }
+  return { from: from, to: to };
+}
+
+function reportsInitRange() {
+  if (__REPORTS_FROM && __REPORTS_TO) return;
+  if (__REPORTS_PRESET && __REPORTS_PRESET !== 'custom') {
+    var r = reportsRangeFromPreset(__REPORTS_PRESET);
+    __REPORTS_FROM = r.from;
+    __REPORTS_TO = r.to;
+  } else {
+    var now = new Date();
+    var first = new Date(now.getFullYear(), now.getMonth(), 1);
+    __REPORTS_FROM = first.toISOString().slice(0,10);
+    __REPORTS_TO = now.toISOString().slice(0,10);
+  }
+}
+
+function reportsLoadEvents() {
+  __REPORTS_LOADING = true;
+  var from = __REPORTS_FROM + 'T00:00:00';
+  var to = __REPORTS_TO + 'T23:59:59';
+  var fromMs = new Date(from + 'Z').getTime();   // treat naive bounds as UTC (matches server)
+  var toMs = new Date(to + 'Z').getTime();
+
+  // Option (a): serve from the prefetched cache ONLY when the requested range is fully
+  // within the cached window. The cache holds the 5000 most-recent events (newest first),
+  // so the newest end is always covered; the risk is only the range START reaching past
+  // the oldest cached event when the cache is capped. Otherwise fall back to a live fetch
+  // so wide/old ranges are never served stale or incomplete.
+  if (typeof cachedEvents !== 'undefined' && cachedEvents) {
+    var capped = cachedEvents.length >= 5000;
+    var oldestMs = cachedEvents.length ? new Date(cachedEvents[cachedEvents.length - 1].created_at).getTime() : null;
+    var covered = !capped || (oldestMs !== null && fromMs >= oldestMs);
+    if (covered) {
+      __REPORTS_EVENTS = cachedEvents.filter(function(e){
+        var t = new Date(e.created_at).getTime();
+        return t >= fromMs && t <= toMs;
+      }).sort(function(a, b){ return new Date(a.created_at) - new Date(b.created_at); });
+      __REPORTS_LOADING = false;
+      return Promise.resolve(__REPORTS_EVENTS);
+    }
+  }
+
+  var token = localStorage.getItem('arcascend_token');
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
+  var url = SUPABASE_URL + '/rest/v1/lead_events?user_id=eq.' + uid
+    + '&created_at=gte.' + from + '&created_at=lte.' + to
+    + '&select=event_type,lead_name,event_data,created_at&order=created_at.asc&limit=5000';
+  return fetch(url, {
+    headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+  }).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; })
+    .then(function(events){
+      __REPORTS_EVENTS = events || [];
+      __REPORTS_LOADING = false;
+      return __REPORTS_EVENTS;
+    });
+}
+
+function renderReportsTab() {
+  reportsInitRange();
+  var main = document.getElementById('main');
+  if (!main) return;
+
+  var html = '';
+  html += '<div style="padding:14px 20px 4px;">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">';
+  html += '<div style="font-size:20px;font-weight:600;">\ud83d\udcca Reports</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;font-size:13px;">';
+  html += '<span style="color:var(--text-muted);">From</span>';
+  html += '<input type="date" id="rep-from" value="' + __REPORTS_FROM + '" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;">';
+  html += '<span style="color:var(--text-muted);">To</span>';
+  html += '<input type="date" id="rep-to" value="' + __REPORTS_TO + '" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;">';
+  html += '<button id="rep-apply" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;">Apply</button>';
+  html += '</div></div>';
+
+  // Preset range buttons
+  var defaultPreset = localStorage.getItem('arcascend_reports_preset_default') || 'month';
+  var presets = [['month','Month'],['quarter','Quarter'],['year','Year'],['custom','Custom']];
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap;">';
+  presets.forEach(function(p){
+    var active = __REPORTS_PRESET === p[0];
+    var isDefault = defaultPreset === p[0];
+    var bg = active ? 'var(--accent)' : 'var(--panel)';
+    var color = active ? '#fff' : 'var(--text)';
+    html += '<button class="rep-preset" data-preset="' + p[0] + '" style="background:' + bg + ';color:' + color + ';border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;">' + p[1] + (isDefault ? ' \u2605' : '') + '</button>';
+  });
+  html += '<button id="rep-save-default" title="Save current range as default" style="background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-left:6px;">\u2606 Save as default</button>';
+  html += '</div>';
+
+  // Sub-tabs
+  html += '<div style="display:flex;gap:4px;margin-top:14px;border-bottom:1px solid var(--border);">';
+  ['leads','revenue','conversions','activity'].forEach(function(key){
+    var active = __REPORTS_SUB === key;
+    var label = key.charAt(0).toUpperCase() + key.slice(1);
+    html += '<button class="rep-sub" data-sub="' + key + '" style="background:transparent;border:none;border-bottom:2px solid ' + (active?'var(--accent)':'transparent') + ';color:' + (active?'var(--accent)':'var(--text-muted)') + ';padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;">' + label + '</button>';
+  });
+  html += '</div>';
+  html += '</div>';
+  html += '<div id="rep-body" style="padding:16px 20px 40px;"></div>';
+  main.innerHTML = html;
+
+  document.getElementById('rep-apply').addEventListener('click', function(){
+    __REPORTS_FROM = document.getElementById('rep-from').value;
+    __REPORTS_TO = document.getElementById('rep-to').value;
+    __REPORTS_PRESET = 'custom';
+    localStorage.setItem('arcascend_reports_preset_active', 'custom');
+    __REPORTS_EVENTS = null;
+    renderReportsTab();
+  });
+
+  document.querySelectorAll('.rep-preset').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var p = btn.dataset.preset;
+      __REPORTS_PRESET = p;
+      localStorage.setItem('arcascend_reports_preset_active', p);
+      if (p !== 'custom') {
+        var r = reportsRangeFromPreset(p);
+        __REPORTS_FROM = r.from;
+        __REPORTS_TO = r.to;
+      }
+      __REPORTS_EVENTS = null;
+      renderReportsTab();
+    });
+  });
+
+  var sd = document.getElementById('rep-save-default');
+  if (sd) sd.addEventListener('click', function(){
+    localStorage.setItem('arcascend_reports_preset_default', __REPORTS_PRESET);
+    sd.innerHTML = '\u2605 Saved as default';
+    sd.style.color = 'var(--accent)';
+    setTimeout(function(){ renderReportsTab(); }, 700);
+  });
+  document.querySelectorAll('.rep-sub').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      __REPORTS_SUB = btn.dataset.sub;
+      localStorage.setItem('arcascend_reports_sub', __REPORTS_SUB);
+      renderReportsTab();
+    });
+  });
+
+  var body = document.getElementById('rep-body');
+  body.innerHTML = '<div style="color:var(--text-muted);">Loading data...</div>';
+  reportsLoadEvents().then(function(){
+    if (__REPORTS_SUB === 'leads') renderRepLeads(body);
+    else if (__REPORTS_SUB === 'revenue') renderRepRevenue(body);
+    else if (__REPORTS_SUB === 'conversions') renderRepConversions(body);
+    else if (__REPORTS_SUB === 'activity') renderRepActivity(body);
+  });
+}
+
+// ===== Helper utilities =====
+function repStat(label, value, color) {
+  return '<div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;">'
+    + '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">' + label + '</div>'
+    + '<div style="font-size:24px;font-weight:700;color:' + (color || 'var(--text)') + ';margin-top:4px;">' + value + '</div>'
+    + '</div>';
+}
+
+function repStatsGrid(items) {
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:20px;">'
+    + items.map(function(it){ return repStat(it.label, it.value, it.color); }).join('')
+    + '</div>';
+}
+
+function repCard(title, inner) {
+  return '<div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:14px;">'
+    + '<div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:10px;">' + title + '</div>'
+    + inner + '</div>';
+}
+
+function repBetweenRange(iso) {
+  var d = new Date(iso);
+  var f = new Date(__REPORTS_FROM + 'T00:00:00');
+  var t = new Date(__REPORTS_TO + 'T23:59:59');
+  return d >= f && d <= t;
+}
+
+function repBucketGranularity() {
+  if (__REPORTS_PRESET === 'month') return 'week';
+  if (__REPORTS_PRESET === 'quarter' || __REPORTS_PRESET === 'year') return 'month';
+  // Custom: choose based on span
+  var f = new Date(__REPORTS_FROM + 'T00:00:00');
+  var t = new Date(__REPORTS_TO + 'T00:00:00');
+  var days = Math.round((t - f) / 86400000);
+  return days < 31 ? 'week' : 'month';
+}
+
+function repDateBuckets() {
+  // Returns array of bucket keys (YYYY-MM-DD for week-start or YYYY-MM for month)
+  var gran = repBucketGranularity();
+  var out = [];
+  var d = new Date(__REPORTS_FROM + 'T00:00:00');
+  var end = new Date(__REPORTS_TO + 'T00:00:00');
+  if (gran === 'week') {
+    // Snap d to start of week (Sunday)
+    var w = new Date(d); w.setDate(w.getDate() - w.getDay());
+    while (w <= end) {
+      out.push(w.toISOString().slice(0,10));
+      w = new Date(w); w.setDate(w.getDate() + 7);
+    }
+  } else {
+    // Monthly
+    var m = new Date(d.getFullYear(), d.getMonth(), 1);
+    var endM = new Date(end.getFullYear(), end.getMonth(), 1);
+    while (m <= endM) {
+      out.push(m.toISOString().slice(0,7));
+      m = new Date(m.getFullYear(), m.getMonth()+1, 1);
+    }
+  }
+  return out;
+}
+
+function repBucketKeyFor(iso) {
+  var gran = repBucketGranularity();
+  var d = new Date(iso);
+  if (gran === 'week') {
+    var w = new Date(d); w.setDate(w.getDate() - w.getDay());
+    return w.toISOString().slice(0,10);
+  } else {
+    return d.toISOString().slice(0,7);
+  }
+}
+
+function repLoadChartJs(cb) {
+  if (window.Chart) { cb(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+  s.onload = cb;
+  document.head.appendChild(s);
+}
+
+function repDrawLineChart(canvasId, label, labels, data, color) {
+  repLoadChartJs(function(){
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    if (__REPORTS_CHART) { try { __REPORTS_CHART.destroy(); } catch(_){} }
+    __REPORTS_CHART = new Chart(ctx, {
+      type: 'line',
+      data: { labels: labels, datasets: [{ label: label, data: data, borderColor: color || '#4f9eff', backgroundColor: (color || '#4f9eff') + '33', tension: 0.3, fill: true }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { ticks: { color: '#888' }, grid: { color: '#333' } }, y: { ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
+    });
+  });
+}
+
+function repDrawBarChart(canvasId, label, labels, data, color) {
+  repLoadChartJs(function(){
+    var ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    if (__REPORTS_CHART) { try { __REPORTS_CHART.destroy(); } catch(_){} }
+    __REPORTS_CHART = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: labels, datasets: [{ label: label, data: data, backgroundColor: color || '#4f9eff' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { ticks: { color: '#888' }, grid: { color: '#333' } }, y: { ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
+    });
+  });
+}
+
+// ===== LEADS sub-tab =====
+function renderRepLeads(body) {
+  var ev = __REPORTS_EVENTS || [];
+  var created = ev.filter(function(e){ return e.event_type === 'lead_created'; });
+  var intake = ev.filter(function(e){ return e.event_type === 'form_submitted'; });
+  var statusChanges = ev.filter(function(e){ return e.event_type === 'status_changed'; });
+  var newActiveEv = ev.filter(function(e){ return e.event_type === 'active_client_marked'; });
+  var wonEv = statusChanges.filter(function(e){ var t = (e.event_data && e.event_data.to) || ''; return t.toLowerCase().indexOf('won') >= 0; });
+  var lostEv = statusChanges.filter(function(e){ var t = (e.event_data && e.event_data.to) || ''; return t.toLowerCase().indexOf('lost') >= 0; });
+
+  // Status distribution from current LEADS state
+  var statusCounts = {};
+  (LEADS || []).forEach(function(L){
+    var s = (L.status || 'New');
+    statusCounts[s] = (statusCounts[s] || 0) + 1;
+  });
+
+  // Build bucket maps for all three series
+  var buckets = repDateBuckets();
+  function newMap() { var m = {}; buckets.forEach(function(b){ m[b] = 0; }); return m; }
+  var activeMap = newMap(), wonMap = newMap(), lostMap = newMap();
+
+  // Helper: parse L.date which is stored as 'M/D/YYYY' or 'M/D/YYYY HH:MM:SS'
+  function parseLeadDate(s) {
+    if (!s) return null;
+    if (typeof s !== 'string') return null;
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString();
+    return null;
+  }
+
+  // Track which lead names are already represented by events (so we don't double-count)
+  var eventNamesActive = {}, eventNamesWon = {}, eventNamesLost = {};
+  newActiveEv.forEach(function(e){
+    var k = repBucketKeyFor(e.created_at);
+    if (activeMap[k] !== undefined) activeMap[k]++;
+    if (e.lead_name) eventNamesActive[e.lead_name] = true;
+  });
+  wonEv.forEach(function(e){
+    var k = repBucketKeyFor(e.created_at);
+    if (wonMap[k] !== undefined) wonMap[k]++;
+    if (e.lead_name) eventNamesWon[e.lead_name] = true;
+  });
+  lostEv.forEach(function(e){
+    var k = repBucketKeyFor(e.created_at);
+    if (lostMap[k] !== undefined) lostMap[k]++;
+    if (e.lead_name) eventNamesLost[e.lead_name] = true;
+  });
+
+  // Fallback: walk LEADS, bucket by L.date if not already accounted for in events
+  (LEADS || []).forEach(function(L){
+    var iso = parseLeadDate(L.date);
+    if (!iso) return;
+    var k = repBucketKeyFor(iso);
+    if (activeMap[k] === undefined) return; // outside current range
+    var status = (L.status || '').toLowerCase();
+    if (L.billing && L.billing.active && !eventNamesActive[L.name]) activeMap[k]++;
+    if (status.indexOf('won') >= 0 && !eventNamesWon[L.name]) wonMap[k]++;
+    if (status.indexOf('lost') >= 0 && !eventNamesLost[L.name]) lostMap[k]++;
+  });
+
+  var html = '';
+  html += repStatsGrid([
+    { label:'Leads Added', value: created.length, color:'#4f9eff' },
+    { label:'Intake Forms', value: intake.length, color:'#a78bfa' },
+    { label:'New Active Clients', value: newActiveEv.length, color:'#22c55e' },
+    { label:'Closed Won', value: wonEv.length, color:'#22c55e' },
+    { label:'Closed Lost', value: lostEv.length, color:'#ef4444' }
+  ]);
+
+  html += repCard('Outcomes Over Time', '<div style="height:260px;"><canvas id="rep-chart-leads"></canvas></div>');
+  html += repCard('Status Distribution (Current)', '<div>' + Object.keys(statusCounts).map(function(s){
+    var pct = Math.round(statusCounts[s] / Math.max(1, (LEADS||[]).length) * 100);
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">'
+      + '<div style="width:120px;color:var(--text-muted);">' + s + '</div>'
+      + '<div style="flex:1;background:var(--panel2);height:18px;border-radius:4px;overflow:hidden;"><div style="background:var(--accent);height:100%;width:' + pct + '%;"></div></div>'
+      + '<div style="width:60px;text-align:right;color:var(--text);">' + statusCounts[s] + ' (' + pct + '%)</div>'
+      + '</div>';
+  }).join('') + '</div>');
+
+  body.innerHTML = html;
+
+  // Draw multi-line chart
+  repLoadChartJs(function(){
+    var ctx = document.getElementById('rep-chart-leads');
+    if (!ctx) return;
+    if (__REPORTS_CHART) { try { __REPORTS_CHART.destroy(); } catch(_){} }
+    __REPORTS_CHART = new Chart(ctx, {
+      type: 'line',
+      data: { labels: buckets, datasets: [
+        { label: 'New Active Clients', data: buckets.map(function(b){ return activeMap[b]; }), borderColor: '#22c55e', backgroundColor: '#22c55e22', tension: 0.3, fill: false },
+        { label: 'Closed Won', data: buckets.map(function(b){ return wonMap[b]; }), borderColor: '#4f9eff', backgroundColor: '#4f9eff22', tension: 0.3, fill: false },
+        { label: 'Closed Lost', data: buckets.map(function(b){ return lostMap[b]; }), borderColor: '#ef4444', backgroundColor: '#ef444422', tension: 0.3, fill: false }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { ticks: { color: '#888' }, grid: { color: '#333' } }, y: { ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
+    });
+  });
+}
+
+// ===== REVENUE sub-tab =====
+// Months (YYYY-MM) spanned by the current From/To range, inclusive.
+function repMonthsInRange() {
+  var out = [];
+  var f = __REPORTS_FROM ? new Date(__REPORTS_FROM + 'T00:00:00') : null;
+  var t = __REPORTS_TO ? new Date(__REPORTS_TO + 'T00:00:00') : null;
+  // Range not ready / invalid → fall back to the current month so the KPI + chart
+  // always reflect at least this month (matches paidNow's default-view value).
+  if (!f || !t || isNaN(f) || isNaN(t)) {
+    return (typeof currentMonthKey === 'function') ? [currentMonthKey()] : out;
+  }
+  var m = new Date(f.getFullYear(), f.getMonth(), 1);
+  var endM = new Date(t.getFullYear(), t.getMonth(), 1);
+  while (m <= endM) {
+    out.push(m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0'));
+    m = new Date(m.getFullYear(), m.getMonth() + 1, 1);
+  }
+  return out;
+}
+
+// Revenue = billing.confirmations summed by month (NOT the old event log).
+// De-dupes by construction (one amount per lead per month) and ignores zeros.
+function renderRepRevenue(body) {
+  var CR = (typeof confirmedRevenueForMonth === 'function') ? confirmedRevenueForMonth : function(){ return 0; };
+  var curKey = (typeof currentMonthKey === 'function') ? currentMonthKey() : null;
+  var activeC = (LEADS || []).filter(function(L){ return L.billing && L.billing.active; });
+
+  // Current-month projection (live billing) vs confirmed (from the month-map)
+  var projection = activeC.reduce(function(acc, L){
+    var sess = parseFloat(L.billing.sessions) || 0;
+    var rate = parseFloat(L.billing.rate) || 0;
+    return acc + sess * rate;
+  }, 0);
+  var paidNow = curKey ? CR(curKey) : 0;
+  var outstanding = projection - paidNow;
+
+  // Confirmed revenue over the selected range, one bucket per month
+  var months = repMonthsInRange();
+  var revData = months.map(function(M){ return CR(M); });
+  var rangeTotal = revData.reduce(function(a, b){ return a + b; }, 0);
+  var clientsPaid = curKey ? activeC.filter(function(L){ return (typeof isConfirmed === 'function') && isConfirmed(L, curKey); }).length : 0;
+
+  var html = '';
+  html += repStatsGrid([
+    { label: currentMonthLabel() + ' Projection', value: '$' + projection.toLocaleString(), color:'#4f9eff' },
+    { label: currentMonthLabel() + ' Paid', value: '$' + paidNow.toLocaleString(), color:'#22c55e' },
+    { label: 'Outstanding', value: '$' + outstanding.toLocaleString(), color:'#f59e0b' },
+    { label: 'Payments Logged (range)', value: '$' + rangeTotal.toLocaleString() },
+    { label: 'Clients Paid', value: clientsPaid + ' / ' + activeC.length }
+  ]);
+  html += repCard('Revenue Logged Over Time (range)', '<div style="height:260px;"><canvas id="rep-chart-revenue"></canvas></div>');
+  body.innerHTML = html;
+  repDrawLineChart('rep-chart-revenue', 'Revenue ($)', months, revData, '#22c55e');
+}
+
+// ===== CONVERSIONS sub-tab =====
+function renderRepConversions(body) {
+  var ev = __REPORTS_EVENTS || [];
+  var statusChanges = ev.filter(function(e){ return e.event_type === 'status_changed'; });
+  var consultsDone = ev.filter(function(e){ return e.event_type === 'consultation_completed'; });
+  var newActive = ev.filter(function(e){ return e.event_type === 'active_client_marked'; });
+
+  var won = statusChanges.filter(function(e){ var t = (e.event_data && e.event_data.to) || ''; return t.toLowerCase().indexOf('won') >= 0; });
+  var lost = statusChanges.filter(function(e){ var t = (e.event_data && e.event_data.to) || ''; return t.toLowerCase().indexOf('lost') >= 0; });
+  var closedTotal = won.length + lost.length;
+  var winRate = closedTotal ? Math.round(won.length / closedTotal * 100) : 0;
+
+  // Daily won/lost series
+  var buckets = repDateBuckets();
+  var wonMap = {}, lostMap = {};
+  buckets.forEach(function(d){ wonMap[d] = 0; lostMap[d] = 0; });
+  won.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if(wonMap[k]!==undefined) wonMap[k]++; });
+  lost.forEach(function(e){ var k = repBucketKeyFor(e.created_at); if(lostMap[k]!==undefined) lostMap[k]++; });
+
+  var html = '';
+  html += repStatsGrid([
+    { label: 'Consultations Completed', value: consultsDone.length, color:'#4f9eff' },
+    { label: 'Closed Won', value: won.length, color:'#22c55e' },
+    { label: 'Closed Lost', value: lost.length, color:'#ef4444' },
+    { label: 'Win Rate', value: winRate + '%', color: winRate >= 50 ? '#22c55e' : '#f59e0b' },
+    { label: 'New Active Clients', value: newActive.length }
+  ]);
+  html += repCard('Closed Won vs Lost (over range)', '<div style="height:260px;"><canvas id="rep-chart-conv"></canvas></div>');
+  body.innerHTML = html;
+  // Two-series bar chart needs a different draw — simulate by drawing combined bar
+  repLoadChartJs(function(){
+    var ctx = document.getElementById('rep-chart-conv');
+    if (!ctx) return;
+    if (__REPORTS_CHART) { try { __REPORTS_CHART.destroy(); } catch(_){} }
+    __REPORTS_CHART = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: buckets, datasets: [
+        { label: 'Won', data: buckets.map(function(d){ return wonMap[d]; }), backgroundColor: '#22c55e' },
+        { label: 'Lost', data: buckets.map(function(d){ return lostMap[d]; }), backgroundColor: '#ef4444' }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { stacked: false, ticks: { color: '#888' }, grid: { color: '#333' } }, y: { stacked: false, ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
+    });
+  });
+}
+
+// ===== ACTIVITY sub-tab =====
+function renderRepActivity(body) {
+  var ev = (__REPORTS_EVENTS || []).slice().reverse(); // newest first
+  var emojiFor = {
+    lead_created: '\u2728',
+    status_changed: '\ud83d\udd04',
+    active_client_marked: '\ud83d\udcaa',
+    form_submitted: '\ud83d\udcdd',
+    consultation_completed: '\u2705',
+    follow_up_scheduled: '\ud83d\udcc5'
+  };
+  var byType = {};
+  ev.forEach(function(e){ byType[e.event_type] = (byType[e.event_type]||0) + 1; });
+
+  var statHtml = repStatsGrid([
+    { label: 'Total Events', value: ev.length, color: '#4f9eff' },
+    { label: 'Lead Activity', value: (byType.lead_created||0) + (byType.status_changed||0) },
+    { label: 'New Active Clients', value: byType.active_client_marked || 0, color: '#22c55e' },
+    { label: 'Consultations', value: byType.consultation_completed || 0 }
+  ]);
+
+  var listHtml = '<div style="max-height:520px;overflow-y:auto;">';
+  ev.slice(0, 300).forEach(function(e){
+    var emoji = emojiFor[e.event_type] || '\u2022';
+    var when = new Date(e.created_at);
+    var pretty = when.toLocaleString();
+    var detail = '';
+    if (e.event_type === 'status_changed' && e.event_data) {
+      detail = ((e.event_data.from || '?') + ' \u2192 ' + (e.event_data.to || '?'));
+    }
+    listHtml += '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">'
+      + '<div style="font-size:16px;">' + emoji + '</div>'
+      + '<div style="flex:1;">'
+        + '<div style="font-size:13px;"><b>' + (e.lead_name || '(no name)') + '</b> \u00b7 ' + e.event_type.replace(/_/g,' ') + (detail ? ' \u2014 ' + detail : '') + '</div>'
+        + '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + pretty + '</div>'
+      + '</div>'
+    + '</div>';
+  });
+  if (ev.length === 0) listHtml += '<div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">No events in this date range.</div>';
+  listHtml += '</div>';
+
+  body.innerHTML = statHtml + repCard('Activity Timeline (' + ev.length + ' events)', listHtml);
+}
+</script>
 </body>
 </html>
 
