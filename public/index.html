@@ -1197,7 +1197,10 @@ main { flex: 1; padding: 20px 24px; }
           <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Questions</div>
           <p style="font-size:13px;color:var(--text-muted);margin:4px 0 0">Drag to reorder. Changes save with the button above.</p>
         </div>
-        <button onclick="formsAddQuestion()" style="padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add Question</button>
+        <div style="display:flex;gap:8px">
+          <button onclick="openPasteModal()" style="padding:8px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer">📋 Paste Questions</button>
+          <button onclick="formsAddQuestion()" style="padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add Question</button>
+        </div>
       </div>
       <div id="forms-questions-list" style="display:flex;flex-direction:column;gap:10px"></div>
       <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button onclick="formsResetQuestions()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);cursor:pointer">Reset to Defaults</button><button onclick="formsSaveSettings()" style="padding:8px 16px;background:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer">Save Questions</button><span id="forms-q-save-status" style="font-size:12px;color:var(--text-muted)"></span></div>
@@ -1308,6 +1311,27 @@ main { flex: 1; padding: 20px 24px; }
       <div class="form-actions">
         <button class="btn" onclick="closeTabsModal()">Done</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="paste-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head">
+      <div class="modal-title">Paste Questions from AI</div>
+      <button class="modal-close" onclick="closePasteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+        <div style="font-size:13px;color:var(--muted)">Ask any AI for intake questions, paste the result below, then Parse.</div>
+        <button class="btn btn-ghost" onclick="copyPromptTemplate(this)" style="font-size:12px;white-space:nowrap">📋 Copy prompt template</button>
+      </div>
+      <textarea id="paste-input" rows="9" placeholder="Q: How often do you currently train?   |   Type: select   |   Options: Never, 1-2x/week, 3-4x/week   |   Required: yes" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box"></textarea>
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+        <button class="btn" onclick="pasteParse()">Parse</button>
+        <span id="paste-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div id="paste-preview" style="margin-top:14px"></div>
     </div>
   </div>
 </div>
@@ -5543,6 +5567,210 @@ function formsAddQuestion() {
   formsRenderQuestions();
   var last = document.getElementById('forms-questions-list').lastElementChild;
   if (last) last.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+// ===== Paste-to-import: parse AI-generated questions into formsQuestions =====
+var PASTE_PROMPT_TEMPLATE = [
+  'You are helping me build a client intake form. Output ONLY a list of intake',
+  'questions in EXACTLY this format — one question per block, blocks separated by a',
+  'blank line. No headings, numbering, commentary, or code fences.',
+  '',
+  'Q: <the question text>',
+  'Type: <one of: text, textarea, tel, email, number, select, multiselect>',
+  'Options: <semicolon-separated choices — ONLY for select/multiselect; omit otherwise>',
+  'Required: <yes or no>',
+  '',
+  'Guidance:',
+  '- SEPARATE OPTIONS WITH SEMICOLONS, never commas — e.g. "Options: Yes, definitely; No, not really". Options are split on semicolons, so a single choice may itself contain a comma.',
+  '- "select" = pick ONE from a list; "multiselect" = pick MANY.',
+  '- "textarea" = long/open answer; "text" = short; "tel" = phone; "email" = email; "number" = numeric.',
+  '- Client-friendly wording. 8-14 questions. Put Full Name / Phone / Email first.',
+  '',
+  'This form is for:',
+  '<<DESCRIBE YOUR FORM — e.g. "a strength gym\'s new-client intake covering goals, injuries, training experience, availability, and how they heard about us">>'
+].join('\n');
+
+var pasteParsedList = [];
+var pasteSkippedList = [];
+
+function openPasteModal() {
+  var ta = document.getElementById('paste-input'); if (ta) ta.value = '';
+  document.getElementById('paste-preview').innerHTML = '';
+  document.getElementById('paste-status').textContent = '';
+  pasteParsedList = []; pasteSkippedList = [];
+  document.getElementById('paste-modal').classList.add('show');
+}
+function closePasteModal() { document.getElementById('paste-modal').classList.remove('show'); }
+
+function copyPromptTemplate(btn) {
+  navigator.clipboard.writeText(PASTE_PROMPT_TEMPLATE).then(function(){
+    if (btn) { var t = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(function(){ btn.textContent = t; }, 1800); }
+  });
+}
+
+function pasteMapType(raw) {
+  var s = (raw || '').toLowerCase();
+  if (/multi|checkbox/.test(s)) return 'multiselect';
+  if (/select|dropdown|radio|single|choice|choose|pick/.test(s)) return 'select';
+  if (/textarea|paragraph|long/.test(s)) return 'textarea';
+  if (/\btel\b|phone/.test(s)) return 'tel';
+  if (/email/.test(s)) return 'email';
+  if (/number|numeric|\bnum\b/.test(s)) return 'number';
+  if (/\btext\b|short|\bname\b/.test(s)) return 'text';
+  return null;
+}
+function pasteSplitOptions(s) {
+  s = String(s);
+  // Prefer ; or | so an option VALUE may safely contain a comma (per the template).
+  // Fall back to commas only when no semicolon/pipe is present.
+  var delim = /[;|]/.test(s) ? /[;|]/ : /,/;
+  return s.split(delim).map(function(o){
+    return o.replace(/^\s*(\d+[.)]|[-*•]|[a-zA-Z][.)])\s+/, '').trim();
+  }).filter(function(o){ return o.length; });
+}
+function pasteParseBool(s) {
+  var v = (s || '').toLowerCase().trim();
+  if (/^(y|yes|true|required|req)\b/.test(v)) return true;
+  if (/^(n|no|false|optional|opt)\b/.test(v)) return false;
+  return null;
+}
+function pasteSnippet(block) {
+  var first = (block.split('\n')[0] || '').trim();
+  return first.length > 50 ? first.slice(0, 50) + '…' : first;
+}
+
+// Parse ONE block into a question object, or null if no label is extractable.
+function pasteParseBlock(block, idx) {
+  var lines = block.split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l.length; });
+  if (!lines.length) return null;
+  var label = null, type = null, required = null, options = [], labelLine = -1;
+
+  lines.forEach(function(line, i){
+    var mQ = line.match(/^(Q|Question)\s*[:.]\s*(.+)$/i);
+    var mT = line.match(/^Type\s*[:.]\s*(.+)$/i);
+    var mO = line.match(/^Options?\s*[:.]\s*(.+)$/i);
+    var mR = line.match(/^Required\s*[:.]\s*(.+)$/i);
+    if (mQ && label === null) { label = mQ[2].trim(); labelLine = i; }
+    else if (mT) { type = pasteMapType(mT[1]); }
+    else if (mO) { options = options.concat(pasteSplitOptions(mO[1])); }
+    else if (mR) { required = pasteParseBool(mR[1]); }
+  });
+
+  // no "Q:" line → first non-field line becomes the label (numbered/bulleted lists)
+  if (label === null) {
+    for (var i = 0; i < lines.length; i++) {
+      if (/^(Type|Options?|Required)\s*[:.]/i.test(lines[i])) continue;
+      label = lines[i]; labelLine = i; break;
+    }
+  }
+  if (label === null) return null;
+
+  label = label.replace(/^\s*(\d+[.)]|[-*•]|[a-zA-Z][.)])\s+/, '').trim();
+
+  // trailing hints e.g. "Full name (text, required)"
+  var paren = label.match(/\(([^)]*)\)\s*$/);
+  if (paren) {
+    var hints = paren[1].toLowerCase();
+    var mt = pasteMapType(hints);
+    if (mt && type === null) type = mt;
+    if (/\brequired\b/.test(hints) && required === null) required = true;
+    if (/\boptional\b/.test(hints) && required === null) required = false;
+    if (mt || /required|optional/.test(hints)) label = label.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  }
+
+  // bullet/lettered lines (not the label, not field lines) → options
+  lines.forEach(function(line, i){
+    if (i === labelLine) return;
+    if (/^(Q|Question|Type|Options?|Required)\s*[:.]/i.test(line)) return;
+    var mOpt = line.match(/^(\d+[.)]|[-*•]|[a-zA-Z][.)])\s+(.+)$/);
+    if (mOpt) options.push(mOpt[2].trim());
+  });
+
+  // heading guard: lone line ending in ':' with no '?' (e.g. "Here are your questions:")
+  if (lines.length === 1 && /:$/.test(label) && label.indexOf('?') < 0) return null;
+  if (!label) return null;
+  if (!/[a-zA-Z]/.test(label)) return null;   // no letters (pure symbols/garbage) → skip + report
+
+  var SUPPORTED = ['text','textarea','tel','email','number','select','multiselect'];
+  if (options.length && type === null) type = 'select';         // options present, type missing → select
+  if (type === null) type = 'text';                              // missing type → text
+  if (SUPPORTED.indexOf(type) < 0) type = 'text';
+  if (type !== 'select' && type !== 'multiselect') { options = []; }
+  else {
+    var seen = {};
+    options = options.filter(function(o){ o = (o||'').trim(); if (!o || seen[o.toLowerCase()]) return false; seen[o.toLowerCase()] = 1; return true; });
+    if (!options.length) type = 'text';                         // choice type w/ no options → text
+  }
+  if (required === null) required = false;                        // missing required → optional
+
+  return { id: 'q_' + Date.now() + '_' + idx, label: label, type: type, required: !!required, options: options };
+}
+
+function pasteParseText(raw) {
+  var out = { questions: [], skipped: [] };
+  if (!raw || !raw.trim()) return out;
+  var text = raw.replace(/\r\n/g, '\n').replace(/\*\*/g, '').replace(/__/g, '').replace(/`/g, '');
+  // ensure a blank line before each Q:/Question: and each top-level numbered item,
+  // so un-separated blocks still split into one-question blocks
+  text = text.replace(/\n(?=[ \t]*(Q|Question)\s*[:.])/gi, '\n\n');
+  text = text.replace(/\n(?=\d+[.)]\s)/g, '\n\n');
+  var blocks = text.split(/\n[ \t]*\n+/);
+  var idx = 0;
+  blocks.forEach(function(block){
+    var b = block.trim();
+    if (!b) return;
+    var q = null;
+    try { q = pasteParseBlock(b, idx); } catch(e) { q = null; }   // never throw — skip on error
+    if (q) { out.questions.push(q); idx++; }
+    else out.skipped.push(pasteSnippet(b));
+  });
+  return out;
+}
+
+function pasteParse() {
+  var res = pasteParseText(document.getElementById('paste-input').value);
+  pasteParsedList = res.questions;
+  pasteSkippedList = res.skipped;
+  renderPastePreview();
+}
+
+function renderPastePreview() {
+  var el = document.getElementById('paste-preview');
+  var status = document.getElementById('paste-status');
+  var badge = function(txt, bg, col){ return '<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;background:' + bg + ';color:' + col + '">' + escapeHtml(txt) + '</span>'; };
+  var rows = pasteParsedList.map(function(q, i){
+    var opts = (q.options && q.options.length) ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">Options: ' + escapeHtml(q.options.join(', ')) + '</div>' : '';
+    var req = q.required ? badge('required', 'rgba(59,130,246,0.15)', 'var(--accent)') : badge('optional', 'var(--bg-secondary)', 'var(--muted)');
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">'
+      + '<div style="min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text-primary)">' + escapeHtml(q.label) + '</div>'
+      + '<div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' + badge(q.type, 'rgba(34,197,94,0.14)', 'var(--won)') + req + '</div>' + opts + '</div>'
+      + '<button class="btn btn-ghost" data-paste-rm="' + i + '" style="flex:0 0 auto;padding:4px 9px;font-size:13px">✕</button>'
+      + '</div>';
+  }).join('');
+  var skipNote = pasteSkippedList.length
+    ? '<div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;font-size:12px;color:var(--open)">Skipped ' + pasteSkippedList.length + ' unrecognized chunk' + (pasteSkippedList.length === 1 ? '' : 's') + ': ' + escapeHtml(pasteSkippedList.map(function(s){ return '“' + s + '”'; }).join('   ·   ')) + '</div>'
+    : '';
+  var head = pasteParsedList.length
+    ? '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Preview — remove any you don\'t want, then add:</div>'
+    : '<div style="padding:12px;color:var(--muted);font-size:13px">No questions parsed — check the format (Q: / Type: / Options: / Required:).</div>';
+  var footer = pasteParsedList.length
+    ? '<div style="margin-top:12px;display:flex;gap:10px"><button class="btn" onclick="pasteAddToForm()">Add ' + pasteParsedList.length + ' question' + (pasteParsedList.length === 1 ? '' : 's') + ' to form</button><button class="btn btn-ghost" onclick="closePasteModal()">Cancel</button></div>'
+    : '';
+  el.innerHTML = head + rows + skipNote + footer;
+  status.textContent = pasteParsedList.length + ' parsed' + (pasteSkippedList.length ? (', ' + pasteSkippedList.length + ' skipped') : '');
+  el.querySelectorAll('[data-paste-rm]').forEach(function(b){
+    b.addEventListener('click', function(){ pasteParsedList.splice(+b.dataset.pasteRm, 1); renderPastePreview(); });
+  });
+}
+
+function pasteAddToForm() {
+  if (!pasteParsedList.length) return;
+  pasteParsedList.forEach(function(q, i){
+    q.id = 'q_' + Date.now() + '_' + i;   // ensure unique ids at add time
+    formsQuestions.push(q);
+  });
+  formsRenderQuestions();
+  closePasteModal();
 }
 
 function formsDeleteQuestion(idx) {
