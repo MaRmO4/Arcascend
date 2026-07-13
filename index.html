@@ -1408,7 +1408,7 @@ main { flex: 1; padding: 20px 24px; }
         <button class="btn" id="share-modal-copy" onclick="shareModalCopy(this)">📋 Copy Code</button>
         <button class="btn btn-ghost" onclick="closeShareModal()">Close</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:14px">Codes never expire.</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5">This is the permanent code for this form — sharing again always shows the same one. Editing the form updates what the code hands out. Codes never expire.</div>
     </div>
   </div>
 </div>
@@ -5295,15 +5295,33 @@ function generateShareCode() {
   return 'ARC-' + chars.slice(0, 4) + '-' + chars.slice(4, 8);
 }
 
-// Publish a share snapshot of ONE saved form to shared_templates and show the
-// code. Snapshot carries questions/title/description ONLY — never public_id,
-// bucket_name, gym_name, or logo_url — so a recipient sets their own label and
-// gets their own bucket on save. INSERT uses the USER JWT (RLS: owner_id = auth.uid()).
+// Look up the existing share_code for a form (one shared_templates row per form_id,
+// enforced by a UNIQUE constraint). Returns the code string, or null if none / on error.
+async function fetchSharedCodeByFormId(formId, token) {
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/shared_templates?form_id=eq.' + encodeURIComponent(formId) + '&select=share_code&limit=1', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (!res.ok) return null;
+    var rows = await res.json();
+    var r = (Array.isArray(rows) && rows.length) ? rows[0] : null;
+    return r && r.share_code ? r.share_code : null;
+  } catch(e) { return null; }
+}
+
+// GET-OR-CREATE the ONE stable share code for a form. Clicking 🔗 Share repeatedly
+// always shows the SAME code. Snapshot carries questions/title/description ONLY —
+// never public_id, bucket_name, gym_name, or logo_url — so a recipient sets their
+// own label and gets their own bucket on save. Uses the USER JWT (RLS: owner_id = auth.uid()).
 async function formsShareForm(formId) {
   if (!formId || !currentUser) return;
   var token = localStorage.getItem('arcascend_token');
 
-  // Fetch the full row on demand (the library list omits questions/description).
+  // 1) If a share row already exists for this form, show its existing code.
+  var existing = await fetchSharedCodeByFormId(formId, token);
+  if (existing) { openShareModal(existing); return; }
+
+  // 2) No row yet — fetch the full form (the library list omits questions/description).
   var row = null;
   try {
     var res = await fetch(SUPABASE_URL + '/rest/v1/forms?id=eq.' + encodeURIComponent(formId) + '&user_id=eq.' + currentUser.id + '&select=*&limit=1', {
@@ -5313,13 +5331,16 @@ async function formsShareForm(formId) {
   } catch(e) { /* fall through to the error below */ }
   if (!row) { alert('Could not load that form to share. Please try again.'); return; }
 
-  // INSERT with a client-supplied unique share_code. UNIQUE collision → HTTP 409;
-  // regenerate and retry, capped at 3 attempts.
+  // 3) Mint a new code and INSERT (now including form_id). A 409 can mean either the
+  // share_code UNIQUE tripped (retry with a fresh code) OR the form_id UNIQUE tripped
+  // due to a race (another tab/click already created it) — in that case re-fetch the
+  // existing row and show its code instead of retrying.
   var saved = null;
   for (var attempt = 0; attempt < 3; attempt++) {
     var code = generateShareCode();
     var payload = {
       share_code: code,
+      form_id: formId,
       owner_id: currentUser.id,
       title: row.title,
       description: row.form_description,
@@ -5336,7 +5357,12 @@ async function formsShareForm(formId) {
         },
         body: JSON.stringify(payload)
       });
-      if (insRes.status === 409) { continue; } // share_code collision → retry with a new code
+      if (insRes.status === 409) {
+        // Could be the form_id race — a row now exists → show it and stop.
+        var raced = await fetchSharedCodeByFormId(formId, token);
+        if (raced) { openShareModal(raced); return; }
+        continue; // otherwise it was a share_code collision → retry with a new code
+      }
       if (!insRes.ok) {
         var err = await insRes.text();
         alert('Could not create a share code: ' + err);
@@ -5763,6 +5789,33 @@ async function formsUpdateForm() {
     formsEditingForm.form_description = payload.form_description;
     formsEditingForm.logo_url = payload.logo_url;
     formsEditingForm.questions = JSON.parse(JSON.stringify(formsQuestions));
+  }
+
+  // Auto-sync the shared template snapshot IF one already exists for this form, so
+  // the existing (permanent) code hands out the updated questions/title/description.
+  // Sharing stays opt-in: NEVER create a share row as a side effect of editing.
+  // Best-effort — a sync failure must NOT fail or roll back the form save (already done).
+  try {
+    var sharedCode = await fetchSharedCodeByFormId(formsEditingId, token);
+    if (sharedCode) {
+      var syncRes = await fetch(SUPABASE_URL + '/rest/v1/shared_templates?form_id=eq.' + encodeURIComponent(formsEditingId), {
+        method: 'PATCH',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'apikey': SUPABASE_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ title: payload.title, description: payload.form_description, questions: formsQuestions })
+      });
+      if (!(syncRes.ok || syncRes.status === 204)) {
+        console.warn('Shared template sync failed:', await syncRes.text());
+        if (statusEl) { statusEl.textContent = '✓ Updated (shared code not synced — edit again to retry)'; statusEl.style.color = 'var(--warm)'; statusEl.style.fontWeight = '600'; }
+      }
+    }
+  } catch(e) {
+    console.warn('Shared template sync error:', e);
+    if (statusEl) { statusEl.textContent = '✓ Updated (shared code not synced — edit again to retry)'; statusEl.style.color = 'var(--warm)'; statusEl.style.fontWeight = '600'; }
   }
 }
 
