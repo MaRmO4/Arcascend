@@ -1155,6 +1155,15 @@ main { flex: 1; padding: 20px 24px; }
         <div style="font-size:12px;color:var(--text-muted);padding-top:4px;line-height:1.6">Share this QR code in your gym, on social media, or in your bio.<br>It links directly to <em>your</em> intake form.</div>
       </div>
     </div>
+    <div class="card" style="padding:20px;margin-bottom:20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Import a Shared Form</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="forms-import-code" placeholder="ARC-XXXX-XXXX" style="flex:1;min-width:180px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;font-family:monospace;box-sizing:border-box" />
+        <button onclick="formsImportSharedForm(document.getElementById('forms-import-code').value)" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Import</button>
+        <span id="forms-import-status" style="font-size:13px;color:var(--text-muted)"></span>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px;line-height:1.5">Imported forms bring <b>questions only</b> — you set your own Internal Label and get your own link/QR on save.</div>
+    </div>
     <div id="forms-editing-banner" style="display:none;background:linear-gradient(135deg,rgba(139,92,246,0.14),rgba(139,92,246,0.05));border:1px solid rgba(139,92,246,0.4);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:none;align-items:center;gap:14px;flex-wrap:wrap">
       <div style="font-size:14px;color:var(--text-primary);font-weight:600;flex:1 1 auto">✏️ Editing: <span id="forms-editing-name" style="color:var(--purple)"></span></div>
       <button onclick="formsUpdateForm()" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Update Form</button>
@@ -1351,6 +1360,23 @@ main { flex: 1; padding: 20px 24px; }
   </div>
 </div>
 
+<div class="modal-bg" id="import-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head">
+      <div class="modal-title">Import Shared Form</div>
+      <button class="modal-close" onclick="closeImportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Importing <b>replaces</b> the questions in your builder and fills in the title &amp; description (all editable). Your Internal Label stays blank — set your own to get your own bucket &amp; link on save.</div>
+      <div id="import-preview" style="margin-top:8px"></div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+        <button class="btn" onclick="formsConfirmImport()">Confirm import</button>
+        <button class="btn btn-ghost" onclick="closeImportModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="qr-modal">
   <div class="modal" style="max-width:420px">
     <div class="modal-head">
@@ -1365,6 +1391,24 @@ main { flex: 1; padding: 20px 24px; }
         <button class="btn" onclick="window.print()">🖨 Print</button>
         <button class="btn btn-ghost" onclick="closeQrModal()">Close</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="share-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-head">
+      <div class="modal-title">🔗 Share Form</div>
+      <button class="modal-close" onclick="closeShareModal()">✕</button>
+    </div>
+    <div class="modal-body" style="text-align:center">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Share this code. The recipient pastes it into their <b>Create Form</b> tab to import your questions.</div>
+      <div id="share-modal-code" style="font-size:26px;font-weight:800;font-family:monospace;letter-spacing:2px;color:var(--text-primary);background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:16px;word-break:break-all"></div>
+      <div style="margin-top:18px;display:flex;gap:10px;justify-content:center">
+        <button class="btn" id="share-modal-copy" onclick="shareModalCopy(this)">📋 Copy Code</button>
+        <button class="btn btn-ghost" onclick="closeShareModal()">Close</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:14px">Codes never expire.</div>
     </div>
   </div>
 </div>
@@ -5184,6 +5228,7 @@ async function renderFormsLibrary() {
         '<button class="btn" data-fl-copy="' + escapeAttr(link) + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">📋 Copy</button>' +
         '<a class="btn btn-ghost" href="' + escapeAttr(link) + '" target="_blank" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap;text-decoration:none">Open ↗</a>' +
         '<button class="btn btn-ghost" data-fl-edit="' + escapeAttr(f.id) + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">✏️ Edit</button>' +
+        '<button class="btn btn-ghost" data-fl-share="' + escapeAttr(f.id) + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">🔗 Share</button>' +
         '<button class="btn btn-ghost" data-fl-qr="' + escapeAttr(link) + '" data-fl-qrname="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">🔲 QR</button>' +
         '<button class="btn btn-ghost" data-fl-del="' + escapeAttr(f.id) + '" data-fl-title="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">🗑 Delete</button>' +
       '</div>' +
@@ -5216,6 +5261,10 @@ async function renderFormsLibrary() {
   listEl.querySelectorAll("[data-fl-edit]").forEach(function(btn){
     btn.addEventListener("click", function(){ formsBeginEdit(btn.dataset.flEdit); });
   });
+
+  listEl.querySelectorAll("[data-fl-share]").forEach(function(btn){
+    btn.addEventListener("click", function(){ formsShareForm(btn.dataset.flShare); });
+  });
 }
 
 // Load one saved form into the Create Form builder for editing. Fetch the FULL
@@ -5236,6 +5285,204 @@ async function formsBeginEdit(id) {
   formsEditingId = id;
   formsEditingForm = row;
   goToTab('forms');
+}
+
+// Unambiguous alphabet (no O/0/I/1) for share codes: ARC-XXXX-XXXX.
+var SHARE_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function generateShareCode() {
+  var chars = '';
+  for (var i = 0; i < 8; i++) chars += SHARE_CODE_ALPHABET[Math.floor(Math.random() * SHARE_CODE_ALPHABET.length)];
+  return 'ARC-' + chars.slice(0, 4) + '-' + chars.slice(4, 8);
+}
+
+// Publish a share snapshot of ONE saved form to shared_templates and show the
+// code. Snapshot carries questions/title/description ONLY — never public_id,
+// bucket_name, gym_name, or logo_url — so a recipient sets their own label and
+// gets their own bucket on save. INSERT uses the USER JWT (RLS: owner_id = auth.uid()).
+async function formsShareForm(formId) {
+  if (!formId || !currentUser) return;
+  var token = localStorage.getItem('arcascend_token');
+
+  // Fetch the full row on demand (the library list omits questions/description).
+  var row = null;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/forms?id=eq.' + encodeURIComponent(formId) + '&user_id=eq.' + currentUser.id + '&select=*&limit=1', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (res.ok) { var rows = await res.json(); row = Array.isArray(rows) ? rows[0] : rows; }
+  } catch(e) { /* fall through to the error below */ }
+  if (!row) { alert('Could not load that form to share. Please try again.'); return; }
+
+  // INSERT with a client-supplied unique share_code. UNIQUE collision → HTTP 409;
+  // regenerate and retry, capped at 3 attempts.
+  var saved = null;
+  for (var attempt = 0; attempt < 3; attempt++) {
+    var code = generateShareCode();
+    var payload = {
+      share_code: code,
+      owner_id: currentUser.id,
+      title: row.title,
+      description: row.form_description,
+      questions: row.questions
+    };
+    try {
+      var insRes = await fetch(SUPABASE_URL + '/rest/v1/shared_templates', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'apikey': SUPABASE_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (insRes.status === 409) { continue; } // share_code collision → retry with a new code
+      if (!insRes.ok) {
+        var err = await insRes.text();
+        alert('Could not create a share code: ' + err);
+        return;
+      }
+      var out = await insRes.json();
+      saved = Array.isArray(out) ? out[0] : out;
+      break;
+    } catch(e) {
+      alert('Error creating share code: ' + e.message);
+      return;
+    }
+  }
+  if (!saved || !saved.share_code) {
+    alert('Could not generate a unique share code after several attempts. Please try again.');
+    return;
+  }
+  openShareModal(saved.share_code);
+}
+
+function openShareModal(code) {
+  var codeEl = document.getElementById('share-modal-code');
+  if (codeEl) codeEl.textContent = code;
+  var copyBtn = document.getElementById('share-modal-copy');
+  if (copyBtn) { copyBtn.textContent = '📋 Copy Code'; copyBtn.dataset.code = code; }
+  document.getElementById('share-modal').classList.add('show');
+}
+function closeShareModal() { document.getElementById('share-modal').classList.remove('show'); }
+function shareModalCopy(btn) {
+  var code = btn.dataset.code || '';
+  navigator.clipboard.writeText(code).then(function(){
+    var prev = btn.textContent;
+    btn.textContent = '✓ Copied';
+    setTimeout(function(){ btn.textContent = prev; }, 1800);
+  });
+}
+
+// ===== Import a shared form by code (REPLACES the builder's questions) =====
+// Unlike Paste Questions (which APPENDS), import wipes and reloads: it replaces
+// formsQuestions and seeds title/description from the shared snapshot. Internal
+// Label is deliberately left BLANK so the recipient gets their OWN bucket on save.
+var formsImportPending = null;
+
+async function formsImportSharedForm(rawCode) {
+  var statusEl = document.getElementById('forms-import-status');
+  var code = (rawCode || '').trim().toUpperCase();
+  if (!code) { if (statusEl) { statusEl.textContent = 'Enter a share code first.'; statusEl.style.color = 'var(--lost)'; } return; }
+  if (statusEl) { statusEl.textContent = 'Looking up…'; statusEl.style.color = 'var(--text-muted)'; }
+  var token = localStorage.getItem('arcascend_token');
+  var rows = null;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/rpc/get_shared_template', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ code: code })
+    });
+    if (!res.ok) { var err = await res.text(); if (statusEl) { statusEl.textContent = 'Error: ' + err; statusEl.style.color = 'var(--lost)'; } return; }
+    rows = await res.json();
+  } catch(e) {
+    if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--lost)'; }
+    return;
+  }
+  // Invalid/unknown code → the RPC returns an EMPTY ARRAY. Never touch the builder.
+  if (!Array.isArray(rows) || !rows.length) {
+    if (statusEl) { statusEl.textContent = 'Invalid or unknown share code.'; statusEl.style.color = 'var(--lost)'; }
+    return;
+  }
+  var tpl = rows[0];
+  var qs = (tpl && Array.isArray(tpl.questions)) ? tpl.questions : [];
+  if (!qs.length) {
+    if (statusEl) { statusEl.textContent = 'That shared form has no questions to import.'; statusEl.style.color = 'var(--lost)'; }
+    return;
+  }
+  if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
+  formsImportPending = { title: tpl.title || '', description: tpl.description || '', questions: qs };
+  renderImportPreview();
+  document.getElementById('import-modal').classList.add('show');
+}
+
+// Mirrors renderPastePreview()'s card styling for the incoming questions, read-only.
+function renderImportPreview() {
+  var el = document.getElementById('import-preview');
+  if (!el || !formsImportPending) return;
+  var badge = function(txt, bg, col){ return '<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;background:' + bg + ';color:' + col + '">' + escapeHtml(txt) + '</span>'; };
+  var meta = '<div style="margin-bottom:10px">'
+    + '<div style="font-size:14px;font-weight:700;color:var(--text-primary)">' + escapeHtml(formsImportPending.title || 'Untitled Form') + '</div>'
+    + (formsImportPending.description ? '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + escapeHtml(formsImportPending.description) + '</div>' : '')
+    + '</div>';
+  var rows = formsImportPending.questions.map(function(q){
+    var opts = (q.options && q.options.length) ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">Options: ' + escapeHtml(q.options.join(', ')) + '</div>' : '';
+    var req = q.required ? badge('required', 'rgba(59,130,246,0.15)', 'var(--accent)') : badge('optional', 'var(--bg-secondary)', 'var(--muted)');
+    return '<div style="padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">'
+      + '<div style="font-size:13px;font-weight:600;color:var(--text-primary)">' + escapeHtml(q.label || '') + '</div>'
+      + '<div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' + badge(q.type || 'text', 'rgba(34,197,94,0.14)', 'var(--won)') + req + '</div>' + opts
+      + '</div>';
+  }).join('');
+  var count = formsImportPending.questions.length;
+  el.innerHTML = meta + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">' + count + ' question' + (count === 1 ? '' : 's') + ' will be imported (this replaces the questions in your builder):</div>' + rows;
+}
+
+function closeImportModal() { document.getElementById('import-modal').classList.remove('show'); }
+
+function formsConfirmImport() {
+  if (!formsImportPending) return;
+  // Unsaved-questions guard: replacing, not appending.
+  var currentCount = Array.isArray(formsQuestions) ? formsQuestions.length : 0;
+  if (currentCount > 0) {
+    if (!confirm('This will replace the ' + currentCount + ' question' + (currentCount === 1 ? '' : 's') + ' currently in the builder. Continue?')) return;
+  }
+  // An import ALWAYS creates a new form via Save as New Form — never overwrite an
+  // existing saved form. If we're in edit-existing mode, exit it first.
+  if (formsEditingId) {
+    formsEditingId = null;
+    formsEditingForm = null;
+    formsApplyEditModeUI(false, '');
+  }
+  // Replace questions, assigning FRESH unique ids (a foreign template's ids could collide).
+  formsQuestions = formsImportPending.questions.map(function(q, i){
+    return {
+      id: 'q_' + Date.now() + '_' + i,
+      label: q.label || '',
+      type: q.type || 'text',
+      required: !!q.required,
+      options: Array.isArray(q.options) ? q.options.slice() : []
+    };
+  });
+  formsRenderQuestions();
+  // Editable starting points from the imported snapshot.
+  document.getElementById('forms-form-title').value = formsImportPending.title || '';
+  document.getElementById('forms-form-desc').value = formsImportPending.description || '';
+  // CRITICAL: leave Internal Label BLANK — recipient sets their own → their own bucket.
+  document.getElementById('forms-internal-label').value = '';
+  // Do NOT touch gym_name / logo_url (recipient's own branding) or public_id.
+  formsImportPending = null;
+  closeImportModal();
+  var codeInput = document.getElementById('forms-import-code'); if (codeInput) codeInput.value = '';
+  var statusEl = document.getElementById('forms-import-status');
+  if (statusEl) {
+    statusEl.textContent = '✓ Imported — set your Internal Label, then “Save as New Form”.';
+    statusEl.style.color = '#22c55e';
+    setTimeout(function(){ statusEl.textContent = ''; statusEl.style.color = ''; }, 5000);
+  }
 }
 
 // Opens a print-friendly QR modal for a form's public link. Reuses qrcodejs
