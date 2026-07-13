@@ -1155,6 +1155,12 @@ main { flex: 1; padding: 20px 24px; }
         <div style="font-size:12px;color:var(--text-muted);padding-top:4px;line-height:1.6">Share this QR code in your gym, on social media, or in your bio.<br>It links directly to <em>your</em> intake form.</div>
       </div>
     </div>
+    <div id="forms-editing-banner" style="display:none;background:linear-gradient(135deg,rgba(139,92,246,0.14),rgba(139,92,246,0.05));border:1px solid rgba(139,92,246,0.4);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:none;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="font-size:14px;color:var(--text-primary);font-weight:600;flex:1 1 auto">✏️ Editing: <span id="forms-editing-name" style="color:var(--purple)"></span></div>
+      <button onclick="formsUpdateForm()" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Update Form</button>
+      <button onclick="formsCancelEdit()" style="padding:9px 18px;background:transparent;color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
+      <span id="forms-update-status" style="font-size:13px;color:var(--text-muted);flex:0 0 auto"></span>
+    </div>
     <div class="card" style="padding:20px;margin-bottom:20px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Branding</div>
@@ -1163,7 +1169,7 @@ main { flex: 1; padding: 20px 24px; }
       <div style="display:grid;gap:14px">
         <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Gym / Business Name</label><input id="forms-gym-name" placeholder="e.g. Fit Club" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
         <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Title <span style="color:var(--text-muted);font-weight:400">(clients see this on the form)</span></label><input id="forms-form-title" placeholder="e.g. Client Intake Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
-        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Internal Label <span style="color:var(--text-muted);font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
+        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Internal Label <span style="color:var(--text-muted);font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /><div id="forms-label-lock-note" style="display:none;font-size:11px;color:var(--text-muted);margin-top:5px">🔒 Label can't be changed after creation.</div></div>
         <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Description</label><textarea id="forms-form-desc" rows="2" placeholder="e.g. Fill out the form and we will be in touch shortly." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;resize:vertical;box-sizing:border-box"></textarea></div>
         <div>
   <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Header Image</label>
@@ -1179,7 +1185,7 @@ main { flex: 1; padding: 20px 24px; }
   </div>
 </div>
       </div>
-      <div style="margin-top:20px;display:flex;gap:10px;align-items:center">
+      <div id="forms-default-actions" style="margin-top:20px;display:flex;gap:10px;align-items:center">
         <button onclick="formsSaveSettings()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Settings</button>
         <button onclick="formsSaveAs()" style="padding:10px 20px;background:transparent;color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save as New Form</button>
         <span id="forms-save-status" style="font-size:13px;color:var(--text-muted)"></span>
@@ -1203,7 +1209,7 @@ main { flex: 1; padding: 20px 24px; }
         </div>
       </div>
       <div id="forms-questions-list" style="display:flex;flex-direction:column;gap:10px"></div>
-      <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button onclick="formsResetQuestions()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);cursor:pointer">Reset to Defaults</button><button onclick="formsSaveSettings()" style="padding:8px 16px;background:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer">Save Questions</button><span id="forms-q-save-status" style="font-size:12px;color:var(--text-muted)"></span></div>
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button onclick="formsResetQuestions()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);cursor:pointer">Reset to Defaults</button><button id="forms-save-questions-btn" onclick="formsSaveSettings()" style="padding:8px 16px;background:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer">Save Questions</button><span id="forms-q-save-status" style="font-size:12px;color:var(--text-muted)"></span></div>
     </div>
     <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--text-muted);line-height:1.6">
       <strong style="color:var(--text-secondary)">Link Preview (Open Graph)</strong><br>
@@ -1322,6 +1328,15 @@ main { flex: 1; padding: 20px 24px; }
       <button class="modal-close" onclick="closePasteModal()">✕</button>
     </div>
     <div class="modal-body">
+      <ol style="margin:0 0 12px;padding-left:20px;font-size:13px;color:var(--text-secondary);line-height:1.7">
+        <li>Copy the prompt template (button below).</li>
+        <li>Paste it into the AI of your choosing and add your topic.</li>
+        <li>Copy the questions it generates.</li>
+        <li>Paste them here and click Parse.</li>
+      </ol>
+      <div style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:var(--text-secondary);line-height:1.5">
+        <b style="color:var(--warm)">⚠ Heads up:</b> parsed questions are <b>ADDED</b> to your current list — they don't replace it. Delete your existing questions first (or use “Reset to Defaults”) if you want a fully fresh set.
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
         <div style="font-size:13px;color:var(--muted)">Ask any AI for intake questions, paste the result below, then Parse.</div>
         <button class="btn btn-ghost" onclick="copyPromptTemplate(this)" style="font-size:12px;white-space:nowrap">📋 Copy prompt template</button>
@@ -4831,6 +4846,9 @@ if (savedUrl && savedAutoSync) {
     t.addEventListener("click", function(){
       document.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("active"); });
       t.classList.add("active");
+      // Clicking the Create Form nav tab always opens the default builder — drop
+      // any sticky edit-existing state (Edit buttons re-enter it via formsBeginEdit).
+      if (t.dataset.tab === 'forms') { formsEditingId = null; formsEditingForm = null; }
       activeTab = t.dataset.tab;
 currentTab = t.dataset.tab;
 renderAll();
@@ -5096,6 +5114,11 @@ const INTAKE_DEFAULT_QUESTIONS = [
 let formsSettings = {};
 let formsQuestions = [];
 let formsDragSrc = null;
+// Edit-existing mode: when set, the Create Form builder is bound to this `forms`
+// row (not the default trainer_settings form). formsEditingForm stashes the full
+// fetched row so formsInit() can populate from it without a second fetch.
+let formsEditingId = null;
+let formsEditingForm = null;
 
 // ==========================================================
 // FORMS LIBRARY TAB (saved forms from the `forms` table)
@@ -5157,11 +5180,12 @@ async function renderFormsLibrary() {
         '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">Created ' + escapeHtml(created) + '</div>' +
       '</div>' +
       '<input readonly value="' + escapeAttr(link) + '" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text-primary);font-size:12px;font-family:monospace;box-sizing:border-box" />' +
-      '<div style="display:flex;gap:8px">' +
-        '<button class="btn" data-fl-copy="' + escapeAttr(link) + '" style="flex:1">Copy Link</button>' +
-        '<a class="btn btn-ghost" href="' + escapeAttr(link) + '" target="_blank" style="flex:0 0 auto;text-decoration:none">Open ↗</a>' +
-        '<button class="btn btn-ghost" data-fl-qr="' + escapeAttr(link) + '" data-fl-qrname="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto">🔲 QR</button>' +
-        '<button class="btn btn-ghost" data-fl-del="' + escapeAttr(f.id) + '" data-fl-title="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto">Delete</button>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
+        '<button class="btn" data-fl-copy="' + escapeAttr(link) + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">📋 Copy</button>' +
+        '<a class="btn btn-ghost" href="' + escapeAttr(link) + '" target="_blank" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap;text-decoration:none">Open ↗</a>' +
+        '<button class="btn btn-ghost" data-fl-edit="' + escapeAttr(f.id) + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">✏️ Edit</button>' +
+        '<button class="btn btn-ghost" data-fl-qr="' + escapeAttr(link) + '" data-fl-qrname="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">🔲 QR</button>' +
+        '<button class="btn btn-ghost" data-fl-del="' + escapeAttr(f.id) + '" data-fl-title="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">🗑 Delete</button>' +
       '</div>' +
     '</div>';
   }).join("") + '</div>';
@@ -5188,6 +5212,30 @@ async function renderFormsLibrary() {
       formsLibraryDelete(id);
     });
   });
+
+  listEl.querySelectorAll("[data-fl-edit]").forEach(function(btn){
+    btn.addEventListener("click", function(){ formsBeginEdit(btn.dataset.flEdit); });
+  });
+}
+
+// Load one saved form into the Create Form builder for editing. Fetch the FULL
+// row first (the library list only selects a few columns), stash it, flip into
+// edit-existing mode, then switch tabs. formsInit() reads formsEditingId and
+// populates from the stash — so there's no race with its default-form load.
+async function formsBeginEdit(id) {
+  if (!id || !currentUser) return;
+  var token = localStorage.getItem('arcascend_token');
+  var row = null;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/forms?id=eq.' + encodeURIComponent(id) + '&user_id=eq.' + currentUser.id + '&select=*&limit=1', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (res.ok) { var rows = await res.json(); row = Array.isArray(rows) ? rows[0] : rows; }
+  } catch(e) { /* fall through to the error below */ }
+  if (!row) { alert('Could not load that form for editing. Please try again.'); return; }
+  formsEditingId = id;
+  formsEditingForm = row;
+  goToTab('forms');
 }
 
 // Opens a print-friendly QR modal for a form's public link. Reuses qrcodejs
@@ -5245,6 +5293,7 @@ function formsClearBranding() {
 // row when a bucket name is set).
 async function formsSaveAs() {
   if (!currentUser) return;
+  if (formsEditingId) return; // in edit-existing mode, only formsUpdateForm() writes
   var statusEl = document.getElementById('forms-saveas-status');
   var token = localStorage.getItem('arcascend_token');
   var publicTitle = (document.getElementById('forms-form-title').value || '').trim() || 'Untitled Form';
@@ -5344,6 +5393,28 @@ async function formsInit() {
   qrEl.innerHTML = '';
   if (typeof QRCode !== 'undefined') new QRCode(qrEl, { text: link, width:100, height:100, colorDark:'#000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
   var token = localStorage.getItem('arcascend_token');
+
+  // Edit-existing mode: populate from the stashed `forms` row instead of the
+  // default trainer_settings form. Legacy forms without an internal label fall
+  // back to the public title as their display label.
+  if (formsEditingId && formsEditingForm) {
+    var ef = formsEditingForm;
+    var label = ef.bucket_name || ef.title || 'Untitled Form';
+    document.getElementById('forms-gym-name').value      = ef.gym_name || '';
+    document.getElementById('forms-form-title').value    = ef.title || '';
+    document.getElementById('forms-form-desc').value     = ef.form_description || '';
+    document.getElementById('forms-logo-url').value      = ef.logo_url || '';
+    document.getElementById('forms-internal-label').value = ef.bucket_name || '';
+    formsPreviewLogo(ef.logo_url);
+    formsQuestions = (ef.questions && ef.questions.length > 0) ? JSON.parse(JSON.stringify(ef.questions)) : JSON.parse(JSON.stringify(INTAKE_DEFAULT_QUESTIONS));
+    formsApplyEditModeUI(true, label);
+    formsRenderQuestions();
+    document.getElementById('forms-logo-url').addEventListener('input', function(e) { formsPreviewLogo(e.target.value); });
+    formsInitDropZone();
+    return;
+  }
+  formsApplyEditModeUI(false, '');
+
   try {
     var res = await fetch(SUPABASE_URL + '/rest/v1/trainer_settings?user_id=eq.' + currentUser.id + '&select=*', {
       headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
@@ -5366,6 +5437,93 @@ async function formsInit() {
   formsRenderQuestions();
   document.getElementById('forms-logo-url').addEventListener('input', function(e) { formsPreviewLogo(e.target.value); });
   formsInitDropZone();
+}
+
+// Toggle the builder chrome between default-form mode and edit-existing mode.
+// Editing: show the "✏️ Editing" banner, hide the default Save buttons (so the
+// wrong store can't be overwritten), and lock the Internal Label (option C — no
+// renames, no lead migration).
+function formsApplyEditModeUI(isEditing, name) {
+  var banner = document.getElementById('forms-editing-banner');
+  var defActions = document.getElementById('forms-default-actions');
+  var saveQ = document.getElementById('forms-save-questions-btn');
+  var labelInput = document.getElementById('forms-internal-label');
+  var lockNote = document.getElementById('forms-label-lock-note');
+  var bucketCard = document.getElementById('forms-bucket') ? document.getElementById('forms-bucket').closest('.card') : null;
+  if (banner) {
+    banner.style.display = isEditing ? 'flex' : 'none';
+    var nameEl = document.getElementById('forms-editing-name');
+    if (nameEl) nameEl.textContent = name || '';
+    var st = document.getElementById('forms-update-status');
+    if (st) { st.textContent = ''; st.style.color = ''; st.style.fontWeight = ''; }
+  }
+  if (defActions) defActions.style.display = isEditing ? 'none' : 'flex';
+  if (saveQ) saveQ.style.display = isEditing ? 'none' : '';
+  if (lockNote) lockNote.style.display = isEditing ? 'block' : 'none';
+  if (labelInput) {
+    labelInput.readOnly = isEditing;
+    labelInput.style.opacity = isEditing ? '0.6' : '';
+    labelInput.style.cursor = isEditing ? 'not-allowed' : '';
+  }
+  // Bucket Routing only feeds the default form — hide it while editing a saved form.
+  if (bucketCard) bucketCard.style.display = isEditing ? 'none' : '';
+}
+
+// Write the edited builder state back to THAT forms row (by id + user_id). The
+// payload deliberately omits public_id and bucket_name, so existing links, QR
+// codes, and the bucket/leads all keep working unchanged.
+async function formsUpdateForm() {
+  if (!currentUser || !formsEditingId) return;
+  var statusEl = document.getElementById('forms-update-status');
+  var token = localStorage.getItem('arcascend_token');
+  var payload = {
+    title: (document.getElementById('forms-form-title').value || '').trim() || 'Untitled Form',
+    gym_name: (document.getElementById('forms-gym-name').value || '').trim(),
+    form_description: (document.getElementById('forms-form-desc').value || '').trim(),
+    logo_url: (document.getElementById('forms-logo-url').value || '').trim(),
+    questions: formsQuestions
+  };
+  if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = 'var(--text-muted)'; statusEl.style.fontWeight = ''; }
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/forms?id=eq.' + encodeURIComponent(formsEditingId) + '&user_id=eq.' + currentUser.id, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!(res.ok || res.status === 204)) {
+      var err = await res.text();
+      if (statusEl) { statusEl.textContent = 'Error: ' + err; statusEl.style.color = 'var(--lost)'; }
+      return;
+    }
+  } catch(e) {
+    if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.style.color = 'var(--lost)'; }
+    return;
+  }
+  if (statusEl) {
+    statusEl.textContent = '✓ Updated';
+    statusEl.style.color = '#22c55e';
+    statusEl.style.fontWeight = '600';
+  }
+  // Keep the stash in sync so re-saving without leaving stays consistent.
+  if (formsEditingForm) {
+    formsEditingForm.title = payload.title;
+    formsEditingForm.gym_name = payload.gym_name;
+    formsEditingForm.form_description = payload.form_description;
+    formsEditingForm.logo_url = payload.logo_url;
+    formsEditingForm.questions = JSON.parse(JSON.stringify(formsQuestions));
+  }
+}
+
+// Leave edit mode and restore the builder to the default-form state.
+function formsCancelEdit() {
+  formsEditingId = null;
+  formsEditingForm = null;
+  formsInit();
 }
 
 function formsPreviewLogo(url) {
@@ -5787,6 +5945,7 @@ function formsResetQuestions() {
 
 async function formsSaveSettings() {
   if (!currentUser) return;
+  if (formsEditingId) return; // in edit-existing mode, only formsUpdateForm() writes
   var statusEl = document.getElementById('forms-save-status');
   statusEl.textContent = 'Saving...';
   var token = localStorage.getItem('arcascend_token');
