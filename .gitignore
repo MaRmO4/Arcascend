@@ -30,3 +30,4 @@ index.html.*-bak
 *.njsproj
 *.sln
 *.sw?
+*.bak-*
