@@ -653,12 +653,42 @@ main { flex: 1; padding: 20px 24px; }
   display: block; font-size: 11px; text-transform: uppercase;
   letter-spacing: 0.5px; color: var(--muted); margin-bottom: 4px;
 }
-.form-field input, .form-field select, .form-field textarea {
+.form-field input:not([type=checkbox]):not([type=radio]), .form-field select, .form-field textarea {
   width: 100%; background: var(--panel-2); border: 1px solid var(--border);
   color: var(--text); padding: 9px 12px; border-radius: 8px;
   font-size: 14px; font-family: inherit; outline: none;
 }
 .form-field textarea { resize: vertical; min-height: 72px; }
+
+/* Lead-profile option rows (checkbox groups) — own layout so .form-field label
+   styling (uppercase/letter-spacing/block) does NOT leak onto per-option labels. */
+.opt-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.form-field .opt {
+  display: inline-flex; align-items: center; gap: 8px; margin: 0;
+  padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-2); cursor: pointer; line-height: 1.35;
+  font-size: 13px; font-weight: 400; text-transform: none; letter-spacing: 0;
+  color: var(--text);
+}
+.form-field .opt input[type=checkbox], .form-field .opt input[type=radio] {
+  width: auto; margin: 0; flex: 0 0 auto;
+}
+.dyn-profile-hint { font-size: 11px; color: var(--muted); margin: 4px 0 12px; }
+
+/* Collapsible lead-profile sections */
+.lead-sec { border: 1px solid var(--border); border-radius: 10px; margin: 12px 0; background: var(--panel); }
+.lead-sec-head {
+  display: flex; align-items: center; gap: 9px; padding: 12px 14px;
+  cursor: pointer; user-select: none;
+}
+.lead-sec-head:hover { background: var(--panel-2); border-radius: 10px; }
+.lead-sec-chev { display: inline-block; width: 12px; font-size: 11px; color: var(--muted); transition: transform .15s; }
+.lead-sec.collapsed .lead-sec-chev { transform: rotate(-90deg); }
+.lead-sec-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.lead-sec-body { padding: 0 14px 14px; }
+.lead-sec.collapsed .lead-sec-body { display: none; }
+.lead-sec-danger { border-color: var(--lost); }
+.lead-sec-danger .lead-sec-title { color: var(--lost); }
 .form-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
 .btn-danger {
   background: var(--lost); color: white; border: none;
@@ -3205,48 +3235,121 @@ function getAnswerValue(L, q) {
   return '';
 }
 
+// Human labels for the known standard fields (used when __TRAINER_QUESTIONS has no
+// matching question to borrow a label from). Keyed by the canonical q_* id.
+var PROFILE_LABELS = {
+  q_name:'Full name', q_phone:'Phone number', q_email:'Email address',
+  q_goal:'Primary fitness goal', q_level:'Training experience level',
+  q_timeline:'Timeline', q_style:'Training style / preferences',
+  q_avail:'Availability', q_injuries:'Injuries or limitations',
+  q_whynow:'Why now?', q_outcomes:'Desired outcomes', q_other:'Other'
+};
+// Stable display order for the standard scaffold fields.
+var PROFILE_ORDER = ['q_name','q_phone','q_email','q_goal','q_level','q_timeline','q_style','q_avail','q_injuries','q_whynow','q_outcomes','q_other'];
+
+function humanizeKey(k){
+  var s = String(k||'').replace(/^q_/,'').replace(/_/g,' ').trim();
+  s = s.replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+  return s || 'Field';
+}
+function firstNonEmpty(){
+  for (var i=0;i<arguments.length;i++){ var v=arguments[i]; if (v!==undefined && v!==null && String(v)!=='') return v; }
+  return '';
+}
+// Resolve a lead's stored answers into one object, tolerating a `data` that is
+// still a JSON string on the lead (older rows). Never mutates the lead.
+function profileAnswers(L){
+  var src = L;
+  if (L && typeof L.data === 'string') {
+    try { var d = JSON.parse(L.data); if (d && typeof d === 'object') src = Object.assign({}, d, L); } catch(e){}
+  }
+  return src || {};
+}
+// Infer how to render an answer from its VALUE (not a preset assumption). Empty ->
+// text/select (never an empty checkbox wall); a comma-list matching known options ->
+// checkbox group; long/multi-line free text -> textarea; else a short text field.
+function profileFieldKind(val, options, qType){
+  var v = String(val==null?'':val);
+  var hasOpts = options && options.length;
+  var parts = v.split(/,\s*/).map(function(s){ return s.trim(); }).filter(Boolean);
+  var allMatch = hasOpts && parts.length>0 && parts.every(function(p){ return options.indexOf(p)>=0; });
+  if (!v) return (hasOpts && qType==='select') ? 'select' : 'text';
+  if (hasOpts && allMatch && (parts.length>1 || qType==='multiselect')) return 'checkbox';
+  if (hasOpts && parts.length===1 && allMatch && qType!=='multiselect') return 'select';
+  if (/\n/.test(v) || v.length>60 || qType==='textarea') return 'textarea';
+  return 'text';
+}
+
+// Renders the lead profile from the LEAD'S OWN answers (both q_* and friendly key
+// schemes, dedup'd to one field each). __TRAINER_QUESTIONS is used only to borrow
+// better labels/options when a question id matches -- it is NOT the source of truth
+// for what to show. Editing keeps working via data-qid (+ data-qmulti) as before.
 function renderDynamicProfile(L) {
-  if (!__TRAINER_QUESTIONS) return '<div style="padding:10px;color:var(--text-muted)">Loading profile…</div>';
-  var qs = __TRAINER_QUESTIONS;
-  var html = '';
-  html += '<div class="section-title" style="margin-top:20px;">\u270F\uFE0F PROFILE <span style="font-weight:normal;color:var(--text-muted);font-size:11px;text-transform:none;letter-spacing:0;">— click any field to edit, auto-saves on blur. Questions sync from your Create Form tab.</span></div>';
-  html += '<div class="field-grid">';
-  qs.forEach(function(q){
-    var val = getAnswerValue(L, q);
-    var fullWidth = (q.type === 'textarea' || q.id === 'q_goal') ? ' style="grid-column:1/-1;"' : '';
-    var input = '';
-    var attrId = 'dyn-' + q.id;
-    if (q.type === 'textarea') {
-      input = '<textarea data-qid="' + escapeAttr(q.id) + '" id="' + attrId + '" rows="3">' + escapeHtml(val) + '</textarea>';
-    } else if (q.type === 'select') {
-      var optionList = (q.options||[]).slice();
-      var hasMatch = optionList.some(function(o){ return String(o) === String(val); });
-      // If saved value doesn't match any option (e.g. legacy free-text), include it so nothing is lost
-      if (val && !hasMatch) optionList.push(val);
-      var opts = '<option value="">—</option>' + optionList.map(function(o){
-        return '<option value="' + escapeAttr(o) + '"' + (String(val)===String(o)?' selected':'') + '>' + escapeHtml(o) + '</option>';
-      }).join('');
-      input = '<select data-qid="' + escapeAttr(q.id) + '" id="' + attrId + '">' + opts + '</select>';
-    } else if (q.type === 'multiselect') {
-      var saved = String(val||'').split(/,\s*/).filter(Boolean);
-      input = '<div>' + (q.options||[]).map(function(o){
+  var src = profileAnswers(L);
+  var qs = __TRAINER_QUESTIONS || [];
+  var qById = {};
+  qs.forEach(function(q){ if (q && q.id) qById[q.id] = q; });
+
+  function labelFor(cid){ return (qById[cid] && qById[cid].label) || PROFILE_LABELS[cid] || humanizeKey(cid); }
+  function optionsFor(cid){ return (qById[cid] && Array.isArray(qById[cid].options)) ? qById[cid].options : []; }
+  function typeFor(cid){ return qById[cid] ? qById[cid].type : ''; }
+
+  var rendered = {};
+  function fieldHtml(cid, val){
+    var options = optionsFor(cid);
+    var qType = typeFor(cid);
+    var kind = profileFieldKind(val, options, qType);
+    var attrId = 'dyn-' + cid;
+    var qidAttr = escapeAttr(cid);
+    var v = String(val==null?'':val);
+    var full = (kind==='textarea' || kind==='checkbox' || kind==='select');
+    var input;
+    if (kind==='textarea'){
+      input = '<textarea class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'" rows="3">'+escapeHtml(v)+'</textarea>';
+    } else if (kind==='checkbox'){
+      var saved = v.split(/,\s*/).map(function(s){ return s.trim(); }).filter(Boolean);
+      input = '<div class="opt-group">' + options.map(function(o){
         var chk = saved.indexOf(o) >= 0 ? ' checked' : '';
-        return '<label class="opt" style="display:inline-flex;align-items:center;gap:6px;margin-right:10px;font-weight:400;font-size:13px;"><input type="checkbox" data-qid="' + escapeAttr(q.id) + '" data-qmulti="1" value="' + escapeAttr(o) + '"' + chk + '> ' + escapeHtml(o) + '</label>';
+        return '<label class="opt"><input type="checkbox" data-qid="'+qidAttr+'" data-qmulti="1" value="'+escapeAttr(o)+'"'+chk+'> <span>'+escapeHtml(o)+'</span></label>';
       }).join('') + '</div>';
+    } else if (kind==='select'){
+      var optionList = options.slice();
+      if (v && optionList.indexOf(v) < 0) optionList.push(v); // never drop a stored value
+      var opts = '<option value="">-</option>' + optionList.map(function(o){
+        return '<option value="'+escapeAttr(o)+'"'+(String(v)===String(o)?' selected':'')+'>'+escapeHtml(o)+'</option>';
+      }).join('');
+      input = '<select class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'">'+opts+'</select>';
     } else {
-      input = '<input type="' + escapeAttr(q.type||'text') + '" data-qid="' + escapeAttr(q.id) + '" id="' + attrId + '" value="' + escapeAttr(val) + '">';
+      input = '<input type="text" class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'" value="'+escapeAttr(v)+'">';
     }
-    html += '<div class="form-field"' + fullWidth + '><label>' + escapeHtml(q.label||q.id) + '</label>' + input + '</div>';
+    rendered[cid] = true;
+    return '<div class="form-field"'+(full?' style="grid-column:1/-1;"':'')+'><label>'+escapeHtml(labelFor(cid))+'</label>'+input+'</div>';
+  }
+
+  var html = '';
+  html += '<div class="dyn-profile-hint">Click any field to edit -- auto-saves on blur. Labels sync from your Create Form questions.</div>';
+  html += '<div class="field-grid">';
+  // 1) Standard scaffold fields, dedup'd across the two naming schemes (q_goal == goal).
+  PROFILE_ORDER.forEach(function(cid){
+    var friendly = INTAKE_TO_LEAD_FIELD[cid];
+    var val = firstNonEmpty(src[cid], friendly ? src[friendly] : undefined);
+    html += fieldHtml(cid, val);
+  });
+  // 2) Any additional answers the lead actually has (e.g. custom shared-form questions).
+  Object.keys(src).forEach(function(k){
+    if (k.indexOf('q_') !== 0 || rendered[k]) return;
+    var v = src[k];
+    if (v===undefined || v===null || String(v)==='') return;
+    html += fieldHtml(k, v);
   });
   html += '</div>';
 
-  // Historical (orphaned) answers
-  var currentIds = {};
-  qs.forEach(function(q){ currentIds[q.id] = true; });
-  var orphanKeys = Object.keys(L).filter(function(k){
+  // Orphan fallback: with the above we now render the lead's own answers, so this is
+  // normally empty. Kept as a safety net for anything genuinely unmapped.
+  var orphanKeys = Object.keys(src).filter(function(k){
     if (!k || k.indexOf('q_') !== 0) return false;
-    if (currentIds[k]) return false;
-    var v = L[k];
+    if (rendered[k]) return false;
+    var v = src[k];
     return v !== '' && v != null;
   });
   if (orphanKeys.length){
@@ -3255,7 +3358,7 @@ function renderDynamicProfile(L) {
     orphanKeys.forEach(function(k){
       html += '<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">';
       html += '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">' + escapeHtml(k) + '</div>';
-      html += '<div>' + escapeHtml(L[k]) + '</div>';
+      html += '<div>' + escapeHtml(src[k]) + '</div>';
       html += '</div>';
     });
     html += '</div></details>';
@@ -3950,6 +4053,38 @@ function renderTasksForLead(L) {
   }).join("");
 }
 
+// Collapsible section wrapper for the open-lead profile. Emits a clickable header
+// (chevron) + a body container; toggling is wired in wireLeadSections(). Sections
+// default OPEN; state is not persisted.
+function leadSecOpen(key, title, opts){
+  opts = opts || {};
+  return '<div class="lead-sec' + (opts.danger ? ' lead-sec-danger' : '') + '" data-sec="' + key + '">' +
+    '<div class="lead-sec-head" role="button" tabindex="0" aria-expanded="true">' +
+      '<span class="lead-sec-chev">&#9662;</span>' +
+      '<span class="lead-sec-title">' + title + '</span>' +
+    '</div>' +
+    '<div class="lead-sec-body">';
+}
+function leadSecClose(){ return '</div></div>'; }
+
+// Wire the collapsible headers after the modal HTML is in the DOM. Click (or
+// Enter/Space) on a header toggles the `collapsed` class on its section.
+function wireLeadSections(){
+  var root = $("modal-content");
+  if (!root) return;
+  root.querySelectorAll('.lead-sec-head').forEach(function(h){
+    function toggle(){
+      var sec = h.parentElement;
+      var collapsed = sec.classList.toggle('collapsed');
+      h.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+    h.addEventListener('click', toggle);
+    h.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+}
+
 function openLead(name) {
   var L = LEADS.find(function(x){ return x.name === name; });
   if (!L) return;
@@ -3984,7 +4119,7 @@ function openLead(name) {
 
       (L.priority ? '<div class="section-title">📌 Priority Note</div><textarea class="notes-edit" id="m-pnote">' + (L.priorityNote||"") + '</textarea>' : '') +
 
-      '<div class="section-title">💰 Billing &amp; Sessions</div>' +
+      leadSecOpen('billing','💰 Billing &amp; Sessions') +
       '<div class="billing-box">' +
         '<div class="billing-toggle">' +
           '<input type="checkbox" id="b-active" ' + (b.active?"checked":"") + '>' +
@@ -4020,12 +4155,14 @@ function openLead(name) {
           '</div>';
         })() +
       '</div>' +
-
-      '<div class="section-title">Deal Status</div>' +
+      leadSecClose() +
+      leadSecOpen('status','Deal Status') +
       '<div class="status-row" id="m-status">' + sb + '</div>' +
-
+      leadSecClose() +
+      leadSecOpen('profile','✏️ Profile') +
       '<div id="dyn-profile-mount"></div>' +
-'<div class="section-title">Consultation</div>' +
+      leadSecClose() +
+      leadSecOpen('consult','Consultation') +
       '<div class="form-field" style="margin-bottom:12px;">' +
         '<label>Consultation Status</label>' +
         '<select id="m-consult">' +
@@ -4039,8 +4176,8 @@ function openLead(name) {
       '</div>' +
       '<label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;">Notes</label>' +
       '<textarea class="notes-edit" id="m-notes" placeholder="Add notes...">' + (L.notes||"") + '</textarea>' +
-
-      '<div class="section-title">📅 Tasks &amp; Follow-ups</div>' +
+      leadSecClose() +
+      leadSecOpen('tasks','📅 Tasks &amp; Follow-ups') +
       '<div id="m-tasks">' + renderTasksForLead(L) + '</div>' +
       '<div class="task-presets">' +
         '<button class="task-preset" data-p="reachout">📞 Reach Out Tomorrow</button>' +
@@ -4052,13 +4189,15 @@ function openLead(name) {
         '<input id="m-tdate" type="date" value="' + addDays(todayStr(),1) + '">' +
         '<button id="m-tadd">+ Add</button>' +
       '</div>' +
-
-      '<div class="section-title" style="color:var(--lost);border-color:var(--lost);margin-top:30px;">⚠ Danger Zone</div>' +
+      leadSecClose() +
+      leadSecOpen('danger','⚠ Danger Zone',{danger:true}) +
       '<div style="color:var(--muted);font-size:12px;margin-bottom:10px;">Permanently remove this lead and all their tasks, notes, billing, and activity. This cannot be undone.</div>' +
       '<button class="btn-danger" id="delete-lead-btn" style="width:100%;">🗑 Delete This Lead</button>' +
+      leadSecClose() +
     '</div>';
 
   $("modal").classList.add("show");
+  wireLeadSections();
 
   // Wire up modal events
   $("m-star").addEventListener("click", function(){
