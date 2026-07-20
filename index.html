@@ -682,8 +682,7 @@ main { flex: 1; padding: 20px 24px; }
   cursor: pointer; user-select: none;
 }
 .lead-sec-head:hover { background: var(--panel-2); border-radius: 10px; }
-.lead-sec-chev { display: inline-block; width: 12px; font-size: 11px; color: var(--muted); transition: transform .15s; }
-.lead-sec.collapsed .lead-sec-chev { transform: rotate(-90deg); }
+.lead-sec-chev { display: inline-block; width: 12px; font-size: 11px; color: var(--muted); }
 .lead-sec-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .lead-sec-body { padding: 0 14px 14px; }
 .lead-sec.collapsed .lead-sec-body { display: none; }
@@ -4053,33 +4052,72 @@ function renderTasksForLead(L) {
   }).join("");
 }
 
+// Collapse state for the open-lead profile sections is a GLOBAL display preference
+// (not per-lead, not stored lead data): a single localStorage map of sectionKey ->
+// collapsed boolean. A key with no entry defaults to OPEN. All access is guarded so
+// a storage failure (private mode / quota) never breaks the profile.
+var PROFILE_COLLAPSED_KEY = 'arcascend_profile_collapsed';
+function loadProfileCollapsed(){
+  try { var raw = localStorage.getItem(PROFILE_COLLAPSED_KEY); var m = raw ? JSON.parse(raw) : {}; return (m && typeof m === 'object') ? m : {}; }
+  catch(e){ return {}; }
+}
+function saveProfileCollapsed(map){
+  try { localStorage.setItem(PROFILE_COLLAPSED_KEY, JSON.stringify(map || {})); } catch(e){ /* private mode / quota -> keep in-memory only */ }
+}
+var __profileCollapsed = loadProfileCollapsed();
+
+// Explicit chevron glyphs — the glyph itself changes (open vs collapsed), rather
+// than relying on a CSS rotation that can be visually ambiguous.
+var LEAD_SEC_CHEV_OPEN = '▾';       // down triangle
+var LEAD_SEC_CHEV_COLLAPSED = '▸';  // right triangle
+
 // Collapsible section wrapper for the open-lead profile. Emits a clickable header
-// (chevron) + a body container; toggling is wired in wireLeadSections(). Sections
-// default OPEN; state is not persisted.
+// (chevron) + a body container. Initial open/collapsed state is read from
+// __profileCollapsed (default OPEN) for a no-flash first paint; wireLeadSections()
+// then re-asserts the saved state on the live DOM (authoritative).
 function leadSecOpen(key, title, opts){
   opts = opts || {};
-  return '<div class="lead-sec' + (opts.danger ? ' lead-sec-danger' : '') + '" data-sec="' + key + '">' +
-    '<div class="lead-sec-head" role="button" tabindex="0" aria-expanded="true">' +
-      '<span class="lead-sec-chev">&#9662;</span>' +
+  var collapsed = !!__profileCollapsed[key];
+  return '<div class="lead-sec' + (opts.danger ? ' lead-sec-danger' : '') + (collapsed ? ' collapsed' : '') + '" data-sec="' + key + '">' +
+    '<div class="lead-sec-head" role="button" tabindex="0" aria-expanded="' + (collapsed ? 'false' : 'true') + '">' +
+      '<span class="lead-sec-chev">' + (collapsed ? LEAD_SEC_CHEV_COLLAPSED : LEAD_SEC_CHEV_OPEN) + '</span>' +
       '<span class="lead-sec-title">' + title + '</span>' +
     '</div>' +
     '<div class="lead-sec-body">';
 }
 function leadSecClose(){ return '</div></div>'; }
 
-// Wire the collapsible headers after the modal HTML is in the DOM. Click (or
-// Enter/Space) on a header toggles the `collapsed` class on its section.
+// Apply collapse state to a LIVE section element: toggles the `collapsed` class
+// (CSS hides `.lead-sec-body`), sets aria-expanded, and swaps the chevron glyph.
+function applyLeadSecState(sec, collapsed){
+  if (!sec) return;
+  sec.classList.toggle('collapsed', collapsed);
+  var head = sec.querySelector('.lead-sec-head');
+  if (head) head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  var chev = sec.querySelector('.lead-sec-chev');
+  if (chev) chev.textContent = collapsed ? LEAD_SEC_CHEV_COLLAPSED : LEAD_SEC_CHEV_OPEN;
+}
+
+// Wire + apply collapse state after the modal HTML is in the DOM. Reads the saved
+// map fresh and ENFORCES it on each section (so the render reflects saved state
+// regardless of the string-built markup). Toggling flips class + chevron + aria,
+// then persists immediately (global preference — no save button).
 function wireLeadSections(){
   var root = $("modal-content");
   if (!root) return;
-  root.querySelectorAll('.lead-sec-head').forEach(function(h){
+  __profileCollapsed = loadProfileCollapsed();
+  root.querySelectorAll('.lead-sec').forEach(function(sec){
+    var key = sec.getAttribute('data-sec');
+    applyLeadSecState(sec, key ? !!__profileCollapsed[key] : false);
+    var head = sec.querySelector('.lead-sec-head');
+    if (!head) return;
     function toggle(){
-      var sec = h.parentElement;
-      var collapsed = sec.classList.toggle('collapsed');
-      h.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      var collapsed = !sec.classList.contains('collapsed');
+      applyLeadSecState(sec, collapsed);
+      if (key){ __profileCollapsed[key] = collapsed; saveProfileCollapsed(__profileCollapsed); }
     }
-    h.addEventListener('click', toggle);
-    h.addEventListener('keydown', function(e){
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', function(e){
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
     });
   });
@@ -4088,6 +4126,7 @@ function wireLeadSections(){
 function openLead(name) {
   var L = LEADS.find(function(x){ return x.name === name; });
   if (!L) return;
+  __profileCollapsed = loadProfileCollapsed(); // honor the latest saved collapse layout
   L.lastViewed = Date.now();
   saveState();
   var b = ensureBilling(L);
