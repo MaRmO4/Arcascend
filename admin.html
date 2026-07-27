@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArcAscend · Admin</title>
+<style>
+/* ==========================================================
+   PALETTE — mirrors index.html so admin feels like ArcAscend
+   ========================================================== */
+:root {
+  --bg: #0f1419; --panel: #1a2129; --panel-2: #232c36;
+  --border: #2d3742; --text: #e6e9ed; --muted: #8b95a1;
+  --accent: #4f9eff; --won: #22c55e; --lost: #ef4444;
+  --open: #f59e0b; --warm: #fb923c; --purple: #a78bfa;
+  --shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px; line-height: 1.5;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font-family: inherit; }
+
+/* ---- layout ---- */
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 20px 60px; }
+.center-card {
+  max-width: 460px; margin: 8vh auto; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 14px; padding: 32px;
+  box-shadow: var(--shadow);
+}
+.loading { text-align: center; color: var(--muted); padding: 20vh 0; }
+
+/* ---- admin header ---- */
+.admin-top {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 20px; flex-wrap: wrap; margin-bottom: 22px;
+  padding-bottom: 20px; border-bottom: 1px solid var(--border);
+}
+.brand { font-size: 13px; font-weight: 700; letter-spacing: 1px; color: var(--accent); text-transform: uppercase; }
+.org-name { font-size: 24px; font-weight: 800; margin: 4px 0 2px; }
+.org-sub { font-size: 12px; color: var(--muted); }
+.top-right { text-align: right; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+
+/* ---- join code chip ---- */
+.code-box {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px; margin-top: 10px;
+}
+.code-val { font-family: ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 700; letter-spacing: 1px; color: var(--text); }
+.code-cap { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ---- buttons ---- */
+.btn {
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.input {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 14px;
+  outline: none;
+}
+.input:focus { border-color: var(--accent); }
+select.input { cursor: pointer; }
+
+/* ---- KPI cards ---- */
+.kpi-row {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 8px;
+}
+.kpi {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px;
+}
+.kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.kpi-val { font-size: 26px; font-weight: 800; margin-top: 6px; }
+.kpi-val.money { color: var(--won); }
+.kpi-val.proj { color: var(--accent); }
+.kpi-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+/* ---- controls row ---- */
+.controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 22px 0 12px; }
+.controls .spacer { flex: 1; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 12px; font-size: 12px; color: var(--muted);
+}
+.chip b { color: var(--text); }
+.chip .x { cursor: pointer; color: var(--muted); font-weight: 700; }
+.chip .x:hover { color: var(--lost); }
+
+/* ---- roster table ---- */
+.table-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 12px 14px; text-align: left; font-size: 13px; }
+thead th {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted);
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap;
+}
+thead th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+thead th:hover { color: var(--text); }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--panel-2); }
+.uid { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.badge { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 7px; border-radius: 5px; margin-left: 6px; }
+.badge.admin { background: rgba(167,139,250,0.16); color: var(--purple); }
+.badge.trainer { background: rgba(79,158,255,0.16); color: var(--accent); }
+.badge.you { background: rgba(34,197,94,0.16); color: var(--won); }
+.sort-arrow { font-size: 10px; margin-left: 3px; color: var(--accent); }
+
+/* ---- callout ---- */
+.callout {
+  background: linear-gradient(135deg, rgba(79,158,255,0.10), rgba(167,139,250,0.06));
+  border: 1px solid rgba(79,158,255,0.35); border-radius: 12px; padding: 18px 20px; margin: 18px 0;
+}
+.callout h3 { margin: 0 0 6px; font-size: 15px; }
+.callout p { margin: 0; font-size: 13px; color: var(--muted); }
+
+.section-h { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 24px 0 10px; }
+.msg-ok { color: var(--won); font-size: 13px; margin-top: 10px; }
+.msg-err { color: var(--lost); font-size: 13px; margin-top: 10px; }
+.hint { font-size: 12px; color: var(--muted); }
+.divider { height: 1px; background: var(--border); margin: 24px 0; }
+
+@media (max-width: 860px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">Loading…</div></div>
+
+<script>
+// ==========================================================
+// ArcAscend ADMIN — Phase 3 (Team Overview, read-only aggregation
+// + create/join org). All JS/CSS inlined, mirroring index.html.
+// Grows through Phases 4–6; keep sections labeled.
+// ==========================================================
+
+// ==========================================================
+// 1. CONFIG & CONSTANTS  (same project as index.html)
+// ==========================================================
+var SUPABASE_URL = 'https://udzfpeztwgsynjhwjwic.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkemZwZXp0d2dzeW5qaHdqd2ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2OTcwOTcsImV4cCI6MjA5NTI3MzA5N30.Eke_HxZtww3zVekkPMDydT90NkVWSltJjA2fr40oquQ';
+var TRAINER_APP = 'index.html';
+
+// ==========================================================
+// 2. AUTH + SESSION  (reuses index.html's localStorage token)
+// ==========================================================
+var currentUser = null;  // { id, email }
+
+function authHeaders() {
+  return { 'Authorization': 'Bearer ' + localStorage.getItem('arcascend_token'), 'apikey': SUPABASE_KEY };
+}
+function goLogin() { window.location.href = 'login.html'; }
+
+async function refreshAuthToken() {
+  var refresh = localStorage.getItem('arcascend_refresh_token');
+  if (!refresh) return false;
+  try {
+    var res = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY },
+      body: JSON.stringify({ refresh_token: refresh })
+    });
+    var data = await res.json();
+    if (data.error || !data.access_token) return false;
+    localStorage.setItem('arcascend_token', data.access_token);
+    if (data.refresh_token) localStorage.setItem('arcascend_refresh_token', data.refresh_token);
+    localStorage.setItem('arcascend_token_expires_at', String(Date.now() + (data.expires_in || 3600) * 1000));
+    return true;
+  } catch (e) { return false; }
+}
+
+// Same identity model as index.html: the JWT owner is authoritative.
+// 'ok' | 'invalid' | 'unreachable'
+async function verifySession() {
+  var token = localStorage.getItem('arcascend_token');
+  if (!token) return 'invalid';
+  var res;
+  try {
+    res = await fetch(SUPABASE_URL + '/auth/v1/user', { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + token } });
+  } catch(e) { return 'unreachable'; }
+  if (res.status === 401 || res.status === 403) return 'invalid';
+  if (!res.ok) return 'unreachable';
+  var u;
+  try { u = await res.json(); } catch(e) { return 'unreachable'; }
+  if (!u || !u.id) return 'unreachable';
+  localStorage.setItem('arcascend_user_id', u.id);
+  if (u.email) localStorage.setItem('arcascend_user_email', u.email);
+  return 'ok';
+}
+
+// Verify session (refresh once if needed). Redirects to login.html if not signed in.
+async function ensureAuth() {
+  var token = localStorage.getItem('arcascend_token');
+  if (!token) { goLogin(); return false; }
+  var status = await verifySession();
+  if (status === 'invalid') { await refreshAuthToken(); status = await verifySession(); }
+  if (status === 'invalid') { goLogin(); return false; }
+  // 'unreachable' → proceed with existing session (transient network issue)
+  currentUser = { id: localStorage.getItem('arcascend_user_id'), email: localStorage.getItem('arcascend_user_email') };
+  return true;
+}
+
+// ==========================================================
+// 3. DATA LOADING  (raw fetch + RPC, user JWT)
+// ==========================================================
+
+// Authenticated RPC: POST /rest/v1/rpc/<name>. Returns parsed JSON (usually an array).
+async function rpc(name, body) {
+  var res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + name, {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify(body || {})
+  });
+  if (!res.ok) { var t = await res.text(); throw new Error(t || ('RPC ' + name + ' failed')); }
+  try { return await res.json(); } catch(e) { return null; }
+}
+
+// My org memberships (RLS: a member can read their own rows).
+async function loadMyMemberships() {
+  var res = await fetch(SUPABASE_URL + '/rest/v1/org_members?user_id=eq.' + currentUser.id + '&select=org_id,role,joined_at', { headers: authHeaders() });
+  if (!res.ok) return [];
+  var rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
+}
+
+// Orgs by id list (RLS: members can read their org).
+async function loadOrgs(orgIds) {
+  if (!orgIds.length) return [];
+  var res = await fetch(SUPABASE_URL + '/rest/v1/orgs?id=in.(' + orgIds.join(',') + ')&select=id,name,join_code,created_by,created_at', { headers: authHeaders() });
+  if (!res.ok) return [];
+  var rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
+}
+
+// Roster of one org (RLS: members can read their org's roster).
+async function loadRoster(orgId) {
+  var res = await fetch(SUPABASE_URL + '/rest/v1/org_members?org_id=eq.' + orgId + '&select=user_id,role,joined_at&order=joined_at.asc', { headers: authHeaders() });
+  if (!res.ok) return [];
+  var rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
+}
+
+// All leads for a set of member user_ids (admin policy permits cross-member SELECT).
+async function loadOrgLeads(userIds) {
+  if (!userIds.length) return [];
+  var url = SUPABASE_URL + '/rest/v1/leads?user_id=in.(' + userIds.join(',') + ')&select=id,user_id,created_at,data';
+  var res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) return [];
+  var rows = await res.json();
+  if (!Array.isArray(rows)) return [];
+  return rows.map(function(r){
+    var d = parseLeadData(r.data);
+    d.__uid = r.user_id;
+    d.__created_at = r.created_at;
+    return d;
+  });
+}
+
+// ==========================================================
+// 4. CALCS  (copied from index.html so numbers MATCH the app)
+// ==========================================================
+
+// `data` may be a JSON string OR an object (index.html stores stringified JSON).
+function parseLeadData(data) {
+  var L = null;
+  if (typeof data === 'string') { try { L = JSON.parse(data); } catch(e) { L = null; } }
+  else if (data && typeof data === 'object') { L = data; }
+  return (L && typeof L === 'object') ? L : {};
+}
+function ensureBilling(L) {
+  if (!L.billing) L.billing = { active: false, sessions: 0, rate: 0, package: '', paid: false };
+  if (!L.billing.confirmations) L.billing.confirmations = {};
+  return L.billing;
+}
+// Projected revenue for a lead = sessions * rate  (identical to index.html leadTotal).
+function leadTotal(L) {
+  var b = ensureBilling(L);
+  return (b.sessions || 0) * (b.rate || 0);
+}
+function isActive(L) { return !!ensureBilling(L).active; }
+// Confirmed revenue for a lead in a given month (billing.confirmations["YYYY-MM"].amount).
+function confirmedAmount(L, monthKey) {
+  var b = L.billing;
+  return (b && b.confirmations && b.confirmations[monthKey]) ? (b.confirmations[monthKey].amount || 0) : 0;
+}
+
+// Month helpers (same YYYY-MM key format as index.html).
+function currentMonthKey() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function monthLabel(key) {
+  var parts = String(key).split('-');
+  var names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return (names[parseInt(parts[1],10)-1] || '?') + ' ' + parts[0];
+}
+// Last 12 months (current first) as YYYY-MM keys.
+function monthOptions() {
+  var out = [], d = new Date(); d.setDate(1);
+  for (var i = 0; i < 12; i++) {
+    out.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'));
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+}
+
+function fmt$(n) { return '$' + (n || 0).toLocaleString(); }
+// Short-form user id for display until a display-name system lands (Phase 4+).
+function shortUid(uid) { return String(uid || '').slice(0, 8); }
+function within7Days(iso) {
+  if (!iso) return false;
+  var t = new Date(iso).getTime();
+  if (isNaN(t)) return false;
+  return (Date.now() - t) <= 7 * 24 * 60 * 60 * 1000;
+}
+
+// KPI aggregation over a lead set for a given month.
+function computeKPIs(leads, monthKey) {
+  var proj = 0, conf = 0, active = 0, newWk = 0;
+  leads.forEach(function(L){
+    if (isActive(L)) { proj += leadTotal(L); active++; }
+    conf += confirmedAmount(L, monthKey);
+    if (within7Days(L.__created_at)) newWk++;
+  });
+  return { projected: proj, confirmed: conf, activeClients: active, newThisWeek: newWk, totalLeads: leads.length };
+}
+// Per-trainer aggregation (one row per member).
+function computeTrainerRow(member, leads, monthKey) {
+  var mine = leads.filter(function(L){ return L.__uid === member.user_id; });
+  var proj = 0, conf = 0, active = 0;
+  mine.forEach(function(L){
+    if (isActive(L)) { proj += leadTotal(L); active++; }
+    conf += confirmedAmount(L, monthKey);
+  });
+  return {
+    user_id: member.user_id, role: member.role,
+    leadCount: mine.length, activeClients: active, projected: proj, confirmed: conf
+  };
+}
+
+// ==========================================================
+// 5. STATE
+// ==========================================================
+var STATE = {
+  memberships: [],      // my org_members rows
+  adminOrgs: [],        // org objects I'm admin of
+  activeOrgId: null,    // currently viewed org
+  org: null,            // active org object
+  roster: [],           // active org's members
+  leads: [],            // active org's leads (all members)
+  month: currentMonthKey(),
+  sortKey: 'leadCount', // roster sort column
+  sortDir: -1,          // 1 asc, -1 desc
+  filterUid: null       // when set, page filtered to one trainer
+};
+
+// ==========================================================
+// 6. RENDER
+// ==========================================================
+var app = document.getElementById('app');
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function renderLoading(msg) { app.innerHTML = '<div class="loading">' + esc(msg || 'Loading…') + '</div>'; }
+
+// ---- No-admin state: create org / join team / back to app ----
+function renderNoAdmin() {
+  var email = localStorage.getItem('arcascend_user_email') || '';
+  app.innerHTML =
+    '<div class="center-card">' +
+      '<div class="brand">ArcAscend Admin</div>' +
+      '<h2 style="margin:8px 0 4px">No admin access yet</h2>' +
+      '<p class="hint" style="margin-top:0">Signed in as ' + esc(email) + '. You are not an admin of any organization.</p>' +
+
+      '<div class="section-h" style="margin-top:22px">Create an organization</div>' +
+      '<input id="org-name" class="input" placeholder="Organization name (e.g. Fit Athletic East Village)">' +
+      '<div style="margin-top:10px"><button class="btn" onclick="doCreateOrg()">Create organization</button></div>' +
+      '<div id="create-code"></div>' +
+      '<div id="create-msg"></div>' +
+
+      '<div class="divider"></div>' +
+
+      '<div class="section-h" style="margin-top:0">Join a team</div>' +
+      '<p class="hint" style="margin-top:0">Have a join code from your manager? Paste it here.</p>' +
+      '<input id="join-code" class="input" placeholder="ORG-XXXX-XXXX" style="text-transform:uppercase">' +
+      '<div style="margin-top:10px"><button class="btn btn-ghost" onclick="doJoinOrg()">Join team</button></div>' +
+      '<div id="join-msg"></div>' +
+
+      '<div class="divider"></div>' +
+      '<a href="' + TRAINER_APP + '">← Back to the trainer app</a>' +
+    '</div>';
+}
+
+// ---- Admin dashboard ----
+function renderAdmin() {
+  var org = STATE.org;
+  var email = localStorage.getItem('arcascend_user_email') || '';
+
+  // Filtered lead set (page-wide trainer filter).
+  var leads = STATE.filterUid ? STATE.leads.filter(function(L){ return L.__uid === STATE.filterUid; }) : STATE.leads;
+  var k = computeKPIs(leads, STATE.month);
+
+  // Org switcher (only when admin of >1 org).
+  var switcher = '';
+  if (STATE.adminOrgs.length > 1) {
+    switcher = '<select class="input" style="width:auto;margin-top:8px" onchange="switchOrg(this.value)">' +
+      STATE.adminOrgs.map(function(o){ return '<option value="' + o.id + '"' + (o.id===STATE.activeOrgId?' selected':'') + '>' + esc(o.name) + '</option>'; }).join('') +
+      '</select>';
+  }
+
+  var monthSel = '<select class="input" style="width:auto" onchange="setMonth(this.value)">' +
+    monthOptions().map(function(m){ return '<option value="' + m + '"' + (m===STATE.month?' selected':'') + '>' + esc(monthLabel(m)) + '</option>'; }).join('') +
+    '</select>';
+
+  // Header
+  var html = '' +
+    '<div class="wrap">' +
+    '<div class="admin-top">' +
+      '<div>' +
+        '<div class="brand">ArcAscend Admin</div>' +
+        '<div class="org-name">' + esc(org.name) + '</div>' +
+        '<div class="org-sub">Team Overview</div>' +
+        switcher +
+        '<div class="code-box">' +
+          '<span class="code-val" id="join-code-val">' + esc(org.join_code) + '</span>' +
+          '<button class="btn btn-sm" onclick="copyCode()">Copy</button>' +
+        '</div>' +
+        '<div class="code-cap">Trainers join your team by pasting this code in their app.</div>' +
+      '</div>' +
+      '<div class="top-right">' +
+        '<div>' + esc(email) + '</div>' +
+        '<a href="' + TRAINER_APP + '">Open trainer app →</a>' +
+      '</div>' +
+    '</div>';
+
+  // KPI cards
+  html += '<div class="controls"><div style="font-weight:700">Showing revenue for</div>' + monthSel +
+    (STATE.filterUid ? '<span class="chip">Trainer: <b>' + esc(shortUid(STATE.filterUid)) + '</b> <span class="x" onclick="clearFilter()">✕</span></span>' : '') +
+    '<div class="spacer"></div></div>';
+
+  html += '<div class="kpi-row">' +
+    kpiCard('Projected · ' + monthLabel(STATE.month), fmt$(k.projected), 'active clients pipeline', 'proj') +
+    kpiCard('Confirmed · ' + monthLabel(STATE.month), fmt$(k.confirmed), 'confirmed this month', 'money') +
+    kpiCard('Active clients', String(k.activeClients), 'billing marked active', '') +
+    kpiCard('New leads · 7d', String(k.newThisWeek), 'created this week', '') +
+    kpiCard('Total leads', String(k.totalLeads), STATE.filterUid ? 'for this trainer' : 'across the team', '') +
+    '</div>';
+
+  // Roster
+  html += '<div class="section-h">Trainer roster</div>';
+  if (STATE.roster.length <= 1) {
+    html += '<div class="callout"><h3>Invite trainers with your join code</h3>' +
+      '<p>Your team is just you right now. Share <b>' + esc(org.join_code) + '</b> — trainers paste it in their app to join, and their leads &amp; revenue roll up here automatically.</p></div>';
+  }
+  html += renderRosterTable();
+
+  html += '<div class="divider"></div><div class="hint">Read-only overview. Lead management arrives in a later phase.</div>';
+  html += '</div>';
+  app.innerHTML = html;
+}
+
+function kpiCard(label, val, sub, cls) {
+  return '<div class="kpi"><div class="kpi-label">' + esc(label) + '</div>' +
+    '<div class="kpi-val ' + (cls||'') + '">' + esc(val) + '</div>' +
+    '<div class="kpi-sub">' + esc(sub) + '</div></div>';
+}
+
+function renderRosterTable() {
+  var rows = STATE.roster.map(function(m){ return computeTrainerRow(m, STATE.leads, STATE.month); });
+  // Sort
+  var key = STATE.sortKey, dir = STATE.sortDir;
+  rows.sort(function(a,b){
+    var av = a[key], bv = b[key];
+    if (key === 'user_id' || key === 'role') { av = String(av); bv = String(bv); return av < bv ? -dir : av > bv ? dir : 0; }
+    return (av - bv) * dir;
+  });
+
+  function th(label, key, cls) {
+    var arrow = STATE.sortKey === key ? '<span class="sort-arrow">' + (STATE.sortDir < 0 ? '▼' : '▲') + '</span>' : '';
+    return '<th class="' + (cls||'') + '" onclick="setSort(\'' + key + '\')">' + esc(label) + arrow + '</th>';
+  }
+
+  var head = '<thead><tr>' +
+    th('Trainer','user_id','') + th('Role','role','') +
+    th('Leads','leadCount','num') + th('Active','activeClients','num') +
+    th('Projected','projected','num') + th('Confirmed','confirmed','num') +
+    '<th></th></tr></thead>';
+
+  var body = '<tbody>' + rows.map(function(r){
+    var isMe = r.user_id === currentUser.id;
+    var roleBadge = '<span class="badge ' + (r.role==='admin'?'admin':'trainer') + '">' + esc(r.role) + '</span>';
+    var youBadge = isMe ? '<span class="badge you">you</span>' : '';
+    var isFiltered = STATE.filterUid === r.user_id;
+    var viewBtn = isFiltered
+      ? '<button class="btn btn-ghost btn-sm" onclick="clearFilter()">✕ clear</button>'
+      : '<button class="btn-ghost btn btn-sm" onclick="filterTo(\'' + r.user_id + '\')">▶ view</button>';
+    return '<tr' + (isFiltered ? ' style="background:var(--panel-2)"' : '') + '>' +
+      '<td><span class="uid">' + esc(shortUid(r.user_id)) + '</span>' + youBadge + '</td>' +
+      '<td>' + roleBadge + '</td>' +
+      '<td class="num">' + r.leadCount + '</td>' +
+      '<td class="num">' + r.activeClients + '</td>' +
+      '<td class="num">' + fmt$(r.projected) + '</td>' +
+      '<td class="num">' + fmt$(r.confirmed) + '</td>' +
+      '<td class="num">' + viewBtn + '</td>' +
+    '</tr>';
+  }).join('') + '</tbody>';
+
+  return '<div class="table-card"><table>' + head + body + '</table></div>';
+}
+
+// ==========================================================
+// 7. ACTIONS  (create/join org, copy, switch, month, sort, filter)
+// ==========================================================
+function setMsg(id, text, ok) {
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = text ? '<div class="' + (ok ? 'msg-ok' : 'msg-err') + '">' + esc(text) + '</div>' : '';
+}
+
+async function doCreateOrg() {
+  var name = (document.getElementById('org-name').value || '').trim();
+  setMsg('create-msg', '', true);
+  document.getElementById('create-code').innerHTML = '';
+  if (!name) { setMsg('create-msg', 'Enter an organization name.', false); return; }
+  try {
+    var out = await rpc('create_org', { p_name: name });
+    var row = Array.isArray(out) ? out[0] : out;
+    var code = row && (row.join_code || row.joincode);
+    if (!code) { setMsg('create-msg', 'Created, but no join code returned. Reload to view your org.', false); return; }
+    document.getElementById('create-code').innerHTML =
+      '<div class="code-box" style="margin-top:14px"><span class="code-val" id="new-code">' + esc(code) + '</span>' +
+      '<button class="btn btn-sm" onclick="copyText(\'' + esc(code) + '\', this)">Copy</button></div>' +
+      '<div class="code-cap">Share this code so trainers can join. Reloading now opens your admin dashboard.</div>' +
+      '<div style="margin-top:12px"><button class="btn" onclick="location.reload()">Go to dashboard →</button></div>';
+    setMsg('create-msg', 'Organization created 🎉', true);
+  } catch(e) { setMsg('create-msg', 'Could not create org: ' + e.message, false); }
+}
+
+async function doJoinOrg() {
+  var code = (document.getElementById('join-code').value || '').trim().toUpperCase();
+  setMsg('join-msg', '', true);
+  if (!code) { setMsg('join-msg', 'Enter a join code.', false); return; }
+  try {
+    var out = await rpc('join_org', { p_code: code });
+    var row = Array.isArray(out) ? out[0] : out;
+    if (!row || !row.joined_org_id) { setMsg('join-msg', 'That code was not accepted. Double-check it with your manager.', false); return; }
+    setMsg('join-msg', 'Joined ' + (row.joined_org_name || 'the team') + '! Your leads now roll up to their admin. Head back to the trainer app to keep working.', true);
+  } catch(e) { setMsg('join-msg', 'Could not join: ' + e.message, false); }
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(function(){
+    if (btn) { var t = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+  });
+}
+function copyCode() {
+  var el = document.getElementById('join-code-val');
+  var btn = el && el.parentElement ? el.parentElement.querySelector('button') : null;
+  if (el) copyText(el.textContent, btn);
+}
+
+function switchOrg(orgId) {
+  STATE.activeOrgId = orgId;
+  STATE.filterUid = null;
+  loadActiveOrg().then(renderAdmin);
+}
+function setMonth(m) { STATE.month = m; renderAdmin(); }
+function setSort(key) {
+  if (STATE.sortKey === key) { STATE.sortDir *= -1; }
+  else { STATE.sortKey = key; STATE.sortDir = (key === 'user_id' || key === 'role') ? 1 : -1; }
+  renderAdmin();
+}
+function filterTo(uid) { STATE.filterUid = uid; renderAdmin(); }
+function clearFilter() { STATE.filterUid = null; renderAdmin(); }
+
+// ==========================================================
+// 8. BOOT
+// ==========================================================
+
+// Load the active org's org object + roster + leads into STATE.
+async function loadActiveOrg() {
+  STATE.org = STATE.adminOrgs.filter(function(o){ return o.id === STATE.activeOrgId; })[0] || STATE.adminOrgs[0];
+  STATE.activeOrgId = STATE.org.id;
+  STATE.roster = await loadRoster(STATE.activeOrgId);
+  var uids = STATE.roster.map(function(m){ return m.user_id; });
+  if (uids.indexOf(currentUser.id) < 0) uids.push(currentUser.id);
+  STATE.leads = await loadOrgLeads(uids);
+}
+
+async function boot() {
+  renderLoading('Checking your session…');
+  var ok = await ensureAuth();
+  if (!ok) return; // redirected to login
+
+  renderLoading('Loading your organizations…');
+  STATE.memberships = await loadMyMemberships();
+  var adminOrgIds = STATE.memberships.filter(function(m){ return m.role === 'admin'; }).map(function(m){ return m.org_id; });
+
+  if (!adminOrgIds.length) { renderNoAdmin(); return; }
+
+  STATE.adminOrgs = await loadOrgs(adminOrgIds);
+  if (!STATE.adminOrgs.length) { renderNoAdmin(); return; } // couldn't resolve org rows
+
+  STATE.activeOrgId = STATE.adminOrgs[0].id;
+  renderLoading('Loading team data…');
+  await loadActiveOrg();
+  renderAdmin();
+}
+
+boot();
+</script>
+</body>
+</html>
