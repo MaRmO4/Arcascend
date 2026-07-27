@@ -130,13 +130,64 @@ tbody tr:hover { background: var(--panel-2); }
 .hint { font-size: 12px; color: var(--muted); }
 .divider { height: 1px; background: var(--border); margin: 24px 0; }
 
+/* ---- nav tabs ---- */
+.nav { display: flex; gap: 6px; margin: 4px 0 20px; border-bottom: 1px solid var(--border); }
+.nav-tab {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.nav-tab:hover { color: var(--text); }
+.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ---- filters bar ---- */
+.filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.filters label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.filters .input { width: auto; padding: 8px 10px; font-size: 13px; }
+
+/* ---- status pill ---- */
+.status-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
+.st-New { background: rgba(79,158,255,0.16); color: var(--accent); }
+.st-Open { background: rgba(245,158,11,0.16); color: var(--open); }
+.st-Pending { background: rgba(167,139,250,0.16); color: var(--purple); }
+.st-ClosedWon { background: rgba(34,197,94,0.16); color: var(--won); }
+.st-ClosedLost { background: rgba(239,68,68,0.16); color: var(--lost); }
+tbody tr.clickable { cursor: pointer; }
+
+/* ---- form grid ---- */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 640px; }
+.form-grid .full { grid-column: 1 / -1; }
+.fld label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 5px; }
+.fld .input { width: 100%; }
+.req { color: var(--lost); }
+
+/* ---- detail drawer (right-side modal) ---- */
+.drawer-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  display: none; z-index: 50;
+}
+.drawer-bg.show { display: block; }
+.drawer {
+  position: absolute; top: 0; right: 0; height: 100%; width: 440px; max-width: 92vw;
+  background: var(--panel); border-left: 1px solid var(--border);
+  box-shadow: var(--shadow); overflow-y: auto; padding: 22px;
+}
+.drawer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+.drawer-title { font-size: 20px; font-weight: 800; }
+.drawer-close { background: transparent; border: none; color: var(--muted); font-size: 20px; cursor: pointer; }
+.kv { padding: 9px 0; border-bottom: 1px solid var(--border); }
+.kv .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.kv .v { font-size: 14px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+.reassign-box { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 18px; }
+
 @media (max-width: 860px) {
   .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .form-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
 <body>
 <div id="app"><div class="loading">Loading…</div></div>
+<div class="drawer-bg" id="drawer-bg" onclick="if(event.target===this)closeDrawer()"><div class="drawer" id="drawer"></div></div>
 
 <script>
 // ==========================================================
@@ -360,10 +411,15 @@ var STATE = {
   roster: [],           // active org's members
   leads: [],            // active org's leads (all members)
   month: currentMonthKey(),
-  sortKey: 'leadCount', // roster sort column
+  sortKey: 'leadCount', // roster sort column (Overview)
   sortDir: -1,          // 1 asc, -1 desc
-  filterUid: null       // when set, page filtered to one trainer
+  filterUid: null,      // Overview: when set, filtered to one trainer
+  view: 'overview',     // 'overview' | 'leads' | 'assign'
+  // Team Leads view: composable filters + sort
+  tl: { trainer: 'all', status: 'all', search: '', sortKey: 'created', sortDir: -1 },
+  drawerLeadId: null    // id of the lead open in the detail drawer
 };
+var STATUSES = ['New','Open','Pending','Closed Won','Closed Lost'];
 
 // ==========================================================
 // 6. RENDER
@@ -401,14 +457,10 @@ function renderNoAdmin() {
     '</div>';
 }
 
-// ---- Admin dashboard ----
+// ---- Admin shell: shared header + nav, routes to the active view ----
 function renderAdmin() {
   var org = STATE.org;
   var email = localStorage.getItem('arcascend_user_email') || '';
-
-  // Filtered lead set (page-wide trainer filter).
-  var leads = STATE.filterUid ? STATE.leads.filter(function(L){ return L.__uid === STATE.filterUid; }) : STATE.leads;
-  var k = computeKPIs(leads, STATE.month);
 
   // Org switcher (only when admin of >1 org).
   var switcher = '';
@@ -418,18 +470,13 @@ function renderAdmin() {
       '</select>';
   }
 
-  var monthSel = '<select class="input" style="width:auto" onchange="setMonth(this.value)">' +
-    monthOptions().map(function(m){ return '<option value="' + m + '"' + (m===STATE.month?' selected':'') + '>' + esc(monthLabel(m)) + '</option>'; }).join('') +
-    '</select>';
-
-  // Header
   var html = '' +
     '<div class="wrap">' +
     '<div class="admin-top">' +
       '<div>' +
         '<div class="brand">ArcAscend Admin</div>' +
         '<div class="org-name">' + esc(org.name) + '</div>' +
-        '<div class="org-sub">Team Overview</div>' +
+        '<div class="org-sub">Team management</div>' +
         switcher +
         '<div class="code-box">' +
           '<span class="code-val" id="join-code-val">' + esc(org.join_code) + '</span>' +
@@ -443,8 +490,37 @@ function renderAdmin() {
       '</div>' +
     '</div>';
 
-  // KPI cards
-  html += '<div class="controls"><div style="font-weight:700">Showing revenue for</div>' + monthSel +
+  // Nav
+  html += '<div class="nav">' +
+    navTab('overview', 'Overview') +
+    navTab('leads', 'Team Leads') +
+    navTab('assign', 'Assign') +
+    '</div>';
+
+  // Active view body
+  if (STATE.view === 'leads') html += renderTeamLeadsBody();
+  else if (STATE.view === 'assign') html += renderAssignBody();
+  else html += renderOverviewBody();
+
+  html += '</div>';
+  app.innerHTML = html;
+}
+
+function navTab(view, label) {
+  return '<button class="nav-tab' + (STATE.view === view ? ' active' : '') + '" onclick="setView(\'' + view + '\')">' + esc(label) + '</button>';
+}
+
+// ---- Overview view (Phase 3 dashboard) ----
+function renderOverviewBody() {
+  var org = STATE.org;
+  var leads = STATE.filterUid ? STATE.leads.filter(function(L){ return L.__uid === STATE.filterUid; }) : STATE.leads;
+  var k = computeKPIs(leads, STATE.month);
+
+  var monthSel = '<select class="input" style="width:auto" onchange="setMonth(this.value)">' +
+    monthOptions().map(function(m){ return '<option value="' + m + '"' + (m===STATE.month?' selected':'') + '>' + esc(monthLabel(m)) + '</option>'; }).join('') +
+    '</select>';
+
+  var html = '<div class="controls"><div style="font-weight:700">Showing revenue for</div>' + monthSel +
     (STATE.filterUid ? '<span class="chip">Trainer: <b>' + esc(shortUid(STATE.filterUid)) + '</b> <span class="x" onclick="clearFilter()">✕</span></span>' : '') +
     '<div class="spacer"></div></div>';
 
@@ -456,17 +532,13 @@ function renderAdmin() {
     kpiCard('Total leads', String(k.totalLeads), STATE.filterUid ? 'for this trainer' : 'across the team', '') +
     '</div>';
 
-  // Roster
   html += '<div class="section-h">Trainer roster</div>';
   if (STATE.roster.length <= 1) {
     html += '<div class="callout"><h3>Invite trainers with your join code</h3>' +
       '<p>Your team is just you right now. Share <b>' + esc(org.join_code) + '</b> — trainers paste it in their app to join, and their leads &amp; revenue roll up here automatically.</p></div>';
   }
   html += renderRosterTable();
-
-  html += '<div class="divider"></div><div class="hint">Read-only overview. Lead management arrives in a later phase.</div>';
-  html += '</div>';
-  app.innerHTML = html;
+  return html;
 }
 
 function kpiCard(label, val, sub, cls) {
@@ -518,8 +590,206 @@ function renderRosterTable() {
   return '<div class="table-card"><table>' + head + body + '</table></div>';
 }
 
+// ---- Team member helpers (dropdowns + labels) ----
+function trainerName(uid) {
+  if (uid === currentUser.id) return shortUid(uid) + ' (you)';
+  return shortUid(uid);
+}
+function memberOptions(selected, includeAll, allLabel) {
+  var html = includeAll ? '<option value="all"' + (selected==='all'?' selected':'') + '>' + esc(allLabel || 'All trainers') + '</option>' : '';
+  html += STATE.roster.map(function(m){
+    return '<option value="' + m.user_id + '"' + (m.user_id===selected?' selected':'') + '>' + esc(trainerName(m.user_id)) + (m.role==='admin'?' · admin':'') + '</option>';
+  }).join('');
+  return html;
+}
+
+// ---- TEAM LEADS view ----
+function teamLeadsFiltered() {
+  var tl = STATE.tl;
+  var q = tl.search.trim().toLowerCase();
+  var rows = STATE.leads.filter(function(L){
+    if (tl.trainer !== 'all' && L.__uid !== tl.trainer) return false;
+    if (tl.status !== 'all' && (L.status||'New') !== tl.status) return false;
+    if (q && String(L.name||'').toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  var key = tl.sortKey, dir = tl.sortDir, mk = currentMonthKey();
+  rows.sort(function(a,b){
+    var av, bv;
+    if (key === 'name') { av = String(a.name||'').toLowerCase(); bv = String(b.name||'').toLowerCase(); }
+    else if (key === 'status') { av = String(a.status||'New'); bv = String(b.status||'New'); }
+    else if (key === 'trainer') { av = String(a.__uid||''); bv = String(b.__uid||''); }
+    else if (key === 'created') { av = new Date(a.__created_at||0).getTime()||0; bv = new Date(b.__created_at||0).getTime()||0; }
+    else if (key === 'confirmed') { av = confirmedAmount(a, mk); bv = confirmedAmount(b, mk); }
+    else { av = a[key]; bv = b[key]; }
+    if (typeof av === 'string') return av < bv ? -dir : av > bv ? dir : 0;
+    return (av - bv) * dir;
+  });
+  return rows;
+}
+function statusPill(status) {
+  var s = status || 'New';
+  var cls = 'st-' + s.replace(/\s+/g, '');
+  return '<span class="status-pill ' + cls + '">' + esc(s) + '</span>';
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
+}
+function renderTeamLeadsBody() {
+  var tl = STATE.tl;
+  // Static filters bar (kept OUTSIDE the refreshable mount so the search box never
+  // loses focus on keystroke — only #tl-mount re-renders as filters change).
+  var html = '<div class="filters">' +
+    '<div><label>Trainer</label><br><select class="input" onchange="setTLFilter(\'trainer\', this.value)">' + memberOptions(tl.trainer, true, 'All trainers') + '</select></div>' +
+    '<div><label>Status</label><br><select class="input" onchange="setTLFilter(\'status\', this.value)">' +
+      '<option value="all"' + (tl.status==='all'?' selected':'') + '>All</option>' +
+      STATUSES.map(function(s){ return '<option value="' + esc(s) + '"' + (tl.status===s?' selected':'') + '>' + esc(s) + '</option>'; }).join('') +
+      '</select></div>' +
+    '<div style="flex:1;min-width:180px"><label>Search name</label><br><input id="tl-search" type="text" class="input" style="width:100%" placeholder="Type a name…" value="' + esc(tl.search) + '" oninput="setTLSearch(this.value)"></div>' +
+    '<div style="align-self:flex-end"><button class="btn" onclick="setView(\'assign\')">+ Assign Lead</button></div>' +
+    '</div>';
+  html += '<div id="tl-mount">' + tlMountHtml() + '</div>';
+  return html;
+}
+// The dynamic part of Team Leads (count + table). Refreshed in place by the filter/
+// sort setters so the search input stays focused.
+function tlMountHtml() {
+  var tl = STATE.tl;
+  var rows = teamLeadsFiltered();
+  var mk = currentMonthKey();
+
+  var html = '<div class="hint" style="margin-bottom:10px">' + rows.length + ' lead' + (rows.length===1?'':'s') + ' shown. Confirmed column reflects the current month (' + esc(monthLabel(mk)) + '), independent of the Overview month selector.</div>';
+
+  function th(label, key, cls) {
+    var sortable = key != null;
+    var arrow = (sortable && tl.sortKey === key) ? '<span class="sort-arrow">' + (tl.sortDir < 0 ? '▼' : '▲') + '</span>' : '';
+    return '<th class="' + (cls||'') + '"' + (sortable ? ' onclick="setTLSort(\'' + key + '\')"' : ' style="cursor:default"') + '>' + esc(label) + arrow + '</th>';
+  }
+  var head = '<thead><tr>' +
+    th('Name','name','') + th('Trainer','trainer','') + th('Status','status','') +
+    th('Active', null, '') + th('Created','created','') + th('Confirmed','confirmed','num') +
+    '</tr></thead>';
+
+  var body = '<tbody>' + rows.map(function(L){
+    var conf = confirmedAmount(L, mk);
+    return '<tr class="clickable" onclick="openLeadDrawer(\'' + esc(L.id) + '\')">' +
+      '<td><b>' + esc(L.name || '(no name)') + '</b></td>' +
+      '<td><span class="uid">' + esc(trainerName(L.__uid)) + '</span></td>' +
+      '<td>' + statusPill(L.status) + '</td>' +
+      '<td>' + (isActive(L) ? '<span style="color:var(--won)">✓</span>' : '<span style="color:var(--muted)">—</span>') + '</td>' +
+      '<td>' + esc(fmtDate(L.__created_at)) + '</td>' +
+      '<td class="num">' + (conf > 0 ? fmt$(conf) : '—') + '</td>' +
+    '</tr>';
+  }).join('') + '</tbody>';
+
+  if (!rows.length) body = '<tbody><tr><td colspan="6" style="color:var(--muted);padding:24px;text-align:center">No leads match these filters.</td></tr></tbody>';
+
+  html += '<div class="table-card"><table>' + head + body + '</table></div>';
+  return html;
+}
+function refreshTLMount() {
+  var m = document.getElementById('tl-mount');
+  if (m) m.innerHTML = tlMountHtml();
+}
+
+// ---- ASSIGN view ----
+function renderAssignBody() {
+  var trainerOpts = STATE.roster.length
+    ? memberOptions(null, false, '')
+    : '';
+  var html = '<div class="section-h" style="margin-top:8px">Assign a new lead</div>' +
+    '<p class="hint" style="margin-top:0;max-width:640px">Creates a lead in the chosen trainer\'s app exactly like a manual add — it appears under their leads with the standard profile fields. Trainer/client can fill in the rest later.</p>' +
+    '<form onsubmit="doAssignLead(event)"><div class="form-grid">' +
+      '<div class="fld full"><label>Assign to trainer <span class="req">*</span></label>' +
+        '<select id="a-trainer" class="input" required><option value="">— choose a trainer —</option>' + trainerOpts + '</select></div>' +
+      '<div class="fld full"><label>Name <span class="req">*</span></label><input id="a-name" class="input" required></div>' +
+      '<div class="fld"><label>Phone</label><input id="a-phone" class="input"></div>' +
+      '<div class="fld"><label>Email</label><input id="a-email" class="input" type="email"></div>' +
+      '<div class="fld full"><label>Goal</label><input id="a-goal" class="input"></div>' +
+      '<div class="fld"><label>Level</label><select id="a-level" class="input"><option value="">—</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>' +
+      '<div class="fld"><label>Timeline</label><select id="a-timeline" class="input"><option value="">—</option><option>ASAP</option><option>1-3 months</option><option>3-6 months</option><option>6+ months</option></select></div>' +
+      '<div class="fld full"><label>Notes</label><input id="a-notes" class="input"></div>' +
+      '<div class="fld full"><button class="btn" type="submit">Assign lead</button> <span id="assign-msg"></span></div>' +
+    '</div></form>';
+  return html;
+}
+
+// ---- READ-ONLY detail drawer ----
+// Ordered label map for the standard scaffold keys (both friendly + q_* variants).
+var DETAIL_FIELDS = [
+  ['name','Name'], ['phone','Phone'], ['email','Email'], ['status','Status'],
+  ['goal','Primary fitness goal','q_goal'], ['level','Training experience level','q_level'],
+  ['timeline','Timeline','q_timeline'], ['style','Training style / preferences','q_style'],
+  ['availability','Availability','q_avail'], ['injuries','Injuries or limitations','q_injuries'],
+  ['whyNow','Why now?','q_whynow'], ['outcomes','Desired outcomes','q_outcomes'], ['other','Other','q_other']
+];
+function leadById(id) { return STATE.leads.filter(function(L){ return L.id === id; })[0] || null; }
+
+function openLeadDrawer(id) {
+  var L = leadById(id);
+  if (!L) return;
+  STATE.drawerLeadId = id;
+  var mk = currentMonthKey();
+  var b = ensureBilling(L);
+
+  var kv = '';
+  DETAIL_FIELDS.forEach(function(f){
+    var friendly = f[0], label = f[1], alt = f[2];
+    var val = L[friendly];
+    if ((val==null || val==='') && alt) val = L[alt];
+    if (val==null || val==='') return; // only show present answers
+    kv += '<div class="kv"><div class="k">' + esc(label) + '</div><div class="v">' + esc(val) + '</div></div>';
+  });
+
+  // Billing summary
+  var billHtml = '<div class="kv"><div class="k">Active client</div><div class="v">' + (b.active ? 'Yes' : 'No') + '</div></div>' +
+    '<div class="kv"><div class="k">Sessions × Rate</div><div class="v">' + (b.sessions||0) + ' × ' + fmt$(b.rate||0) + ' = <b>' + fmt$(leadTotal(L)) + '</b> projected</div></div>';
+  var confs = (b.confirmations && typeof b.confirmations === 'object') ? Object.keys(b.confirmations).sort() : [];
+  if (confs.length) {
+    billHtml += '<div class="kv"><div class="k">Confirmed by month</div><div class="v">' +
+      confs.map(function(m){ return esc(monthLabel(m)) + ': ' + fmt$((b.confirmations[m]||{}).amount||0); }).join('<br>') +
+      '</div></div>';
+  }
+
+  var notesHtml = (L.notes && String(L.notes).trim())
+    ? '<div class="kv"><div class="k">Notes</div><div class="v">' + esc(L.notes) + '</div></div>' : '';
+
+  var provHtml = '';
+  if (L.assignedBy || L.assignedAt) {
+    provHtml = '<div class="kv"><div class="k">Assignment</div><div class="v">' +
+      (L.assignedBy ? 'By ' + esc(shortUid(L.assignedBy)) : '') +
+      (L.assignedAt ? ' · ' + esc(fmtDate(L.assignedAt)) : '') + '</div></div>';
+  }
+
+  // Reassign control
+  var reassign = '<div class="reassign-box"><div class="k" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:6px">Reassign to…</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<select id="reassign-sel" class="input" style="flex:1;min-width:160px">' + memberOptions(L.__uid, false, '') + '</select>' +
+      '<button class="btn" onclick="doReassign()">Reassign</button>' +
+    '</div><div id="reassign-msg"></div></div>';
+
+  document.getElementById('drawer').innerHTML =
+    '<div class="drawer-head"><div><div class="drawer-title">' + esc(L.name || '(no name)') + '</div>' +
+      '<div class="hint">' + statusPill(L.status) + ' · ' + esc(trainerName(L.__uid)) + '</div></div>' +
+      '<button class="drawer-close" onclick="closeDrawer()">✕</button></div>' +
+    '<div class="section-h" style="margin-top:16px">Profile</div>' + (kv || '<div class="hint">No profile answers yet.</div>') +
+    '<div class="section-h">Billing</div>' + billHtml +
+    notesHtml + provHtml +
+    reassign;
+
+  document.getElementById('drawer-bg').classList.add('show');
+}
+function closeDrawer() {
+  STATE.drawerLeadId = null;
+  document.getElementById('drawer-bg').classList.remove('show');
+}
+
 // ==========================================================
-// 7. ACTIONS  (create/join org, copy, switch, month, sort, filter)
+// 7. ACTIONS  (create/join org, copy, switch, month, sort, filter,
+//              view nav, team-leads filters, assign, reassign)
 // ==========================================================
 function setMsg(id, text, ok) {
   var el = document.getElementById(id);
@@ -581,6 +851,114 @@ function setSort(key) {
 }
 function filterTo(uid) { STATE.filterUid = uid; renderAdmin(); }
 function clearFilter() { STATE.filterUid = null; renderAdmin(); }
+
+// ---- View nav ----
+function setView(view) { STATE.view = view; renderAdmin(); }
+
+// ---- Team Leads filters/sort (refresh only the mount, keep search focus) ----
+function setTLFilter(kind, val) { STATE.tl[kind] = val; refreshTLMount(); }
+function setTLSearch(val) { STATE.tl.search = val; refreshTLMount(); }
+function setTLSort(key) {
+  var tl = STATE.tl;
+  if (tl.sortKey === key) { tl.sortDir *= -1; }
+  else { tl.sortKey = key; tl.sortDir = (key === 'name' || key === 'status' || key === 'trainer') ? 1 : -1; }
+  refreshTLMount();
+}
+
+// ---- ASSIGN: create a lead in a trainer's app (exact manual-lead shape) ----
+async function doAssignLead(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
+  var trainer = (document.getElementById('a-trainer').value || '').trim();
+  var name = (document.getElementById('a-name').value || '').trim();
+  setMsg('assign-msg', '', true);
+
+  // Validation: name required; trainer must be a real, loaded org member.
+  if (!name) { setMsg('assign-msg', 'Name is required.', false); return; }
+  var isMember = STATE.roster.some(function(m){ return m.user_id === trainer; });
+  if (!trainer || !isMember) { setMsg('assign-msg', 'Choose a valid trainer.', false); return; }
+
+  var phone = (document.getElementById('a-phone').value || '').trim();
+  var email = (document.getElementById('a-email').value || '').trim();
+  var goal = (document.getElementById('a-goal').value || '').trim();
+  var level = document.getElementById('a-level').value || '';
+  var timeline = document.getElementById('a-timeline').value || '';
+  var notes = (document.getElementById('a-notes').value || '').trim();
+
+  // EXACT manual-lead shape from index.html's add-lead handler + saveToSupabase,
+  // so it lands in the trainer's app as a normal manual lead. Plus provenance keys.
+  var id = newLeadId();
+  var L = {
+    id: id,
+    date: new Date().toLocaleDateString('en-US'),
+    name: name, phone: phone, email: email, goal: goal, level: level, timeline: timeline,
+    style: '', injuries: '', availability: '', whyNow: '', outcomes: '', other: '',
+    notes: notes, status: 'New',
+    billing: { active: false, sessions: 0, rate: 0, package: '' },
+    assignedBy: currentUser.id, assignedAt: new Date().toISOString()
+  };
+  var row = { id: id, user_id: trainer, name: name, phone: phone, email: email, goal: goal, status: 'New', data: JSON.stringify(L) };
+
+  setMsg('assign-msg', 'Assigning…', true);
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/leads', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }, authHeaders()),
+      body: JSON.stringify(row)
+    });
+    if (!res.ok) { var t = await res.text(); setMsg('assign-msg', 'Could not assign: ' + t, false); return; }
+    var out = await res.json();
+    var saved = Array.isArray(out) ? out[0] : out;
+    // Reflect in local state so it appears immediately in Team Leads / Overview.
+    var Lsaved = parseLeadData(saved && saved.data);
+    Lsaved.id = (saved && saved.id) || id;
+    Lsaved.__uid = (saved && saved.user_id) || trainer;
+    Lsaved.__created_at = (saved && saved.created_at) || new Date().toISOString();
+    STATE.leads.push(Lsaved);
+    setMsg('assign-msg', 'Assigned to ' + trainerName(trainer) + ' ✓', true);
+    // Reset the form fields.
+    ['a-name','a-phone','a-email','a-goal','a-notes'].forEach(function(f){ var el=document.getElementById(f); if(el) el.value=''; });
+    document.getElementById('a-level').value = '';
+    document.getElementById('a-timeline').value = '';
+    document.getElementById('a-trainer').value = '';
+  } catch(e) { setMsg('assign-msg', 'Error: ' + e.message, false); }
+}
+
+// newLeadId — identical to index.html (client-side uuid).
+function newLeadId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+    var r = (window.crypto && crypto.getRandomValues) ? (crypto.getRandomValues(new Uint8Array(1))[0] & 15) : Math.floor(Math.random()*16);
+    var v = c === 'x' ? r : ((r & 0x3) | 0x8);
+    return v.toString(16);
+  });
+}
+
+// ---- REASSIGN: move a lead to another org trainer (PATCH user_id) ----
+async function doReassign() {
+  var id = STATE.drawerLeadId;
+  var L = leadById(id);
+  if (!L) return;
+  var sel = document.getElementById('reassign-sel');
+  var newUid = sel ? sel.value : '';
+  var isMember = STATE.roster.some(function(m){ return m.user_id === newUid; });
+  if (!newUid || !isMember) { setMsg('reassign-msg', 'Choose a valid trainer.', false); return; }
+  if (newUid === L.__uid) { setMsg('reassign-msg', 'Already assigned to this trainer.', false); return; }
+
+  setMsg('reassign-msg', 'Reassigning…', true);
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/leads?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, authHeaders()),
+      body: JSON.stringify({ user_id: newUid })
+    });
+    if (!(res.ok || res.status === 204)) { var t = await res.text(); setMsg('reassign-msg', 'Could not reassign: ' + t, false); return; }
+    L.__uid = newUid;  // update local state
+    setMsg('reassign-msg', 'Reassigned to ' + trainerName(newUid) + ' ✓', true);
+    // Refresh the table underneath and the drawer's header trainer label.
+    refreshTLMount();
+    openLeadDrawer(id);
+  } catch(e) { setMsg('reassign-msg', 'Error: ' + e.message, false); }
+}
 
 // ==========================================================
 // 8. BOOT
