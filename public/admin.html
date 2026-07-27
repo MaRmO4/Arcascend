@@ -400,6 +400,27 @@ function computeTrainerRow(member, leads, monthKey) {
   };
 }
 
+// ---- Reports aggregation (Phase 5) ----
+// Range rollup for a lead set over N months. Each (set, month) cell reuses
+// computeKPIs so Reports can NEVER drift from the Overview KPIs. Projected is the
+// active-pipeline snapshot (month-independent, same each month by design); confirmed
+// is month-scoped. activeClients is current state (same every month).
+function computeRangeStats(leads, months) {
+  var proj = 0, conf = 0;
+  var perMonth = months.map(function(m){
+    var k = computeKPIs(leads, m);
+    proj += k.projected; conf += k.confirmed;
+    return { month: m, projected: k.projected, confirmed: k.confirmed };
+  });
+  var active = computeKPIs(leads, months[0] || currentMonthKey()).activeClients;
+  return { projected: proj, confirmed: conf, activeClients: active, perMonth: perMonth };
+}
+// Collection rate = confirmed / projected, guarded. Returns '—' when projected is 0.
+function collectionPct(confirmed, projected) {
+  if (!projected || projected <= 0) return '—';
+  return Math.round((confirmed / projected) * 100) + '%';
+}
+
 // ==========================================================
 // 5. STATE
 // ==========================================================
@@ -414,10 +435,13 @@ var STATE = {
   sortKey: 'leadCount', // roster sort column (Overview)
   sortDir: -1,          // 1 asc, -1 desc
   filterUid: null,      // Overview: when set, filtered to one trainer
-  view: 'overview',     // 'overview' | 'leads' | 'assign'
+  view: 'overview',     // 'overview' | 'leads' | 'assign' | 'reports'
   // Team Leads view: composable filters + sort
   tl: { trainer: 'all', status: 'all', search: '', sortKey: 'created', sortDir: -1 },
-  drawerLeadId: null    // id of the lead open in the detail drawer
+  drawerLeadId: null,   // id of the lead open in the detail drawer
+  // Reports view: month range (default last 3 months → current), trainer selection
+  // (null = all), sort. Defaults finalized in boot() once monthOptions is available.
+  reports: { start: null, end: null, trainers: null, sortKey: 'projected', sortDir: -1 }
 };
 var STATUSES = ['New','Open','Pending','Closed Won','Closed Lost'];
 
@@ -495,11 +519,13 @@ function renderAdmin() {
     navTab('overview', 'Overview') +
     navTab('leads', 'Team Leads') +
     navTab('assign', 'Assign') +
+    navTab('reports', 'Reports') +
     '</div>';
 
   // Active view body
   if (STATE.view === 'leads') html += renderTeamLeadsBody();
   else if (STATE.view === 'assign') html += renderAssignBody();
+  else if (STATE.view === 'reports') html += renderReportsBody();
   else html += renderOverviewBody();
 
   html += '</div>';
@@ -717,6 +743,133 @@ function renderAssignBody() {
   return html;
 }
 
+// ---- REPORTS view (Phase 5): team revenue rollup over a month range ----
+// Months in the selected range, ascending. YYYY-MM strings compare lexically, so
+// a start > end is simply swapped (a note is surfaced in the UI).
+function reportsRangeMonths() {
+  var r = STATE.reports, lo = r.start, hi = r.end;
+  if (lo > hi) { var t = lo; lo = hi; hi = t; }
+  return monthOptions().filter(function(m){ return m >= lo && m <= hi; }).sort();
+}
+// Selected-trainer resolution: reports.trainers === null means ALL.
+function reportsIsTrainerSelected(uid) {
+  var sel = STATE.reports.trainers;
+  return sel === null ? true : !!sel[uid];
+}
+function reportsSelectedUids() {
+  return STATE.roster.map(function(m){ return m.user_id; }).filter(reportsIsTrainerSelected);
+}
+
+function renderReportsBody() {
+  var r = STATE.reports;
+  var swapped = (r.start && r.end && r.start > r.end);
+
+  function monthSel(which, val) {
+    return '<select class="input" onchange="setRPMonth(\'' + which + '\', this.value)">' +
+      monthOptions().map(function(m){ return '<option value="' + m + '"' + (m===val?' selected':'') + '>' + esc(monthLabel(m)) + '</option>'; }).join('') +
+      '</select>';
+  }
+  // Static controls bar (kept outside #rp-mount so selects/checkboxes aren't rebuilt).
+  var html = '<div class="filters" style="align-items:flex-start">' +
+    '<div><label>From</label><br>' + monthSel('start', r.start) + '</div>' +
+    '<div><label>To</label><br>' + monthSel('end', r.end) + '</div>' +
+    '<div style="flex:1;min-width:240px"><label>Trainers</label>' +
+      '<div style="margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<button class="btn btn-ghost btn-sm" onclick="setRPAllTrainers(true)">All</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="setRPAllTrainers(false)">None</button>' +
+        STATE.roster.map(function(m){
+          return '<label class="chip" style="cursor:pointer"><input type="checkbox" ' + (reportsIsTrainerSelected(m.user_id)?'checked':'') + ' onchange="toggleRPTrainer(\'' + m.user_id + '\')"> ' + esc(trainerName(m.user_id)) + '</label>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+    '</div>';
+  if (swapped) html += '<div class="hint" style="color:var(--open);margin-bottom:8px">From is after To — range was auto-swapped.</div>';
+
+  html += '<div id="rp-mount">' + rpMountHtml() + '</div>';
+  return html;
+}
+
+// The dynamic part of Reports (summary + both tables). Refreshed in place by the
+// control setters so the controls bar (selects/checkboxes) is never rebuilt.
+function rpMountHtml() {
+  var r = STATE.reports;
+  var months = reportsRangeMonths();
+  var uids = reportsSelectedUids();
+
+  if (!uids.length) {
+    return '<div class="callout"><h3>Pick at least one trainer</h3><p>Select one or more trainers above to see the revenue rollup.</p></div>';
+  }
+
+  var selLeads = STATE.leads.filter(function(L){ return reportsIsTrainerSelected(L.__uid); });
+  var totals = computeRangeStats(selLeads, months);
+  var rangeLabel = months.length ? (monthLabel(months[0]) + (months.length > 1 ? ' – ' + monthLabel(months[months.length-1]) : '')) : '—';
+
+  // ---- SUMMARY ----
+  var html = '<div class="hint" style="margin:2px 0 10px">Range: <b>' + esc(rangeLabel) + '</b> · ' + months.length + ' month' + (months.length===1?'':'s') + ' · ' + uids.length + ' trainer' + (uids.length===1?'':'s') + '</div>';
+  html += '<div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">' +
+    kpiCard('Projected · range', fmt$(totals.projected), 'active pipeline × months', 'proj') +
+    kpiCard('Confirmed · range', fmt$(totals.confirmed), 'collected over range', 'money') +
+    kpiCard('Collection rate', collectionPct(totals.confirmed, totals.projected), 'confirmed ÷ projected', '') +
+    kpiCard('Active clients', String(totals.activeClients), 'current, selected trainers', '') +
+    '</div>';
+
+  // ---- PER-TRAINER TABLE ----
+  var rows = STATE.roster.filter(function(m){ return reportsIsTrainerSelected(m.user_id); }).map(function(m){
+    var mineLeads = selLeads.filter(function(L){ return L.__uid === m.user_id; });
+    var s = computeRangeStats(mineLeads, months);
+    return { user_id: m.user_id, activeClients: s.activeClients, projected: s.projected, confirmed: s.confirmed };
+  });
+  var sk = r.sortKey, sd = r.sortDir;
+  rows.sort(function(a,b){
+    if (sk === 'collection') { var ac = a.projected>0?a.confirmed/a.projected:-1, bc = b.projected>0?b.confirmed/b.projected:-1; return (ac-bc)*sd; }
+    return ((a[sk]||0) - (b[sk]||0)) * sd;
+  });
+  function rth(label, key, cls) {
+    var arrow = (key && r.sortKey === key) ? '<span class="sort-arrow">' + (r.sortDir < 0 ? '▼' : '▲') + '</span>' : '';
+    return '<th class="' + (cls||'') + '"' + (key ? ' onclick="setRPSort(\'' + key + '\')"' : ' style="cursor:default"') + '>' + esc(label) + arrow + '</th>';
+  }
+  var tHead = '<thead><tr>' + rth('Trainer', null, '') + rth('Active', 'activeClients', 'num') +
+    rth('Projected', 'projected', 'num') + rth('Confirmed', 'confirmed', 'num') + rth('Collection', 'collection', 'num') + '</tr></thead>';
+  var tBody = '<tbody>' + rows.map(function(t){
+    return '<tr><td><span class="uid">' + esc(trainerName(t.user_id)) + '</span></td>' +
+      '<td class="num">' + t.activeClients + '</td>' +
+      '<td class="num">' + fmt$(t.projected) + '</td>' +
+      '<td class="num">' + fmt$(t.confirmed) + '</td>' +
+      '<td class="num">' + collectionPct(t.confirmed, t.projected) + '</td></tr>';
+  }).join('');
+  // Totals row (must equal the SUMMARY — same data summed two ways).
+  tBody += '<tr style="border-top:2px solid var(--border);font-weight:700">' +
+    '<td>Total</td>' +
+    '<td class="num">' + totals.activeClients + '</td>' +
+    '<td class="num">' + fmt$(totals.projected) + '</td>' +
+    '<td class="num">' + fmt$(totals.confirmed) + '</td>' +
+    '<td class="num">' + collectionPct(totals.confirmed, totals.projected) + '</td></tr></tbody>';
+  html += '<div class="section-h">Per-trainer rollup</div><div class="table-card"><table>' + tHead + tBody + '</table></div>';
+
+  // ---- PER-MONTH BREAKDOWN ----
+  var mHead = '<thead><tr><th>Month</th><th class="num">Projected</th><th class="num">Confirmed</th><th class="num">Collection</th></tr></thead>';
+  var mProj = 0, mConf = 0;
+  var mBody = '<tbody>' + months.map(function(m){
+    var k = computeKPIs(selLeads, m);
+    mProj += k.projected; mConf += k.confirmed;
+    return '<tr><td>' + esc(monthLabel(m)) + '</td>' +
+      '<td class="num">' + fmt$(k.projected) + '</td>' +
+      '<td class="num">' + fmt$(k.confirmed) + '</td>' +
+      '<td class="num">' + collectionPct(k.confirmed, k.projected) + '</td></tr>';
+  }).join('');
+  if (!months.length) mBody = '<tbody><tr><td colspan="4" style="color:var(--muted);padding:18px;text-align:center">No months in range.</td></tr>';
+  mBody += '<tr style="border-top:2px solid var(--border);font-weight:700"><td>Total</td>' +
+    '<td class="num">' + fmt$(mProj) + '</td><td class="num">' + fmt$(mConf) + '</td>' +
+    '<td class="num">' + collectionPct(mConf, mProj) + '</td></tr></tbody>';
+  html += '<div class="section-h">Month-by-month</div><div class="table-card"><table>' + mHead + mBody + '</table></div>';
+
+  return html;
+}
+function refreshRPMount() {
+  var m = document.getElementById('rp-mount');
+  if (m) m.innerHTML = rpMountHtml();
+}
+
 // ---- READ-ONLY detail drawer ----
 // Ordered label map for the standard scaffold keys (both friendly + q_* variants).
 var DETAIL_FIELDS = [
@@ -865,6 +1018,33 @@ function setTLSort(key) {
   refreshTLMount();
 }
 
+// ---- Reports controls (refresh only #rp-mount; controls bar stays put) ----
+function setRPMonth(which, val) { STATE.reports[which] = val; refreshRPMount(); }
+function setRPSort(key) {
+  var r = STATE.reports;
+  if (r.sortKey === key) { r.sortDir *= -1; }
+  else { r.sortKey = key; r.sortDir = -1; }
+  refreshRPMount();
+}
+// Materialize an explicit selection map from the current (possibly null=all) state.
+function reportsMaterializeTrainers() {
+  if (STATE.reports.trainers !== null) return STATE.reports.trainers;
+  var map = {};
+  STATE.roster.forEach(function(m){ map[m.user_id] = true; });
+  return map;
+}
+function toggleRPTrainer(uid) {
+  var map = reportsMaterializeTrainers();
+  map[uid] = !map[uid];
+  STATE.reports.trainers = map;
+  refreshRPMount();
+}
+function setRPAllTrainers(all) {
+  if (all) { STATE.reports.trainers = null; }         // null = all selected
+  else { STATE.reports.trainers = {}; }               // {} = none selected
+  renderAdmin();                                       // rebuild controls so checkboxes reflect All/None
+}
+
 // ---- ASSIGN: create a lead in a trainer's app (exact manual-lead shape) ----
 async function doAssignLead(ev) {
   if (ev && ev.preventDefault) ev.preventDefault();
@@ -989,6 +1169,10 @@ async function boot() {
   if (!STATE.adminOrgs.length) { renderNoAdmin(); return; } // couldn't resolve org rows
 
   STATE.activeOrgId = STATE.adminOrgs[0].id;
+  // Reports default range: last 3 months through the current month.
+  var mo = monthOptions();
+  STATE.reports.start = mo[2] || mo[mo.length-1];
+  STATE.reports.end = mo[0];
   renderLoading('Loading team data…');
   await loadActiveOrg();
   renderAdmin();
