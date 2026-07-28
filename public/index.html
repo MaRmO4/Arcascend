@@ -1064,6 +1064,7 @@ main { flex: 1; padding: 20px 24px; }
 <button class="btn" id="undo-btn" onclick="performUndo()" title="Undo last change (Cmd+Z)" style="opacity:0.5;">↩ Undo</button>
     <button class="btn-settings" id="tabs-btn">✏️ Edit Tabs</button>
     <button class="btn-settings" id="settings-btn">⚙ Settings</button>
+    <button class="btn-settings" id="admin-header-btn" style="display:none;" title="Open the admin portal" onclick="window.location.href='admin.html'">🛡 Admin</button>
     <div class="profile-menu-wrap" style="position:relative;display:inline-block;">
   <button class="btn-settings" id="profile-btn" style="background:linear-gradient(135deg,#4f9eff,#a78bfa);color:white;border:none;width:36px;height:36px;border-radius:50%;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Profile">👤</button>
   <div id="profile-dropdown" style="display:none;position:absolute;right:0;top:44px;background:#1a2129;border:1px solid #2d3742;border-radius:12px;min-width:200px;box-shadow:0 8px 32px rgba(0,0,0,0.4);z-index:9999;overflow:hidden;">
@@ -4991,6 +4992,25 @@ function showAbout() {
   alert('ArcAscend v1.0\nCRM built for Personal Trainers & Gyms.\n\nBuilt with ❤️ for fitness professionals.');
 }
 // ──────────────────────────────────────────────────────
+// Reveal the header 🛡 Admin button ONLY if this user is an admin of >=1 org.
+// Fire-and-forget: never blocks render; any failure just leaves the button hidden.
+async function maybeShowAdminButton() {
+  try {
+    var token = localStorage.getItem('arcascend_token');
+    var uid = localStorage.getItem('arcascend_user_id');
+    if (!token || !uid) return;
+    var res = await fetch(SUPABASE_URL + '/rest/v1/org_members?select=role&user_id=eq.' + uid + '&role=eq.admin', {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) return;
+    var rows = await res.json();
+    if (Array.isArray(rows) && rows.length > 0) {
+      var btn = document.getElementById('admin-header-btn');
+      if (btn) btn.style.display = '';
+    }
+  } catch (e) { /* leave hidden on any error */ }
+}
+
 function initApp() {
   if (location.search.indexOf("reset") >= 0 || location.hash.indexOf("reset") >= 0) {
     Object.keys(localStorage).filter(function(k){ return k.indexOf("arcascend") === 0; }).forEach(function(k){ localStorage.removeItem(k); });
@@ -5007,6 +5027,7 @@ function initApp() {
   // is verified, otherwise a stale cache could flash before the real data loads.
   checkAuth().then(function(loggedIn) {
     if (loggedIn) {
+      maybeShowAdminButton();   // non-blocking: reveals 🛡 Admin only for org admins
       loadTrainerQuestions();
       loadFromSupabase().then(function(loaded) {
         if (!loaded) loadState();   // network/auth error only → this verified user's own cache
