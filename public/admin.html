@@ -212,6 +212,12 @@ function authHeaders() {
   return { 'Authorization': 'Bearer ' + localStorage.getItem('arcascend_token'), 'apikey': SUPABASE_KEY };
 }
 function goLogin() { window.location.href = 'login.html'; }
+// Sign out: clear the whole session (same pattern as login.html) then redirect.
+// Navigation away discards in-memory STATE, so no admin data lingers.
+function logOut() {
+  try { localStorage.clear(); } catch (e) {}
+  window.location.href = 'login.html';
+}
 
 async function refreshAuthToken() {
   var refresh = localStorage.getItem('arcascend_refresh_token');
@@ -506,7 +512,10 @@ function renderNoAdmin() {
       '<div id="join-msg"></div>' +
 
       '<div class="divider"></div>' +
-      '<a href="' + TRAINER_APP + '">← Back to the trainer app</a>' +
+      '<div style="display:flex;gap:10px;align-items:center;justify-content:space-between">' +
+        '<a href="' + TRAINER_APP + '">← Back to the trainer app</a>' +
+        '<button class="btn btn-ghost btn-sm" onclick="logOut()">Log out</button>' +
+      '</div>' +
     '</div>';
 }
 
@@ -538,8 +547,11 @@ function renderAdmin() {
         '<div class="code-cap">Trainers join your team by pasting this code in their app.</div>' +
       '</div>' +
       '<div class="top-right">' +
-        '<div>' + esc(email) + '</div>' +
-        '<a href="' + TRAINER_APP + '">Open trainer app →</a>' +
+        '<div>Signed in as <b style="color:var(--text)">' + esc(email) + '</b></div>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<a href="' + TRAINER_APP + '">Open trainer app →</a>' +
+          '<button class="btn btn-ghost btn-sm" onclick="logOut()">Log out</button>' +
+        '</div>' +
       '</div>' +
     '</div>';
 
