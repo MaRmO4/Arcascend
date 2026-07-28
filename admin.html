@@ -470,6 +470,7 @@ var STATE = {
   sortKey: 'leadCount', // roster sort column (Overview)
   sortDir: -1,          // 1 asc, -1 desc
   filterUid: null,      // Overview: when set, filtered to one trainer
+  roleMsg: null,        // Overview: transient {ok, text} after a promote/demote
   view: 'overview',     // 'overview' | 'leads' | 'assign' | 'reports'
   // Team Leads view: composable filters + sort
   tl: { trainer: 'all', status: 'all', search: '', sortKey: 'created', sortDir: -1 },
@@ -600,6 +601,9 @@ function renderOverviewBody() {
     '</div>';
 
   html += '<div class="section-h">Trainer roster</div>';
+  if (STATE.roleMsg) {
+    html += '<div class="' + (STATE.roleMsg.ok ? 'msg-ok' : 'msg-err') + '" style="margin:-4px 0 10px">' + esc(STATE.roleMsg.text) + '</div>';
+  }
   if (STATE.roster.length <= 1) {
     html += '<div class="callout"><h3>Invite trainers with your join code</h3>' +
       '<p>Your team is just you right now. Share <b>' + esc(org.join_code) + '</b> — trainers paste it in their app to join, and their leads &amp; revenue roll up here automatically.</p></div>';
@@ -635,6 +639,10 @@ function renderRosterTable() {
     th('Projected','projected','num') + th('Confirmed','confirmed','num') +
     '<th></th></tr></thead>';
 
+  // Last-admin guard (client-side nicety): hide "Make trainer" when this is the only
+  // admin. The server enforces it too, so any edge is still handled gracefully.
+  var adminCount = STATE.roster.filter(function(m){ return m.role === 'admin'; }).length;
+
   var body = '<tbody>' + rows.map(function(r){
     var isMe = r.user_id === currentUser.id;
     var roleBadge = '<span class="badge ' + (r.role==='admin'?'admin':'trainer') + '">' + esc(r.role) + '</span>';
@@ -646,9 +654,17 @@ function renderRosterTable() {
     var dn = displayName(r.user_id);
     var sid = shortUid(r.user_id);
     var idHint = (dn !== sid) ? ' <span class="uid" style="color:var(--muted);font-size:11px">' + esc(sid) + '</span>' : '';
+    // Role toggle: trainers get "Make admin"; admins get "Make trainer" unless they
+    // are the last admin (then omitted — server would reject it anyway).
+    var roleBtn = '';
+    if (r.role === 'trainer') {
+      roleBtn = '<button class="btn btn-ghost btn-sm" onclick="doSetRole(\'' + r.user_id + '\',\'admin\')">Make admin</button>';
+    } else if (r.role === 'admin' && adminCount > 1) {
+      roleBtn = '<button class="btn btn-ghost btn-sm" onclick="doSetRole(\'' + r.user_id + '\',\'trainer\')">Make trainer</button>';
+    }
     return '<tr' + (isFiltered ? ' style="background:var(--panel-2)"' : '') + '>' +
       '<td><b>' + esc(dn) + '</b>' + idHint + ' ' + youBadge + '</td>' +
-      '<td>' + roleBadge + '</td>' +
+      '<td><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + roleBadge + roleBtn + '</div></td>' +
       '<td class="num">' + r.leadCount + '</td>' +
       '<td class="num">' + r.activeClients + '</td>' +
       '<td class="num">' + fmt$(r.projected) + '</td>' +
@@ -1184,6 +1200,39 @@ async function doReassign() {
     refreshTLMount();
     openLeadDrawer(id);
   } catch(e) { setMsg('reassign-msg', 'Error: ' + e.message, false); }
+}
+
+// ---- PROMOTE / DEMOTE: set an org member's role via set_member_role RPC ----
+// Extracts a clean {message} from a thrown rpc() error (raw response text is JSON).
+function rpcErrorMessage(e) {
+  var raw = (e && e.message) || '';
+  try { var j = JSON.parse(raw); if (j && (j.message || j.msg)) return j.message || j.msg; } catch(_) {}
+  return raw || 'Something went wrong.';
+}
+// Shows the roster message and clears it after a few seconds (survives re-render).
+function setRoleMsg(ok, text) {
+  STATE.roleMsg = { ok: ok, text: text };
+  renderAdmin();
+  setTimeout(function(){ STATE.roleMsg = null; if (STATE.view === 'overview') renderAdmin(); }, 4000);
+}
+async function doSetRole(uid, role) {
+  var member = STATE.roster.filter(function(m){ return m.user_id === uid; })[0];
+  if (!member || (role !== 'admin' && role !== 'trainer')) return;
+  var name = displayName(uid);
+  var orgName = (STATE.org && STATE.org.name) || 'this org';
+  var prompt = role === 'admin'
+    ? ('Make ' + name + ' an admin of ' + orgName + '?')
+    : ('Change ' + name + ' back to trainer?');
+  if (!confirm(prompt)) return;
+  try {
+    var out = await rpc('set_member_role', { p_org: STATE.activeOrgId, p_user: uid, p_role: role });
+    var row = Array.isArray(out) ? out[0] : out;
+    // Update local roster from the server's returned role (fallback to requested).
+    member.role = (row && row.role) ? row.role : role;
+    setRoleMsg(true, name + ' is now ' + (member.role === 'admin' ? 'an admin.' : 'a trainer.'));
+  } catch(e) {
+    setRoleMsg(false, rpcErrorMessage(e));
+  }
 }
 
 // ==========================================================
