@@ -302,6 +302,22 @@ async function loadRoster(orgId) {
   return Array.isArray(rows) ? rows : [];
 }
 
+// Profiles for a set of member user_ids (RLS: an org admin may SELECT its members'
+// profiles). Returns a { user_id -> profile } map; empty on error (names then fall
+// back to the short user_id — older accounts may have no profile row).
+async function loadProfiles(userIds) {
+  var map = {};
+  if (!userIds.length) return map;
+  try {
+    var url = SUPABASE_URL + '/rest/v1/profiles?select=user_id,username,first_name,last_name,email&user_id=in.(' + userIds.join(',') + ')';
+    var res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) return map;
+    var rows = await res.json();
+    if (Array.isArray(rows)) rows.forEach(function(p){ if (p && p.user_id) map[p.user_id] = p; });
+  } catch(e) { /* leave map empty → names fall back to short id */ }
+  return map;
+}
+
 // All leads for a set of member user_ids (admin policy permits cross-member SELECT).
 async function loadOrgLeads(userIds) {
   if (!userIds.length) return [];
@@ -367,8 +383,20 @@ function monthOptions() {
 }
 
 function fmt$(n) { return '$' + (n || 0).toLocaleString(); }
-// Short-form user id for display until a display-name system lands (Phase 4+).
+// Short-form user id — the last-resort fallback when no profile exists.
 function shortUid(uid) { return String(uid || '').slice(0, 8); }
+// Human display name for a trainer: "First Last" → username → email → short uid.
+// Never returns undefined; safe for members with no profile row (older accounts).
+function displayName(uid) {
+  var p = STATE.profiles[uid];
+  if (p) {
+    var full = [p.first_name, p.last_name].filter(function(x){ return x && String(x).trim(); }).join(' ').trim();
+    if (full) return full;
+    if (p.username && String(p.username).trim()) return String(p.username).trim();
+    if (p.email && String(p.email).trim()) return String(p.email).trim();
+  }
+  return shortUid(uid);
+}
 function within7Days(iso) {
   if (!iso) return false;
   var t = new Date(iso).getTime();
@@ -430,6 +458,7 @@ var STATE = {
   activeOrgId: null,    // currently viewed org
   org: null,            // active org object
   roster: [],           // active org's members
+  profiles: {},         // user_id -> profile row (for display names)
   leads: [],            // active org's leads (all members)
   month: currentMonthKey(),
   sortKey: 'leadCount', // roster sort column (Overview)
@@ -547,7 +576,7 @@ function renderOverviewBody() {
     '</select>';
 
   var html = '<div class="controls"><div style="font-weight:700">Showing revenue for</div>' + monthSel +
-    (STATE.filterUid ? '<span class="chip">Trainer: <b>' + esc(shortUid(STATE.filterUid)) + '</b> <span class="x" onclick="clearFilter()">✕</span></span>' : '') +
+    (STATE.filterUid ? '<span class="chip">Trainer: <b>' + esc(displayName(STATE.filterUid)) + '</b> <span class="x" onclick="clearFilter()">✕</span></span>' : '') +
     '<div class="spacer"></div></div>';
 
   html += '<div class="kpi-row">' +
@@ -602,8 +631,11 @@ function renderRosterTable() {
     var viewBtn = isFiltered
       ? '<button class="btn btn-ghost btn-sm" onclick="clearFilter()">✕ clear</button>'
       : '<button class="btn-ghost btn btn-sm" onclick="filterTo(\'' + r.user_id + '\')">▶ view</button>';
+    var dn = displayName(r.user_id);
+    var sid = shortUid(r.user_id);
+    var idHint = (dn !== sid) ? ' <span class="uid" style="color:var(--muted);font-size:11px">' + esc(sid) + '</span>' : '';
     return '<tr' + (isFiltered ? ' style="background:var(--panel-2)"' : '') + '>' +
-      '<td><span class="uid">' + esc(shortUid(r.user_id)) + '</span>' + youBadge + '</td>' +
+      '<td><b>' + esc(dn) + '</b>' + idHint + ' ' + youBadge + '</td>' +
       '<td>' + roleBadge + '</td>' +
       '<td class="num">' + r.leadCount + '</td>' +
       '<td class="num">' + r.activeClients + '</td>' +
@@ -617,9 +649,11 @@ function renderRosterTable() {
 }
 
 // ---- Team member helpers (dropdowns + labels) ----
+// Primary label used in columns/dropdowns/drawer/messages: real name (via profiles)
+// with a "(you)" marker for the signed-in admin. Falls back to short uid gracefully.
 function trainerName(uid) {
-  if (uid === currentUser.id) return shortUid(uid) + ' (you)';
-  return shortUid(uid);
+  var name = displayName(uid);
+  return uid === currentUser.id ? name + ' (you)' : name;
 }
 function memberOptions(selected, includeAll, allLabel) {
   var html = includeAll ? '<option value="all"' + (selected==='all'?' selected':'') + '>' + esc(allLabel || 'All trainers') + '</option>' : '';
@@ -913,7 +947,7 @@ function openLeadDrawer(id) {
   var provHtml = '';
   if (L.assignedBy || L.assignedAt) {
     provHtml = '<div class="kv"><div class="k">Assignment</div><div class="v">' +
-      (L.assignedBy ? 'By ' + esc(shortUid(L.assignedBy)) : '') +
+      (L.assignedBy ? 'By ' + esc(displayName(L.assignedBy)) : '') +
       (L.assignedAt ? ' · ' + esc(fmtDate(L.assignedAt)) : '') + '</div></div>';
   }
 
@@ -1151,6 +1185,7 @@ async function loadActiveOrg() {
   STATE.roster = await loadRoster(STATE.activeOrgId);
   var uids = STATE.roster.map(function(m){ return m.user_id; });
   if (uids.indexOf(currentUser.id) < 0) uids.push(currentUser.id);
+  STATE.profiles = await loadProfiles(uids);   // display names for the roster
   STATE.leads = await loadOrgLeads(uids);
 }
 
