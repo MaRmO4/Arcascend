@@ -5682,10 +5682,25 @@ function formsConfirmImport() {
     formsEditingForm = null;
     formsApplyEditModeUI(false, '');
   }
-  // Replace questions, assigning FRESH unique ids (a foreign template's ids could collide).
+  // Replace questions. PRESERVE the standard/semantic ids (q_name, q_goal, …) that the
+  // intake submit handler and the profile renderer key off of — otherwise a lead's
+  // answers land under unmappable ids and the standard fields render empty. Only
+  // genuinely CUSTOM ids get reassigned, to a 'q_custom_…' scheme that is collision-proof
+  // and never humanizes into a bare timestamp. PROFILE_ORDER is the canonical standard set.
+  var STANDARD_IDS = {};
+  PROFILE_ORDER.forEach(function(id){ STANDARD_IDS[id] = true; });
+  var usedIds = {};
+  var importStamp = Date.now().toString(36);
   formsQuestions = formsImportPending.questions.map(function(q, i){
+    var id = q.id;
+    if (id && STANDARD_IDS[id] && !usedIds[id]) {
+      usedIds[id] = true;                         // preserve semantic id unchanged
+    } else {
+      id = 'q_custom_' + importStamp + '_' + i;   // custom or duplicate-standard → safe unique id
+      usedIds[id] = true;
+    }
     return {
-      id: 'q_' + Date.now() + '_' + i,
+      id: id,
       label: q.label || '',
       type: q.type || 'text',
       required: !!q.required,
