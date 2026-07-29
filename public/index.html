@@ -3750,24 +3750,50 @@ async function renderBucketsTab() {
     return;
   }
 
+  // Each bucket is a collapsible .lead-sec (reusing the global collapse CSS), ALL
+  // COLLAPSED on load (inverse of the profile sections' default-open). Toggle wiring
+  // below is bucket-specific — wireLeadSections() is NOT used here.
   body.innerHTML = buckets.map(function(b){
     var matched = LEADS.filter(function(L){ return (L.bucket || '') === b.name; });
-    var header =
-      '<div style="display:flex;align-items:center;gap:10px;margin:24px 0 12px">' +
-        '<div style="font-size:16px;font-weight:700;color:var(--text-primary)">' + escapeHtml(b.name) + '</div>' +
-        '<div style="font-size:12px;color:var(--text-muted)">' + matched.length + (matched.length === 1 ? ' lead' : ' leads') + '</div>' +
+    var head =
+      '<div class="lead-sec-head" role="button" tabindex="0">' +
+        '<span class="lead-sec-chev">' + LEAD_SEC_CHEV_COLLAPSED + '</span>' +
+        '<span style="font-size:15px;font-weight:700;color:var(--text-primary)">' + escapeHtml(b.name) + '</span>' +
+        '<span style="font-size:12px;color:var(--text-muted)">' + matched.length + (matched.length === 1 ? ' lead' : ' leads') + '</span>' +
         '<button class="btn btn-ghost" data-bk-del="' + escapeAttr(b.id) + '" data-bk-name="' + escapeAttr(b.name) + '" style="margin-left:auto;padding:5px 12px;font-size:12px">Delete</button>' +
       '</div>';
     var inner = matched.length
       ? '<div class="lead-grid">' + matched.map(leadCard).join("") + '</div>'
       : '<div style="padding:16px;color:var(--text-muted);font-size:13px;border:1px dashed var(--border);border-radius:10px">No leads yet — submissions to this form’s link will appear here.</div>';
-    return '<div>' + header + inner + '</div>';
+    return '<div class="lead-sec collapsed" data-bucket="' + escapeAttr(b.name) + '">' + head + '<div class="lead-sec-body">' + inner + '</div></div>';
   }).join("");
 
+  // Cards are in the DOM at render time (collapsed just hides them via CSS), so a
+  // single wireCards() makes every leadCard clickable once its bucket is expanded.
   wireCards();
 
+  // Bucket-specific collapse toggle: click/Enter/Space on the header flips .collapsed
+  // + the chevron. Clicks on the Delete button are excluded so deleting never toggles.
+  body.querySelectorAll(".lead-sec").forEach(function(sec){
+    var head = sec.querySelector(".lead-sec-head");
+    if (!head) return;
+    function toggle(){
+      var collapsed = sec.classList.toggle("collapsed");
+      var chev = sec.querySelector(".lead-sec-chev");
+      if (chev) chev.textContent = collapsed ? LEAD_SEC_CHEV_COLLAPSED : LEAD_SEC_CHEV_OPEN;
+    }
+    head.addEventListener("click", function(e){
+      if (e.target.closest("[data-bk-del]")) return;   // Delete must not toggle
+      toggle();
+    });
+    head.addEventListener("keydown", function(e){
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+    });
+  });
+
   body.querySelectorAll("[data-bk-del]").forEach(function(btn){
-    btn.addEventListener("click", function(){
+    btn.addEventListener("click", function(e){
+      e.stopPropagation();   // belt-and-suspenders: never bubble to the section toggle
       var id = btn.dataset.bkDel;
       var name = btn.dataset.bkName || "this bucket";
       if (!confirm("Delete the bucket '" + name + "'? This removes only the bucket — leads stay in All Leads.")) return;
