@@ -2834,7 +2834,8 @@ sessionProgressBar(L) +
 }
 
 function consultIcon(s) {
-  if (s === "Complete") return "✅";
+  // Any "Complete…" value (legacy "Complete" + new "Complete - Closed Won" / "- No Sale") reads as done.
+  if (s && s.indexOf("Complete") === 0 && s !== "Not Complete") return "✅";
   if (s === "Not Complete") return "⬜";
   if (s === "Reschedule") return "🔄";
   if (s === "Follow Up") return "📌";
@@ -4207,7 +4208,9 @@ function openLead(name) {
         '<label>Consultation Status</label>' +
         '<select id="m-consult">' +
           '<option value="" ' + (!L.consultStatus?"selected":"") + '>— Set status —</option>' +
-          '<option value="Complete" ' + (L.consultStatus==="Complete"?"selected":"") + '>✅ Complete</option>' +
+          '<option value="Complete - Closed Won" ' + (L.consultStatus==="Complete - Closed Won"?"selected":"") + '>✅ Complete – Closed Won</option>' +
+          '<option value="Complete - No Sale" ' + (L.consultStatus==="Complete - No Sale"?"selected":"") + '>✅ Complete – No Sale</option>' +
+          (L.consultStatus==="Complete" ? '<option value="Complete" selected hidden>✅ Complete</option>' : '') +
           '<option value="Not Complete" ' + (L.consultStatus==="Not Complete"?"selected":"") + '>⬜ Not Complete</option>' +
           '<option value="Reschedule" ' + (L.consultStatus==="Reschedule"?"selected":"") + '>🔄 Reschedule</option>' +
           '<option value="Follow Up" ' + (L.consultStatus==="Follow Up"?"selected":"") + '>📌 Follow Up</option>' +
@@ -4256,19 +4259,27 @@ saveState(); renderAll(); openLead(name);
   if ($("m-pnote")) $("m-pnote").addEventListener("blur", function(e){ L.priorityNote = e.target.value; saveState(); renderAll(); });
   $("m-consult").addEventListener("change", function(e){
   var newStatus = e.target.value;
-  var wasComplete = L.consultStatus === "Complete";
+  var prevDealStatus = L.status;
   L.consultStatus = newStatus;
-  if (newStatus === "Complete" && !wasComplete && !L.followUpCreated) {
-    if (!L.tasks) L.tasks = [];
-    var fu = new Date();
-    fu.setDate(fu.getDate() + 30);
-    var dueDateStr = fu.toISOString().slice(0,10);
-    L.tasks.push({ id: uuid(), type: 'Follow Up', note: '30-day follow-up after consultation', dueDate: dueDateStr, completed: false });
-    L.followUpCreated = true;
-    logEvent('consultation_completed', L.name, {});
-    logEvent('follow_up_scheduled', L.name, { dueDate: dueDateStr });
+  if (newStatus === "Complete - Closed Won") {
+    // Won: set deal status + mark active client (reusing the exact writes those controls use).
+    L.status = 'Closed Won';
+    logEvent('status_changed', L.name, { from: prevDealStatus, to: 'Closed Won' });
+    ensureBilling(L).active = true;
+    logEvent('active_client_marked', L.name, {});
+    logEvent('consultation_completed', L.name, { outcome: 'closed_won' });
+  } else if (newStatus === "Complete - No Sale") {
+    // No sale: schedule a one-time 30-day follow-up via the canonical task helper.
+    if (!L.followUpCreated) {
+      var dueDateStr = addDays(todayStr(), 30);
+      addTask(L, "Follow Up", dueDateStr, "30-day follow-up after consultation");
+      L.followUpCreated = true;
+      logEvent('follow_up_scheduled', L.name, { dueDate: dueDateStr });
+    }
+    logEvent('consultation_completed', L.name, { outcome: 'no_sale' });
   }
-  saveState(); renderAll();
+  // Re-open so Deal Status buttons, Active Client checkbox, and the Tasks list reflect changes.
+  saveState(); renderAll(); openLead(name);
 });
 
   // Editable profile fields — auto-save on blur (text inputs) or change (selects)
