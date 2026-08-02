@@ -1072,6 +1072,7 @@ main { flex: 1; padding: 20px 24px; }
       <div style="font-size:12px;color:#8b95a1;">Logged in as</div>
       <div id="profile-email" style="font-size:13px;color:#e6e9ed;font-weight:600;margin-top:2px;">trainer@arcascend.com</div>
     </div>
+    <div onclick="openProfileModal()" style="padding:12px 16px;cursor:pointer;color:#e6e9ed;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">👤 Profile Settings</div>
     <div onclick="openSettings()" style="padding:12px 16px;cursor:pointer;color:#e6e9ed;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">⚙️ Settings</div>
     <div onclick="showAbout()" style="padding:12px 16px;cursor:pointer;color:#e6e9ed;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">ℹ️ About ArcAscend</div>
     <div style="border-top:1px solid #2d3742;"></div>
@@ -1334,6 +1335,43 @@ main { flex: 1; padding: 20px 24px; }
       <button class="btn-danger" id="reset-btn">🗑 Reset All Data</button>
 
       <div id="settings-status" style="margin-top:14px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="profile-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">👤 Profile Settings</div>
+      <button class="modal-close" onclick="closeProfileModal()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- SECTION A — PROFILE -->
+      <div class="section-title">Profile</div>
+      <div class="form-field"><label>First name</label><input id="pf-first" placeholder="Jane"></div>
+      <div class="form-field"><label>Last name</label><input id="pf-last" placeholder="Doe"></div>
+      <div class="form-field"><label>Username</label><input id="pf-username" placeholder="janedoe"></div>
+      <div class="form-field"><label>Company / Gym</label><input id="pf-company" placeholder="Fit Athletic East Village"></div>
+      <button class="btn" onclick="saveProfileFields()" style="margin-top:6px;">Save profile</button>
+      <div id="pf-profile-msg" style="margin-top:10px;font-size:13px;"></div>
+
+      <!-- SECTION B — ACCOUNT -->
+      <div class="section-title" style="margin-top:26px;">Account</div>
+      <div class="form-field"><label>Email address</label><input id="pf-email" type="email" placeholder="you@example.com"></div>
+      <button class="btn" onclick="changeEmail()">Update email</button>
+      <div class="help-box" style="margin-top:8px;">Changing your email may require re-confirmation depending on your account settings.</div>
+      <div id="pf-email-msg" style="margin-top:8px;font-size:13px;"></div>
+
+      <div class="form-field" style="margin-top:16px;"><label>New password</label><input id="pf-pass" type="password" placeholder="••••••••"></div>
+      <div class="form-field"><label>Confirm new password</label><input id="pf-pass2" type="password" placeholder="••••••••"></div>
+      <button class="btn" onclick="changePassword()">Update password</button>
+      <div id="pf-pass-msg" style="margin-top:8px;font-size:13px;"></div>
+
+      <!-- SECTION C — ORGANIZATION -->
+      <div class="section-title" style="margin-top:26px;">Organization</div>
+      <div id="pf-org-body"><div style="color:var(--muted);font-size:13px;">Loading…</div></div>
+
     </div>
   </div>
 </div>
@@ -4623,6 +4661,256 @@ function openSettings() {
   $("settings-modal").classList.add("show");
 }
 function closeSettings() { $("settings-modal").classList.remove("show"); }
+
+// ==========================================================
+// PROFILE SETTINGS MODAL (profile fields / account / organization)
+// ==========================================================
+function pfAuth() {
+  return {
+    token: localStorage.getItem('arcascend_token'),
+    uid: localStorage.getItem('arcascend_user_id')
+  };
+}
+function pfHeaders(token) {
+  return { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+}
+function pfMsg(id, text, ok) {
+  var el = document.getElementById(id);
+  if (el) { el.textContent = text || ''; el.style.color = ok ? 'var(--won)' : 'var(--lost)'; }
+}
+// Parse a GoTrue / PostgREST error body into a readable message (same shape as login.html).
+function pfErrText(data, fallback) {
+  if (data && typeof data === 'object') {
+    return data.msg || data.error_description || data.message || data.error_code || data.error || fallback;
+  }
+  return fallback;
+}
+
+function closeProfileModal() { $("profile-modal").classList.remove("show"); }
+
+async function openProfileModal() {
+  var d = document.getElementById('profile-dropdown'); if (d) d.style.display = 'none';
+  // Clear messages + prefill email from the known session value immediately.
+  ['pf-profile-msg','pf-email-msg','pf-pass-msg'].forEach(function(i){ pfMsg(i,''); });
+  $("pf-pass").value = ''; $("pf-pass2").value = '';
+  $("pf-email").value = localStorage.getItem('arcascend_user_email') || '';
+  $("profile-modal").classList.add("show");
+
+  var a = pfAuth();
+  if (!a.token || !a.uid) return;
+
+  // Load the profile row (may not exist yet for older accounts).
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/profiles?user_id=eq.' + a.uid + '&select=*', { headers: pfHeaders(a.token) });
+    if (res.ok) {
+      var rows = await res.json();
+      var p = (Array.isArray(rows) && rows.length) ? rows[0] : null;
+      $("pf-first").value    = (p && p.first_name) || '';
+      $("pf-last").value     = (p && p.last_name) || '';
+      $("pf-username").value = (p && p.username) || '';
+      $("pf-company").value  = (p && p.company) || '';
+      if (p && p.email) $("pf-email").value = p.email;
+    }
+  } catch(e) { /* leave fields as-is */ }
+
+  loadProfileOrgSection();
+}
+
+// SECTION A — save profile fields (upsert: PATCH, fall back to POST if no row).
+async function saveProfileFields() {
+  var a = pfAuth();
+  if (!a.token || !a.uid) { pfMsg('pf-profile-msg', 'Not signed in.', false); return; }
+  var payload = {
+    first_name: $("pf-first").value.trim(),
+    last_name:  $("pf-last").value.trim(),
+    username:   $("pf-username").value.trim(),
+    company:    $("pf-company").value.trim()
+  };
+  pfMsg('pf-profile-msg', 'Saving…', true);
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/profiles?user_id=eq.' + a.uid, {
+      method: 'PATCH',
+      headers: Object.assign({ 'Prefer': 'return=representation' }, pfHeaders(a.token)),
+      body: JSON.stringify(payload)
+    });
+    var rows = res.ok ? await res.json().catch(function(){ return []; }) : null;
+    // PATCH with no existing row returns [] (200) → upsert via POST (merge-duplicates).
+    if (res.ok && Array.isArray(rows) && rows.length === 0) {
+      var ins = Object.assign({ user_id: a.uid, email: localStorage.getItem('arcascend_user_email') || null }, payload);
+      var pres = await fetch(SUPABASE_URL + '/rest/v1/profiles?on_conflict=user_id', {
+        method: 'POST',
+        headers: Object.assign({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }, pfHeaders(a.token)),
+        body: JSON.stringify(ins)
+      });
+      if (!(pres.ok || pres.status === 201 || pres.status === 204)) {
+        pfMsg('pf-profile-msg', pfErrText(await pres.json().catch(function(){return null;}), 'Could not save profile.'), false); return;
+      }
+    } else if (!res.ok) {
+      pfMsg('pf-profile-msg', pfErrText(await res.json().catch(function(){return null;}), 'Could not save profile.'), false); return;
+    }
+    pfMsg('pf-profile-msg', '✓ Profile saved.', true);
+    if (typeof showToast === 'function') showToast('✓ Profile saved', 'success');
+  } catch(e) {
+    pfMsg('pf-profile-msg', 'Error: ' + e.message, false);
+  }
+}
+
+// SECTION B — change email via Supabase Auth (PUT /auth/v1/user), then sync profiles + localStorage.
+async function changeEmail() {
+  var a = pfAuth();
+  var email = $("pf-email").value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { pfMsg('pf-email-msg', 'Enter a valid email.', false); return; }
+  pfMsg('pf-email-msg', 'Updating…', true);
+  try {
+    var res = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      method: 'PUT', headers: pfHeaders(a.token), body: JSON.stringify({ email: email })
+    });
+    var data = await res.json().catch(function(){ return null; });
+    if (res.status >= 400 || !data || data.error || data.msg) {
+      pfMsg('pf-email-msg', pfErrText(data, 'Could not update email.'), false); return;
+    }
+    // Keep the app's email copies in sync.
+    localStorage.setItem('arcascend_user_email', email);
+    var de = document.getElementById('profile-email'); if (de) de.textContent = email;
+    // Best-effort: keep the profiles row's email aligned.
+    try {
+      await fetch(SUPABASE_URL + '/rest/v1/profiles?user_id=eq.' + a.uid, {
+        method: 'PATCH', headers: Object.assign({ 'Prefer': 'return=minimal' }, pfHeaders(a.token)),
+        body: JSON.stringify({ email: email })
+      });
+    } catch(e) {}
+    pfMsg('pf-email-msg', '✓ Email updated. Re-confirmation may be required.', true);
+  } catch(e) {
+    pfMsg('pf-email-msg', 'Error: ' + e.message, false);
+  }
+}
+
+// SECTION B — change password via Supabase Auth (PUT /auth/v1/user). Does not log out.
+async function changePassword() {
+  var a = pfAuth();
+  var p1 = $("pf-pass").value, p2 = $("pf-pass2").value;
+  if (!p1 || p1.length < 6) { pfMsg('pf-pass-msg', 'Password must be at least 6 characters.', false); return; }
+  if (p1 !== p2) { pfMsg('pf-pass-msg', 'Passwords do not match.', false); return; }
+  pfMsg('pf-pass-msg', 'Updating…', true);
+  try {
+    var res = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      method: 'PUT', headers: pfHeaders(a.token), body: JSON.stringify({ password: p1 })
+    });
+    var data = await res.json().catch(function(){ return null; });
+    if (res.status >= 400 || !data || data.error || data.msg) {
+      pfMsg('pf-pass-msg', pfErrText(data, 'Could not update password.'), false); return;
+    }
+    $("pf-pass").value = ''; $("pf-pass2").value = '';
+    pfMsg('pf-pass-msg', '✓ Password updated.', true);
+  } catch(e) {
+    pfMsg('pf-pass-msg', 'Error: ' + e.message, false);
+  }
+}
+
+// SECTION C — render the organization block (current org, or join / create actions).
+async function loadProfileOrgSection() {
+  var body = document.getElementById('pf-org-body');
+  if (!body) return;
+  body.innerHTML = '<div style="color:var(--muted);font-size:13px;">Loading…</div>';
+  var a = pfAuth();
+  if (!a.token || !a.uid) { body.innerHTML = ''; return; }
+
+  var membership = null;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/org_members?select=role,org_id&user_id=eq.' + a.uid, { headers: pfHeaders(a.token) });
+    if (res.ok) { var rows = await res.json(); if (Array.isArray(rows) && rows.length) membership = rows[0]; }
+  } catch(e) {}
+
+  if (membership) {
+    // Fetch org name (+ join_code if RLS allows, i.e. admin).
+    var orgName = 'your organization', joinCode = '';
+    try {
+      var ores = await fetch(SUPABASE_URL + '/rest/v1/orgs?select=name,join_code&id=eq.' + encodeURIComponent(membership.org_id), { headers: pfHeaders(a.token) });
+      if (ores.ok) { var orows = await ores.json(); if (Array.isArray(orows) && orows.length) { orgName = orows[0].name || orgName; joinCode = orows[0].join_code || ''; } }
+    } catch(e) {}
+    var html = '<div class="help-box">You\'re in <b>' + escapeHtml(orgName) + '</b> as <b>' + escapeHtml(membership.role) + '</b>.</div>';
+    if (membership.role === 'admin' && joinCode) {
+      html += '<div class="form-field" style="margin-top:12px;"><label>Team join code</label>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<input id="pf-joincode" readonly value="' + escapeAttr(joinCode) + '" style="font-family:monospace;flex:1">' +
+          '<button class="btn" onclick="pfCopy(\'' + escapeAttr(joinCode) + '\', this)">Copy</button>' +
+        '</div><div style="font-size:12px;color:var(--muted);margin-top:6px">Trainers join with this code.</div></div>';
+    }
+    body.innerHTML = html;
+    return;
+  }
+
+  // Not in an org → offer BOTH join and create.
+  body.innerHTML =
+    '<div class="form-field"><label>Join a gym</label>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<input id="pf-join-code" placeholder="ORG-XXXX-XXXX" style="text-transform:uppercase;flex:1">' +
+        '<button class="btn" onclick="pfJoinOrg()">Join</button>' +
+      '</div></div>' +
+    '<div id="pf-join-msg" style="font-size:13px;margin-top:6px;"></div>' +
+    '<div class="section-title" style="margin-top:20px;font-size:13px;">— or —</div>' +
+    '<div class="form-field"><label>Set up my gym</label>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<input id="pf-org-name" placeholder="e.g. Fit Athletic East Village" style="flex:1">' +
+        '<button class="btn" onclick="pfCreateOrg()">Create</button>' +
+      '</div></div>' +
+    '<div id="pf-create-msg" style="font-size:13px;margin-top:6px;"></div>';
+}
+
+function pfCopy(text, btn) {
+  navigator.clipboard.writeText(text).then(function(){
+    if (btn) { var t = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+  });
+}
+
+async function pfJoinOrg() {
+  var a = pfAuth();
+  var code = ($("pf-join-code").value || '').trim().toUpperCase();
+  if (!code) { pfMsg('pf-join-msg', 'Enter a join code.', false); return; }
+  pfMsg('pf-join-msg', 'Joining…', true);
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/rpc/join_org', {
+      method: 'POST', headers: pfHeaders(a.token), body: JSON.stringify({ p_code: code })
+    });
+    var data = await res.json().catch(function(){ return null; });
+    if (!res.ok) { pfMsg('pf-join-msg', pfErrText(data, 'That code was not accepted.'), false); return; }
+    var row = Array.isArray(data) ? data[0] : data;
+    pfMsg('pf-join-msg', '✓ Joined ' + ((row && row.joined_org_name) || 'the team') + '.', true);
+    if (typeof maybeShowAdminButton === 'function') maybeShowAdminButton();  // role may have changed
+    loadProfileOrgSection();
+  } catch(e) {
+    pfMsg('pf-join-msg', 'Error: ' + e.message, false);
+  }
+}
+
+async function pfCreateOrg() {
+  var a = pfAuth();
+  var name = ($("pf-org-name").value || '').trim();
+  if (!name) { pfMsg('pf-create-msg', 'Enter a gym name.', false); return; }
+  pfMsg('pf-create-msg', 'Creating…', true);
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/rpc/create_org', {
+      method: 'POST', headers: pfHeaders(a.token), body: JSON.stringify({ p_name: name })
+    });
+    var data = await res.json().catch(function(){ return null; });
+    if (!res.ok) { pfMsg('pf-create-msg', pfErrText(data, 'Could not create your gym.'), false); return; }
+    var row = Array.isArray(data) ? data[0] : data;
+    var code = row && row.join_code;
+    if (typeof maybeShowAdminButton === 'function') maybeShowAdminButton();  // 🛡 Admin should appear now
+    // Re-render org section to the in-org (admin) state; show the code prominently.
+    var body = document.getElementById('pf-org-body');
+    if (body) {
+      body.innerHTML = '<div class="help-box">🎉 You\'re now the <b>admin</b> of <b>' + escapeHtml(name) + '</b>. Share this code with your trainers.</div>' +
+        (code ? '<div class="form-field" style="margin-top:12px;"><label>Team join code</label>' +
+          '<div style="display:flex;gap:8px;align-items:center">' +
+            '<input readonly value="' + escapeAttr(code) + '" style="font-family:monospace;flex:1">' +
+            '<button class="btn" onclick="pfCopy(\'' + escapeAttr(code) + '\', this)">Copy</button>' +
+          '</div></div>' : '');
+    }
+  } catch(e) {
+    pfMsg('pf-create-msg', 'Error: ' + e.message, false);
+  }
+}
 
 // ==========================================================
 // FILTER UI
