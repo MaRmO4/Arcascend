@@ -1,0 +1,8 @@
+# Netlify configuration for ArcAscend.
+# Rewrite the clean invite URL (/join?invite=<token>) to the static join.html.
+# status = 200 makes it a rewrite (URL stays /join); query strings are preserved
+# automatically by Netlify.
+[[redirects]]
+  from = "/join"
+  to = "/join.html"
+  status = 200

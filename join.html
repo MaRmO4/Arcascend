@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArcAscend — Join a Team</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: #0f1419; color: #e6e9ed;
+    min-height: 100vh; display: flex;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .card {
+    background: #1a2129; border: 1px solid #2d3742;
+    border-radius: 16px; padding: 40px; width: 100%;
+    max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    text-align: center;
+  }
+  .logo {
+    font-size: 26px; font-weight: 800; margin-bottom: 6px;
+    background: linear-gradient(135deg, #4f9eff, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .tagline { color: #8b95a1; font-size: 13px; margin-bottom: 28px; }
+  h2 { font-size: 19px; font-weight: 700; margin-bottom: 8px; }
+  .org { color: #4f9eff; }
+  p.sub { color: #8b95a1; font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+  .btn {
+    width: 100%; background: #4f9eff; color: white; border: none;
+    padding: 13px; border-radius: 8px; font-size: 15px; font-weight: 600;
+    cursor: pointer; margin-bottom: 12px; text-decoration: none; display: block;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.secondary { background: #232c36; border: 1px solid #2d3742; color: #e6e9ed; }
+  .message { font-size: 13px; margin-top: 14px; min-height: 20px; }
+  .message.error { color: #ef4444; }
+  .message.success { color: #22c55e; }
+  .spinner { color: #8b95a1; font-size: 14px; padding: 12px 0; }
+  a.plain { color: #4f9eff; text-decoration: none; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="logo">ArcAscend</div>
+  <div class="tagline">CRM for Personal Trainers</div>
+  <div id="content"><div class="spinner">Loading invite…</div></div>
+</div>
+
+<script>
+// ==========================================================
+// /join — trainer-side invite accept flow (arcascend.app/join?invite=<token>)
+// ==========================================================
+var SUPABASE_URL = 'https://udzfpeztwgsynjhwjwic.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkemZwZXp0d2dzeW5qaHdqd2ljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2OTcwOTcsImV4cCI6MjA5NTI3MzA5N30.Eke_HxZtww3zVekkPMDydT90NkVWSltJjA2fr40oquQ';
+var PENDING_KEY = 'arcascend_pending_invite';
+
+var content = document.getElementById('content');
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function getParam(name){
+  var m = new RegExp('[?&]' + name + '=([^&]*)').exec(window.location.search);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function authHeaders(token){
+  return { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (token || SUPABASE_KEY), 'Content-Type': 'application/json' };
+}
+// GoTrue/PostgREST-shaped error message extraction.
+function errText(data, fallback){
+  if (data && typeof data === 'object') return data.msg || data.message || data.error_description || data.error || fallback;
+  return fallback;
+}
+
+// Authenticated RPC (uses the logged-in user's token when present).
+async function rpc(name, body, token){
+  var res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + name, {
+    method: 'POST', headers: authHeaders(token), body: JSON.stringify(body || {})
+  });
+  var data = null;
+  try { data = await res.json(); } catch(e) {}
+  if (!res.ok) throw new Error(errText(data, 'Request failed'));
+  return data;
+}
+
+var INVITE_TOKEN = '';
+
+function showInvalid(msg){
+  content.innerHTML =
+    '<h2>Invalid invite link</h2>' +
+    '<p class="sub">' + esc(msg || 'This invite link is invalid or no longer active.') + '</p>' +
+    '<a class="btn secondary" href="index.html">Go to ArcAscend</a>';
+}
+
+function showAlreadyUsed(orgName){
+  content.innerHTML =
+    '<h2>' + (orgName ? 'Invite to <span class="org">' + esc(orgName) + '</span>' : 'Invite') + '</h2>' +
+    '<p class="sub">This invite link has already been used.</p>' +
+    '<a class="btn secondary" href="index.html">Go to ArcAscend</a>';
+}
+
+// Not logged in: preview the org (best-effort) and prompt to log in / sign up.
+async function showLoggedOut(){
+  var orgName = '';
+  try {
+    var rows = await rpc('get_invite', { p_token: INVITE_TOKEN });   // works with anon key
+    var row = Array.isArray(rows) ? rows[0] : rows;
+    if (row) {
+      if (row.status && row.status !== 'pending') { showAlreadyUsed(row.org_name); return; }
+      orgName = row.org_name || '';
+    }
+  } catch(e) { /* preview is best-effort; fall through to a generic prompt */ }
+
+  content.innerHTML =
+    '<h2>' + (orgName ? 'You\'ve been invited to join <span class="org">' + esc(orgName) + '</span>' : 'You\'ve been invited to a team') + '</h2>' +
+    '<p class="sub">Log in or sign up to accept this invite.</p>' +
+    '<button class="btn" id="go-login">Log in / Sign up</button>' +
+    '<a class="plain" href="index.html">Not now</a>';
+  // Preserve the invite across the login round-trip ONLY when they choose to proceed;
+  // index.html completes it on next load. "Not now" leaves nothing stashed.
+  document.getElementById('go-login').addEventListener('click', function(){
+    try { localStorage.setItem(PENDING_KEY, INVITE_TOKEN); } catch(e) {}
+    window.location.href = 'login.html';
+  });
+}
+
+// Logged in: preview + Accept.
+async function showLoggedIn(token){
+  content.innerHTML = '<div class="spinner">Checking invite…</div>';
+  var row;
+  try {
+    var rows = await rpc('get_invite', { p_token: INVITE_TOKEN }, token);
+    row = Array.isArray(rows) ? rows[0] : rows;
+  } catch(e) { showInvalid(e.message); return; }
+  if (!row) { showInvalid(); return; }
+  if (row.status && row.status !== 'pending') { showAlreadyUsed(row.org_name); return; }
+
+  var orgName = row.org_name || 'this team';
+  content.innerHTML =
+    '<h2>Join <span class="org">' + esc(orgName) + '</span>?</h2>' +
+    '<p class="sub">Accepting adds you as a trainer. Your leads &amp; revenue will roll up to the team admin.</p>' +
+    '<button class="btn" id="accept-btn">Accept &amp; join</button>' +
+    '<a class="plain" href="index.html">Not now</a>' +
+    '<div class="message" id="join-msg"></div>';
+
+  document.getElementById('accept-btn').addEventListener('click', function(){ doAccept(token, orgName); });
+}
+
+async function doAccept(token, orgName){
+  var btn = document.getElementById('accept-btn');
+  var msg = document.getElementById('join-msg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
+  try {
+    var rows = await rpc('accept_invite', { p_token: INVITE_TOKEN }, token);
+    var row = Array.isArray(rows) ? rows[0] : rows;
+    var joined = (row && row.joined_org_name) || orgName;
+    try { localStorage.removeItem(PENDING_KEY); } catch(e) {}
+    content.innerHTML =
+      '<h2>You\'ve joined <span class="org">' + esc(joined) + '</span>! 🎉</h2>' +
+      '<p class="sub">Redirecting you to the app…</p>';
+    setTimeout(function(){ window.location.href = 'index.html'; }, 1500);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Accept & join'; }
+    if (msg) { msg.className = 'message error'; msg.textContent = e.message || 'Could not accept this invite.'; }
+  }
+}
+
+// ---- boot ----
+(function(){
+  INVITE_TOKEN = getParam('invite');
+  if (!INVITE_TOKEN) { showInvalid('No invite token was provided.'); return; }
+  var token = localStorage.getItem('arcascend_token');
+  if (token) { showLoggedIn(token); } else { showLoggedOut(); }
+})();
+</script>
+</body>
+</html>

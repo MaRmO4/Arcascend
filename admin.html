@@ -465,12 +465,14 @@ var STATE = {
   org: null,            // active org object
   roster: [],           // active org's members
   profiles: {},         // user_id -> profile row (for display names)
+  pendingInvites: [],   // active org's pending single-use invite links
   leads: [],            // active org's leads (all members)
   month: currentMonthKey(),
   sortKey: 'leadCount', // roster sort column (Overview)
   sortDir: -1,          // 1 asc, -1 desc
   filterUid: null,      // Overview: when set, filtered to one trainer
   roleMsg: null,        // Overview: transient {ok, text} after a promote/demote
+  inviteMsg: null,      // Overview: transient {ok, text} after invite create/revoke
   view: 'overview',     // 'overview' | 'leads' | 'assign' | 'reports'
   // Team Leads view: composable filters + sort
   tl: { trainer: 'all', status: 'all', search: '', sortKey: 'created', sortDir: -1 },
@@ -609,6 +611,53 @@ function renderOverviewBody() {
       '<p>Your team is just you right now. Share <b>' + esc(org.join_code) + '</b> — trainers paste it in their app to join, and their leads &amp; revenue roll up here automatically.</p></div>';
   }
   html += renderRosterTable();
+  html += renderInviteSection();
+  return html;
+}
+
+// Build the public /join link for an invite token.
+function inviteLink(token) { return 'https://arcascend.app/join?invite=' + token; }
+
+// Invite-a-trainer section: single-use link generator + pending-invite list.
+// Sits alongside the reusable join code (both shown; invite = one trainer/single-use,
+// join code = anyone/reusable).
+function renderInviteSection() {
+  var org = STATE.org;
+  var pend = STATE.pendingInvites || [];
+  var html = '<div class="section-h">Invite a trainer' + (pend.length ? ' <span style="color:var(--muted);font-weight:400">· ' + pend.length + ' pending</span>' : '') + '</div>';
+
+  if (STATE.inviteMsg) {
+    html += '<div class="' + (STATE.inviteMsg.ok ? 'msg-ok' : 'msg-err') + '" style="margin:-4px 0 10px">' + esc(STATE.inviteMsg.text) + '</div>';
+  }
+
+  html += '<div class="callout" style="margin-bottom:14px">' +
+    '<p style="margin:0"><b>Invite link</b> = one trainer, single-use (expires once they join). ' +
+    '<b>Join code</b> (<span style="font-family:monospace">' + esc(org.join_code || '—') + '</span>) = anyone, reusable.</p></div>';
+
+  html += '<div style="margin-bottom:8px"><button class="btn" onclick="createInvite()">🔗 Generate invite link</button></div>';
+  // Newly-created link lands here (also refreshed into the pending list below).
+  html += '<div id="invite-new"></div>';
+
+  // Pending invites list.
+  if (!pend.length) {
+    html += '<div class="hint" style="margin-top:8px">No pending invite links. Generate one above to invite a specific trainer.</div>';
+  } else {
+    html += '<div class="table-card" style="margin-top:10px"><table>' +
+      '<thead><tr><th>Created</th><th>Invite link</th><th></th></tr></thead><tbody>' +
+      pend.map(function(iv){
+        var link = inviteLink(iv.token);
+        var created = iv.created_at ? new Date(iv.created_at).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }) : '—';
+        return '<tr>' +
+          '<td>' + esc(created) + '</td>' +
+          '<td><span class="uid" style="font-size:12px">…' + esc(String(iv.token).slice(-8)) + '</span></td>' +
+          '<td class="num" style="white-space:nowrap">' +
+            '<button class="btn btn-ghost btn-sm" onclick="copyText(\'' + esc(link) + '\', this)">Copy link</button> ' +
+            '<button class="btn btn-ghost btn-sm" onclick="revokeInvite(\'' + esc(iv.id) + '\')">Revoke</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
   return html;
 }
 
@@ -1235,6 +1284,55 @@ async function doSetRole(uid, role) {
   }
 }
 
+// ---- INVITE actions (single-use trainer invite links) ----
+// Transient invite message that survives the re-render (mirrors setRoleMsg).
+function setInviteMsg(ok, text) {
+  STATE.inviteMsg = { ok: ok, text: text };
+  renderAdmin();
+  setTimeout(function(){ STATE.inviteMsg = null; if (STATE.view === 'overview') renderAdmin(); }, 4000);
+}
+// Create a single-use invite, prepend it to the pending list, and surface the link.
+async function createInvite() {
+  try {
+    var out = await rpc('create_invite', { p_org: STATE.activeOrgId });
+    var row = Array.isArray(out) ? out[0] : out;
+    var token = row && row.token;
+    if (!token) { setInviteMsg(false, 'Invite created but no link was returned. Reload to see it.'); return; }
+    // Add to local pending list so it appears immediately, then re-render.
+    STATE.pendingInvites.unshift({ id: row.invite_id, token: token, status: 'pending', created_at: new Date().toISOString() });
+    setInviteMsg(true, 'Invite link created — copy it below and send it to your trainer.');
+    // Show the fresh link prominently in the #invite-new slot after the re-render.
+    setTimeout(function(){
+      var slot = document.getElementById('invite-new');
+      if (!slot) return;
+      var link = inviteLink(token);
+      slot.innerHTML = '<div class="callout" style="margin:6px 0 4px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<input readonly value="' + esc(link) + '" style="font-family:monospace;flex:1;min-width:220px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text)">' +
+        '<button class="btn" onclick="copyText(\'' + esc(link) + '\', this)">Copy link</button>' +
+        '</div><div style="font-size:12px;color:var(--muted);margin-top:6px">Send this link to your trainer — single-use, expires once they join.</div></div>';
+    }, 0);
+  } catch(e) {
+    setInviteMsg(false, rpcErrorMessage(e));
+  }
+}
+// Revoke a pending invite (RLS: admins can UPDATE their org's invites).
+async function revokeInvite(id) {
+  if (!id) return;
+  if (!confirm('Revoke this invite link? It will stop working immediately.')) return;
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/org_invites?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, authHeaders()),
+      body: JSON.stringify({ status: 'revoked' })
+    });
+    if (!(res.ok || res.status === 204)) { var t = await res.text(); setInviteMsg(false, rpcErrorMessage(new Error(t))); return; }
+    STATE.pendingInvites = STATE.pendingInvites.filter(function(iv){ return iv.id !== id; });
+    setInviteMsg(true, 'Invite link revoked.');
+  } catch(e) {
+    setInviteMsg(false, 'Error: ' + e.message);
+  }
+}
+
 // ==========================================================
 // 8. BOOT
 // ==========================================================
@@ -1247,7 +1345,18 @@ async function loadActiveOrg() {
   var uids = STATE.roster.map(function(m){ return m.user_id; });
   if (uids.indexOf(currentUser.id) < 0) uids.push(currentUser.id);
   STATE.profiles = await loadProfiles(uids);   // display names for the roster
+  STATE.pendingInvites = await loadPendingInvites(STATE.activeOrgId);
   STATE.leads = await loadOrgLeads(uids);
+}
+
+// Pending single-use invites for an org (RLS: admins can SELECT their org's invites).
+async function loadPendingInvites(orgId) {
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/org_invites?select=id,token,status,created_at&org_id=eq.' + encodeURIComponent(orgId) + '&status=eq.pending&order=created_at.desc', { headers: authHeaders() });
+    if (!res.ok) return [];
+    var rows = await res.json();
+    return Array.isArray(rows) ? rows : [];
+  } catch(e) { return []; }
 }
 
 async function boot() {
