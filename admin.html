@@ -183,6 +183,17 @@ tbody tr.clickable { cursor: pointer; }
   .kpi-row { grid-template-columns: repeat(2, 1fr); }
   .form-grid { grid-template-columns: 1fr; }
 }
+
+/* Per-row ⋮ actions menu (roster) */
+.row-menu-wrap { position: relative; display: inline-block; }
+.roster-menu {
+  position: absolute; top: 100%; right: 0; margin-top: 4px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: var(--shadow); min-width: 190px; z-index: 50; overflow: hidden;
+}
+.roster-menu-item { padding: 9px 12px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.roster-menu-item:hover { background: var(--panel-2); }
+.roster-menu-item.danger { color: var(--lost); }
 </style>
 </head>
 <body>
@@ -475,7 +486,7 @@ var STATE = {
   inviteMsg: null,      // Overview: transient {ok, text} after invite create/revoke
   view: 'overview',     // 'overview' | 'leads' | 'assign' | 'reports'
   // Team Leads view: composable filters + sort
-  tl: { trainer: 'all', status: 'all', search: '', sortKey: 'created', sortDir: -1 },
+  tl: { trainer: 'all', status: 'all', search: '', activeOnly: false, sortKey: 'created', sortDir: -1 },
   drawerLeadId: null,   // id of the lead open in the detail drawer
   // Reports view: month range (default last 3 months → current), trainer selection
   // (null = all), sort. Defaults finalized in boot() once monthOptions is available.
@@ -705,15 +716,26 @@ function renderRosterTable() {
     var idHint = (dn !== sid) ? ' <span class="uid" style="color:var(--muted);font-size:11px">' + esc(sid) + '</span>' : '';
     // Role toggle: trainers get "Make admin"; admins get "Make trainer" unless they
     // are the last admin (then omitted — server would reject it anyway).
-    var roleBtn = '';
+    // ⋮ actions menu (replaces the old inline role button). Items depend on role;
+    // last-admin demote is hidden (same guard as before — server enforces it too).
+    var uid = r.user_id;
+    var items = '';
+    function mi(label, action, cls){ return '<div class="roster-menu-item' + (cls?' '+cls:'') + '" onclick="closeRosterMenus();' + action + '">' + label + '</div>'; }
     if (r.role === 'trainer') {
-      roleBtn = '<button class="btn btn-ghost btn-sm" onclick="doSetRole(\'' + r.user_id + '\',\'admin\')">Make admin</button>';
-    } else if (r.role === 'admin' && adminCount > 1) {
-      roleBtn = '<button class="btn btn-ghost btn-sm" onclick="doSetRole(\'' + r.user_id + '\',\'trainer\')">Make trainer</button>';
+      items += mi('Promote to admin', 'doSetRole(\'' + uid + '\',\'admin\')');
+      items += mi('Open active client list', 'openActiveClients(\'' + uid + '\')');
+      items += mi('Remove from org', 'doRemoveTrainer(\'' + uid + '\')', 'danger');
+    } else { // admin
+      if (adminCount > 1) items += mi('Demote to trainer', 'doSetRole(\'' + uid + '\',\'trainer\')');
+      items += mi('Open active client list', 'openActiveClients(\'' + uid + '\')');
     }
+    var menu = '<div class="row-menu-wrap">' +
+      '<button class="btn btn-ghost btn-sm" onclick="toggleRosterMenu(event,\'' + uid + '\')" title="Actions">⋮</button>' +
+      '<div class="roster-menu" id="rmenu-' + uid + '" style="display:none">' + items + '</div>' +
+    '</div>';
     return '<tr' + (isFiltered ? ' style="background:var(--panel-2)"' : '') + '>' +
       '<td><b>' + esc(dn) + '</b>' + idHint + ' ' + youBadge + '</td>' +
-      '<td><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + roleBadge + roleBtn + '</div></td>' +
+      '<td><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + roleBadge + menu + '</div></td>' +
       '<td class="num">' + r.leadCount + '</td>' +
       '<td class="num">' + r.activeClients + '</td>' +
       '<td class="num">' + fmt$(r.projected) + '</td>' +
@@ -747,6 +769,7 @@ function teamLeadsFiltered() {
   var rows = STATE.leads.filter(function(L){
     if (tl.trainer !== 'all' && L.__uid !== tl.trainer) return false;
     if (tl.status !== 'all' && (L.status||'New') !== tl.status) return false;
+    if (tl.activeOnly && !isActive(L)) return false;   // active client = billing.active
     if (q && String(L.name||'').toLowerCase().indexOf(q) < 0) return false;
     return true;
   });
@@ -785,6 +808,7 @@ function renderTeamLeadsBody() {
       '<option value="all"' + (tl.status==='all'?' selected':'') + '>All</option>' +
       STATUSES.map(function(s){ return '<option value="' + esc(s) + '"' + (tl.status===s?' selected':'') + '>' + esc(s) + '</option>'; }).join('') +
       '</select></div>' +
+    '<div><label>&nbsp;</label><br><label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text);text-transform:none;letter-spacing:0;cursor:pointer;white-space:nowrap;padding:8px 0"><input type="checkbox"' + (tl.activeOnly?' checked':'') + ' onchange="setTLActive(this.checked)"> Active only</label></div>' +
     '<div style="flex:1;min-width:180px"><label>Search name</label><br><input id="tl-search" type="text" class="input" style="width:100%" placeholder="Type a name…" value="' + esc(tl.search) + '" oninput="setTLSearch(this.value)"></div>' +
     '<div style="align-self:flex-end"><button class="btn" onclick="setView(\'assign\')">+ Assign Lead</button></div>' +
     '</div>';
@@ -1279,6 +1303,50 @@ async function doSetRole(uid, role) {
     // Update local roster from the server's returned role (fallback to requested).
     member.role = (row && row.role) ? row.role : role;
     setRoleMsg(true, name + ' is now ' + (member.role === 'admin' ? 'an admin.' : 'a trainer.'));
+  } catch(e) {
+    setRoleMsg(false, rpcErrorMessage(e));
+  }
+}
+
+// ---- Roster ⋮ menu: open/close + row actions ----
+function closeRosterMenus() {
+  document.querySelectorAll('.roster-menu').forEach(function(m){ m.style.display = 'none'; });
+}
+function toggleRosterMenu(e, uid) {
+  if (e) e.stopPropagation();
+  var menu = document.getElementById('rmenu-' + uid);
+  var isOpen = menu && menu.style.display === 'block';
+  closeRosterMenus();
+  if (menu && !isOpen) menu.style.display = 'block';
+}
+// Close any open menu on an outside click (added once).
+document.addEventListener('click', function(){ closeRosterMenus(); });
+
+// Jump to Team Leads filtered to this trainer's ACTIVE clients.
+function openActiveClients(uid) {
+  STATE.tl.trainer = uid;
+  STATE.tl.status = 'all';
+  STATE.tl.activeOnly = true;
+  STATE.tl.search = '';
+  setView('leads');   // re-renders (also drops any open menu)
+}
+function setTLActive(v) { STATE.tl.activeOnly = !!v; refreshTLMount(); }
+
+// Remove a trainer: reassign their leads to the admin under a "Former: <name>"
+// bucket, then delete their membership (all atomic in remove_trainer).
+async function doRemoveTrainer(uid) {
+  var member = STATE.roster.filter(function(m){ return m.user_id === uid; })[0];
+  if (!member) return;
+  var name = displayName(uid);
+  var bucket = 'Former: ' + name;
+  if (!confirm('Remove ' + name + '?\n\nTheir leads will be moved to a "' + bucket + '" bucket in your account for you to redistribute.')) return;
+  try {
+    var out = await rpc('remove_trainer', { p_org: STATE.activeOrgId, p_user: uid, p_bucket: bucket });
+    var row = Array.isArray(out) ? out[0] : out;
+    var n = (row && typeof row.reassigned_count === 'number') ? row.reassigned_count : 0;
+    // Drop from local roster so the row disappears immediately.
+    STATE.roster = STATE.roster.filter(function(m){ return m.user_id !== uid; });
+    setRoleMsg(true, name + ' removed — ' + n + ' lead' + (n === 1 ? '' : 's') + ' moved to "' + bucket + '".');
   } catch(e) {
     setRoleMsg(false, rpcErrorMessage(e));
   }
