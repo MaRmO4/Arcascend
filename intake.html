@@ -166,6 +166,12 @@ function submitForm() {
   var phoneVal = fields['q_phone'] || '';
   var emailVal = fields['q_email'] || '';
   var goalVal = fields['q_goal'] || '';
+  // Snapshot this form's question labels (id -> label AS SHOWN ON THIS FORM) so the
+  // trainer app can render each answer with its form-accurate label, even if the id's
+  // default meaning differs (e.g. a relabeled q_style). '__labels' can't collide with
+  // any answer key: question ids are always 'q_*'.
+  var __labels = {};
+  loadedQuestions.forEach(function(q){ if (q && q.id) __labels[q.id] = q.label || ''; });
   var dataObj = Object.assign({}, fields, {
     name: fullName,
     phone: phoneVal,
@@ -175,7 +181,8 @@ function submitForm() {
     bucket: loadedBucket,
     submittedAt: new Date().toISOString(),
     tasks: [],
-    billing: { active: false, sessions: 0, rate: 0, package: '', paid: false }
+    billing: { active: false, sessions: 0, rate: 0, package: '', paid: false },
+    __labels: __labels
   });
   var lead = {
     user_id: TRAINER_ID,
