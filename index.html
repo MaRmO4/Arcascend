@@ -6553,6 +6553,19 @@ function formsCopyLink() {
   });
 }
 
+// ===== Builder guardrail: keep the 12 standard profile slots' id + meaning stable =====
+// "Standard" = id ∈ PROFILE_ORDER. STD_BY_ID gives each slot's canonical type/options
+// (single source of truth = the seed). CORE_IDS are read by hardcoded id in intake.html
+// (name/phone/email/goal) so they must NEVER be converted. When a standard question's
+// MEANING changes (type away from canonical, or options swapped to a disjoint set) we
+// move it to a fresh custom id so it stops occupying — and polluting — the standard slot.
+var STD_BY_ID = {};
+INTAKE_DEFAULT_QUESTIONS.forEach(function(q){ STD_BY_ID[q.id] = q; });
+var CORE_IDS = { q_name:1, q_phone:1, q_email:1, q_goal:1 };
+var formsOptWarned = {};   // per-id, non-persisted — avoids re-prompting on every blur
+function isStandardId(id){ return PROFILE_ORDER.indexOf(id) >= 0; }
+function convertToCustom(idx){ formsQuestions[idx].id = 'q_custom_' + Date.now(); }
+
 function formsRenderQuestions() {
   const list = document.getElementById('forms-questions-list');
   list.innerHTML = '';
@@ -6563,13 +6576,16 @@ function formsRenderQuestions() {
     row.style.cssText = 'background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:14px;display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:start;cursor:grab;transition:opacity .15s';
     const typeOpts = ['text','textarea','tel','email','number','select','multiselect'].map(function(t) { return '<option value="'+t+'"'+(q.type===t?' selected':'')+'>'+t+'</option>'; }).join('');
     const showOpts = ['select','multiselect'].indexOf(q.type) > -1;
+    var isStd = isStandardId(q.id);   // standard profile slot (id ∈ PROFILE_ORDER)
     row.innerHTML = '<div style="padding-top:2px;color:var(--text-muted);user-select:none;font-size:18px;line-height:1">&#8995;</div>'
       + '<div style="display:flex;flex-direction:column;gap:8px">'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
       + '<input class="forms-q-label" data-idx="'+i+'" value="'+q.label.replace(/"/g,"&quot;")+'" placeholder="Question label" style="flex:1;min-width:160px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text-primary);font-size:13px" />'
+      + (isStd ? '<span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);background:var(--bg-primary);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap">Standard</span>' : '')
       + '<select class="forms-q-type" data-idx="'+i+'" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:7px 8px;color:var(--text-primary);font-size:13px">'+typeOpts+'</select>'
       + '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer"><input type="checkbox" class="forms-q-required" data-idx="'+i+'" '+(q.required?'checked':'')+' style="accent-color:var(--accent)"> Required</label>'
       + '</div>'
+      + (isStd ? '<div style="font-size:11px;color:var(--text-muted)">Standard profile field — reword freely, but to ask something different, add a new question below.</div>' : '')
       + '<div class="forms-q-options-wrap" style="display:'+(showOpts?'block':'none')+'">'
       + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Options (one per line):</div>'
       + '<textarea class="forms-q-options" data-idx="'+i+'" rows="3" style="width:100%;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text-primary);font-size:12px;resize:vertical;box-sizing:border-box">'+(q.options||[]).join('\n')+'</textarea>'
@@ -6578,12 +6594,54 @@ function formsRenderQuestions() {
     row.querySelector('.forms-q-label').addEventListener('input', function(e) { formsQuestions[+e.target.dataset.idx].label = e.target.value; });
     row.querySelector('.forms-q-type').addEventListener('change', function(e) {
       var idx = +e.target.dataset.idx;
-      formsQuestions[idx].type = e.target.value;
-      row.querySelector('.forms-q-options-wrap').style.display = ['select','multiselect'].indexOf(e.target.value) > -1 ? 'block' : 'none';
+      var qq = formsQuestions[idx];
+      var newType = e.target.value;
+      var canonical = STD_BY_ID[qq.id];
+      // Core identity fields (name/phone/email/goal) are read by hardcoded id in intake —
+      // their type is fixed. Revert + explain.
+      if (canonical && CORE_IDS[qq.id]) {
+        e.target.value = qq.type;
+        if (typeof showToast === 'function') showToast('Name, Phone, Email, and Goal are core fields with a fixed format. To ask something else, add a new question below.', 'error');
+        return;
+      }
+      // Standard slot whose TYPE moved away from canonical = meaning changed → make it custom.
+      if (canonical && newType !== canonical.type) {
+        convertToCustom(idx);
+        qq.type = newType;
+        formsRenderQuestions();   // re-render: badge/hint disappear, row is now custom
+        if (typeof showToast === 'function') showToast('Converted to a custom question — it no longer fills the standard field.', 'success');
+        return;
+      }
+      qq.type = newType;
+      row.querySelector('.forms-q-options-wrap').style.display = ['select','multiselect'].indexOf(newType) > -1 ? 'block' : 'none';
     });
     row.querySelector('.forms-q-required').addEventListener('change', function(e) { formsQuestions[+e.target.dataset.idx].required = e.target.checked; });
     var optTA = row.querySelector('.forms-q-options');
-    if (optTA) optTA.addEventListener('input', function(e) { formsQuestions[+e.target.dataset.idx].options = e.target.value.split('\n').map(function(s){return s.trim();}).filter(Boolean); });
+    if (optTA) {
+      optTA.addEventListener('input', function(e) { formsQuestions[+e.target.dataset.idx].options = e.target.value.split('\n').map(function(s){return s.trim();}).filter(Boolean); });
+      // Fuzzy signal: a standard (non-core) select whose options are swapped for a
+      // DISJOINT set is likely a repurpose (e.g. q_style styles → Yes/No). Ask on blur
+      // whether to make it a custom question — trainer decides (no silent conversion).
+      optTA.addEventListener('blur', function(e) {
+        var idx = +e.target.dataset.idx;
+        var qq = formsQuestions[idx];
+        if (!qq || !isStandardId(qq.id) || CORE_IDS[qq.id]) return;
+        var canonQ = STD_BY_ID[qq.id];
+        if (!canonQ || !Array.isArray(canonQ.options) || !canonQ.options.length) return;
+        var canon = canonQ.options.map(function(s){ return String(s).toLowerCase().trim(); });
+        var opts = (qq.options || []).map(function(s){ return String(s).toLowerCase().trim(); });
+        if (!opts.length) return;
+        var disjoint = opts.every(function(o){ return canon.indexOf(o) < 0; });
+        if (disjoint && !formsOptWarned[qq.id]) {
+          formsOptWarned[qq.id] = true;   // don't re-nag this slot
+          if (confirm('You’ve replaced the answer choices for the standard "' + canonQ.label + '" field with a different set.\n\nMake this a separate custom question? (Recommended if it’s now a different question.)')) {
+            convertToCustom(idx);
+            formsRenderQuestions();
+            if (typeof showToast === 'function') showToast('Converted to a custom question.', 'success');
+          }
+        }
+      });
+    }
     row.addEventListener('dragstart', function(e) { formsDragSrc=i; e.dataTransfer.effectAllowed='move'; setTimeout(function(){row.style.opacity='0.4';},0); });
     row.addEventListener('dragend', function() { row.style.opacity='1'; formsDragSrc=null; });
     row.addEventListener('dragover', function(e) { e.preventDefault(); e.dataTransfer.dropEffect='move'; });
@@ -6593,7 +6651,7 @@ function formsRenderQuestions() {
 }
 
 function formsAddQuestion() {
-  formsQuestions.push({ id:'q_'+Date.now(), label:'', type:'text', required:false, options:[] });
+  formsQuestions.push({ id:'q_custom_'+Date.now(), label:'', type:'text', required:false, options:[] });
   formsRenderQuestions();
   var last = document.getElementById('forms-questions-list').lastElementChild;
   if (last) last.scrollIntoView({ behavior:'smooth', block:'nearest' });
