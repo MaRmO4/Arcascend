@@ -3329,7 +3329,13 @@ function renderDynamicProfile(L) {
   var qById = {};
   qs.forEach(function(q){ if (q && q.id) qById[q.id] = q; });
 
-  function labelFor(cid){ return (qById[cid] && qById[cid].label) || PROFILE_LABELS[cid] || humanizeKey(cid); }
+  // Phase 2: the lead's OWN form-label snapshot (from intake, data.__labels) wins over
+  // the trainer's default-form labels — so a relabeled standard question (e.g. q_style
+  // repurposed as "Have you worked with a trainer before?") shows the label the client
+  // actually saw. Older leads without a snapshot fall through to today's behavior.
+  var leadLabels = (src && src.__labels && typeof src.__labels === 'object') ? src.__labels : {};
+
+  function labelFor(cid){ return leadLabels[cid] || (qById[cid] && qById[cid].label) || PROFILE_LABELS[cid] || humanizeKey(cid); }
   function optionsFor(cid){ return (qById[cid] && Array.isArray(qById[cid].options)) ? qById[cid].options : []; }
   function typeFor(cid){ return qById[cid] ? qById[cid].type : ''; }
 
@@ -3376,6 +3382,7 @@ function renderDynamicProfile(L) {
   });
   // 2) Any additional answers the lead actually has (e.g. custom shared-form questions).
   Object.keys(src).forEach(function(k){
+    if (k.indexOf('__') === 0) return;   // internal keys (e.g. __labels) are never fields
     if (k.indexOf('q_') !== 0 || rendered[k]) return;
     var v = src[k];
     if (v===undefined || v===null || String(v)==='') return;
@@ -3386,7 +3393,8 @@ function renderDynamicProfile(L) {
   // Orphan fallback: with the above we now render the lead's own answers, so this is
   // normally empty. Kept as a safety net for anything genuinely unmapped.
   var orphanKeys = Object.keys(src).filter(function(k){
-    if (!k || k.indexOf('q_') !== 0) return false;
+    if (!k || k.indexOf('__') === 0) return false;   // internal keys (e.g. __labels) never orphaned
+    if (k.indexOf('q_') !== 0) return false;
     if (rendered[k]) return false;
     var v = src[k];
     return v !== '' && v != null;
