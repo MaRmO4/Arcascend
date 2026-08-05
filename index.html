@@ -1445,6 +1445,24 @@ main { flex: 1; padding: 20px 24px; }
   </div>
 </div>
 
+<div class="modal-bg" id="csv-map-modal">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-head">
+      <div class="modal-title">Map your columns</div>
+      <button class="modal-close" onclick="closeCsvMap()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="csv-map-info" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+      <div id="csv-map-body"></div>
+      <div id="csv-map-warn" style="margin-top:10px;font-size:12px"></div>
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+        <button class="btn" id="csv-map-import" onclick="csvConfirmImport()">Import</button>
+        <button class="btn btn-ghost" onclick="closeCsvMap()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="qr-modal">
   <div class="modal" style="max-width:420px">
     <div class="modal-head">
@@ -3975,7 +3993,7 @@ function renderSyncTab() {
   $("sync-paste-btn").addEventListener("click", function(){
     var text = $("sync-paste").value.trim();
     if (!text) { syncStatus("Paste spreadsheet content first.", "error"); return; }
-    handleSyncImport(text, "pasted data");
+    csvOpenMapping(parseCSV(text), "pasted data");   // v2: map columns before writing
     $("sync-paste").value = "";
   });
   $("sync-now").addEventListener("click", function(){ urlSyncNow(false); });
@@ -4004,14 +4022,14 @@ function handleSyncFile(file) {
   if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
     importExcelFile(file, function(rows, err){
       if (err) { syncStatus("Excel import failed: " + err.message, "error"); return; }
-      try {
-        var r = importRows(rows);
-        afterSyncImport(r, file.name);
-      } catch(e) { syncStatus("Import failed: " + e.message, "error"); }
+      csvOpenMapping(rows, file.name);   // v2: map columns before writing
     });
   } else {
     var reader = new FileReader();
-    reader.onload = function(ev){ handleSyncImport(ev.target.result, file.name); };
+    reader.onload = function(ev){
+      try { csvOpenMapping(parseCSV(ev.target.result), file.name); }   // v2: map columns before writing
+      catch(e) { syncStatus("Could not read file: " + e.message, "error"); }
+    };
     reader.onerror = function(){ syncStatus("Could not read file.", "error"); };
     reader.readAsText(file);
   }
@@ -4035,6 +4053,213 @@ function afterSyncImport(r, sourceLabel) {
   );
   showToast("✓ " + r.added + " lead" + (r.added===1?"":"s") + " imported! Switching to All Leads...", "success");
   setTimeout(function(){ goToTab("all"); }, 800);
+}
+
+// ==========================================================
+// CSV IMPORT v2 — upload → map columns → preview → confirm
+// Reuses parseCSV (arrays-of-arrays) + XLSX; standard columns write friendly keys,
+// custom columns write q_custom_* keys + data.__labels[key]=header (native-looking
+// profile fields), unrecognized columns are captured (not dropped) by default.
+// ==========================================================
+
+// Friendly target key -> UI label + header aliases (priority order: phone/email/name
+// first, mirroring rowToLead so "client phone" -> phone, not name).
+var CSV_TARGETS = [
+  { key:'phone',        label:'Phone',        aliases:['phone','mobile number','cell phone','cell number'] },
+  { key:'email',        label:'Email',        aliases:['email','e-mail'] },
+  { key:'name',         label:'Name',         aliases:['full name','first name','client name','customer name','name','client','customer','contact','person','lead','member'] },
+  { key:'status',       label:'Status',       aliases:['deal outcome','outcome','status','stage'] },
+  { key:'date',         label:'Date',         aliases:['timestamp','date joined','joined','signed up','start date','date'] },
+  { key:'goal',         label:'Goal',         aliases:['fitness goal','goals','goal','objective'] },
+  { key:'level',        label:'Level',        aliases:['fitness level','level','experience'] },
+  { key:'timeline',     label:'Timeline',     aliases:['timeline','duration','time frame'] },
+  { key:'style',        label:'Style',        aliases:['preferred training style','training style','style','format'] },
+  { key:'injuries',     label:'Injuries',     aliases:['injuries','injur','health','medical'] },
+  { key:'availability', label:'Availability', aliases:['availability','schedule'] },
+  { key:'whyNow',       label:'Why Now',      aliases:['why is now','why now','invest in','reason'] },
+  { key:'outcomes',     label:'Outcomes',     aliases:['specific outcomes','outcomes','results'] },
+  { key:'other',        label:'Other',        aliases:['anything else','support','comments','additional'] },
+  { key:'notes',        label:'Notes',        aliases:['consultation notes','notes','remarks'] }
+];
+var CSV_TARGET_BY_KEY = {};
+CSV_TARGETS.forEach(function(t){ CSV_TARGET_BY_KEY[t.key] = t; });
+
+var csvMapState = null;   // { headers:[], data:[[]], source:'', mapping:[] }
+
+// Smart default: first target (in priority order) whose alias is a substring of the
+// header. Returns the friendly key, or null → default to custom.
+function csvGuessTarget(header) {
+  var h = String(header || '').toLowerCase();
+  if (!h.trim()) return null;
+  for (var t = 0; t < CSV_TARGETS.length; t++) {
+    var al = CSV_TARGETS[t].aliases;
+    for (var a = 0; a < al.length; a++) { if (h.indexOf(al[a]) >= 0) return CSV_TARGETS[t].key; }
+  }
+  return null;
+}
+
+// Open the mapping modal. `rows` = arrays-of-arrays (rows[0] = headers).
+function csvOpenMapping(rows, source) {
+  try {
+    if (!rows || !rows.length) { syncStatus('That file appears to be empty.', 'error'); return; }
+    var headers = (rows[0] || []).map(function(h){ return String(h == null ? '' : h).trim(); });
+    var data = rows.slice(1).filter(function(r){ return r && r.some(function(c){ return String(c == null ? '' : c).trim(); }); });
+    if (!headers.length) { syncStatus('Could not read column headers.', 'error'); return; }
+    if (!data.length) { syncStatus('No data rows found (only headers).', 'error'); return; }
+
+    // Default mapping: smart-guess a standard field; if that field is already taken by
+    // an earlier column, or nothing matches, default to custom (so nothing is dropped).
+    var taken = {}, mapping = [];
+    headers.forEach(function(h, i){
+      var g = csvGuessTarget(h);
+      if (g && !taken[g]) { taken[g] = true; mapping[i] = g; }
+      else { mapping[i] = '__custom'; }
+    });
+    csvMapState = { headers: headers, data: data, source: source || 'CSV file', mapping: mapping };
+    csvRenderMapping();
+    $('csv-map-modal').classList.add('show');
+  } catch(e) { syncStatus('Could not read that file: ' + e.message, 'error'); }
+}
+
+function closeCsvMap() { $('csv-map-modal').classList.remove('show'); csvMapState = null; }
+
+function csvRenderMapping() {
+  if (!csvMapState) return;
+  var s = csvMapState;
+  $('csv-map-info').textContent = s.data.length + ' row' + (s.data.length===1?'':'s') + ' found · ' + s.headers.length + ' column' + (s.headers.length===1?'':'s') + '. Choose where each column goes; custom questions keep their header as the field label.';
+
+  // Which standard keys are currently used, to grey out duplicates in each select.
+  var usedCounts = {};
+  s.mapping.forEach(function(m){ if (m && m !== '__custom' && m !== '__skip') usedCounts[m] = (usedCounts[m]||0) + 1; });
+
+  var rowsHtml = s.headers.map(function(h, i){
+    var cur = s.mapping[i];
+    // up to 3 non-empty sample values
+    var samples = [];
+    for (var r = 0; r < s.data.length && samples.length < 3; r++) {
+      var v = s.data[r][i]; v = (v == null ? '' : String(v).trim());
+      if (v) samples.push(v.length > 40 ? v.slice(0,40) + '…' : v);
+    }
+    var opts = '<option value="__custom"' + (cur==='__custom'?' selected':'') + '>Import as custom question</option>' +
+      '<option value="__skip"' + (cur==='__skip'?' selected':'') + '>Skip this column</option>' +
+      CSV_TARGETS.map(function(t){
+        // Disable a standard target if it's used by a DIFFERENT column already.
+        var dis = (usedCounts[t.key] && cur !== t.key) ? ' disabled' : '';
+        return '<option value="' + t.key + '"' + (cur===t.key?' selected':'') + dis + '>' + escapeHtml(t.label) + '</option>';
+      }).join('');
+    return '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (escapeHtml(h) || '<span style="color:var(--text-muted)">(unnamed column ' + (i+1) + ')</span>') + '</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (samples.length ? 'e.g. ' + escapeHtml(samples.join(' · ')) : '<i>no sample values</i>') + '</div></div>' +
+      '<select data-col="' + i + '" onchange="csvSetMap(' + i + ', this.value)" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:7px 8px;color:var(--text-primary);font-size:13px">' + opts + '</select>' +
+      '<div style="font-size:11px;color:var(--text-muted);white-space:nowrap">' + (cur==='__custom' ? 'custom field' : (cur==='__skip' ? 'ignored' : 'standard')) + '</div>' +
+    '</div>';
+  }).join('');
+  $('csv-map-body').innerHTML = rowsHtml;
+
+  // Guardrails: require a Name mapping; warn on duplicate standard mappings.
+  var hasName = s.mapping.indexOf('name') >= 0;
+  var dupKeys = Object.keys(usedCounts).filter(function(k){ return usedCounts[k] > 1; });
+  var warn = '';
+  if (dupKeys.length) warn += '<div style="color:var(--lost)">Two columns map to the same standard field: ' + dupKeys.map(function(k){ return escapeHtml(CSV_TARGET_BY_KEY[k].label); }).join(', ') + '. Pick one.</div>';
+  if (!hasName) warn += '<div style="color:var(--warm)">Map a column to Name to continue.</div>';
+  $('csv-map-warn').innerHTML = warn;
+
+  var btn = $('csv-map-import');
+  var ok = hasName && !dupKeys.length;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '0.5';
+  btn.style.cursor = ok ? 'pointer' : 'not-allowed';
+}
+
+function csvSetMap(col, value) {
+  if (!csvMapState) return;
+  csvMapState.mapping[col] = value;
+  csvRenderMapping();   // re-render to update dup-guard, samples stay, Import enabled state
+}
+
+// Build leads from the mapping and write them via the same dedup/merge path importRows uses.
+function csvConfirmImport() {
+  if (!csvMapState) return;
+  var s = csvMapState;
+  var hasName = s.mapping.indexOf('name') >= 0;
+  var usedCounts = {};
+  s.mapping.forEach(function(m){ if (m && m !== '__custom' && m !== '__skip') usedCounts[m] = (usedCounts[m]||0) + 1; });
+  var dup = Object.keys(usedCounts).some(function(k){ return usedCounts[k] > 1; });
+  if (!hasName || dup) return;   // guard (button should already be disabled)
+
+  // One stable q_custom_ key per custom column, reused across all rows.
+  var stamp = Date.now().toString(36);
+  var customKey = {};
+  s.mapping.forEach(function(m, i){ if (m === '__custom') customKey[i] = 'q_custom_' + stamp + '_' + i; });
+
+  var built = [];
+  var skipped = 0;
+  try {
+    s.data.forEach(function(row){
+      var lead = { status: 'New', billing: { active:false, sessions:0, rate:0, package:'' } };
+      var labels = {};
+      var hasLabels = false;
+      s.mapping.forEach(function(target, i){
+        if (target === '__skip') return;
+        var v = (row[i] == null) ? '' : String(row[i]).trim();
+        if (target === '__custom') {
+          if (v) { lead[customKey[i]] = v; labels[customKey[i]] = s.headers[i] || ('Column ' + (i+1)); hasLabels = true; }
+          return;
+        }
+        // standard friendly key
+        if (target === 'status') { lead.status = csvNormalizeStatus(v) || 'New'; return; }
+        if (v) lead[target] = v;
+      });
+      if (!lead.name || !String(lead.name).trim()) { skipped++; return; }
+      if (hasLabels) lead.__labels = labels;
+      built.push(lead);
+    });
+  } catch(e) { syncStatus('Import failed: ' + e.message, 'error'); showToast('Import failed: ' + e.message, 'error'); return; }
+
+  var r = csvWriteLeads(built);
+  r.skipped = skipped;
+  r.total = s.data.length;
+  closeCsvMap();
+  afterSyncImport(r, s.source);
+}
+
+function csvNormalizeStatus(v) {
+  var sl = String(v || '').toLowerCase();
+  if (sl.indexOf('won') >= 0) return 'Closed Won';
+  if (sl.indexOf('lost') >= 0) return 'Closed Lost';
+  if (sl.indexOf('pending') >= 0) return 'Pending';
+  if (sl.indexOf('open') >= 0) return 'Open';
+  if (sl.indexOf('new') >= 0) return 'New';
+  return v ? v : '';
+}
+
+// Dedup + merge + write, mirroring importRows semantics (plus custom keys + __labels).
+function csvWriteLeads(built) {
+  var added = 0, updated = 0;
+  built.forEach(function(lead){
+    var key = leadKey(lead);
+    var existing = LEADS.find(function(L){ return leadKey(L) === key; });
+    if (existing) {
+      ['goal','level','timeline','style','injuries','availability','whyNow','outcomes','other','email','phone','date'].forEach(function(f){
+        if (!existing[f] && lead[f]) existing[f] = lead[f];
+      });
+      if (!existing.notes && lead.notes) existing.notes = lead.notes;
+      if ((!existing.status || existing.status === 'New') && lead.status && lead.status !== 'New') existing.status = lead.status;
+      // Merge custom answers + their labels.
+      Object.keys(lead).forEach(function(k){ if (k.indexOf('q_custom_') === 0 && existing[k] === undefined) existing[k] = lead[k]; });
+      if (lead.__labels) {
+        existing.__labels = existing.__labels || {};
+        Object.keys(lead.__labels).forEach(function(k){ if (existing.__labels[k] === undefined) existing.__labels[k] = lead.__labels[k]; });
+      }
+      updated++;
+    } else {
+      LEADS.unshift(lead);
+      added++;
+    }
+  });
+  saveState();
+  renderAll();
+  return { added: added, updated: updated, skipped: 0, total: built.length };
 }
 
 function syncStatus(msg, kind) {
