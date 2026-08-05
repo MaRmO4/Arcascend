@@ -1102,7 +1102,7 @@ main { flex: 1; padding: 20px 24px; }
 <div class="toolbar">
   <div class="search-wrap">
     <span class="search-icon">🔍</span>
-    <input class="search" id="search" placeholder="Search by name, phone, goal, notes...">
+    <input class="search" id="search" type="search" name="lead-search" autocomplete="off" aria-autocomplete="none" data-1p-ignore data-lpignore placeholder="Search by name, phone, goal, notes...">
   </div>
   <select class="filter-toggle" id="sort-by" style="cursor:pointer;" title="Sort leads">
     <option value="">↕ Sort: Default</option>
@@ -1280,10 +1280,10 @@ main { flex: 1; padding: 20px 24px; }
       <button class="modal-close" onclick="closeAdd()">✕</button>
     </div>
     <div class="modal-body">
-      <form id="add-form">
+      <form id="add-form" autocomplete="off">
         <div class="form-row">
-          <div class="form-field"><label>Name *</label><input name="name" required></div>
-          <div class="form-field"><label>Phone</label><input name="phone"></div>
+          <div class="form-field"><label>Name *</label><input name="name" autocomplete="off" required></div>
+          <div class="form-field"><label>Phone</label><input name="phone" autocomplete="off"></div>
         </div>
         <div class="form-row">
           <div class="form-field"><label>Date</label><input name="date" id="add-date"></div>
@@ -5612,6 +5612,13 @@ function initApp() {
   // EVERY account. It is no longer read anywhere; purge it on every boot so a stale blob
   // from another account can never linger. Per-account caches (arcascend_data_<uid>) remain.
   localStorage.removeItem(STORAGE_KEY);
+
+  // Reset transient search state on every load: blank the input (in case a browser
+  // autofilled/remembered a value) and the searchQ term, so the leads view opens
+  // unfiltered. Legit saved prefs (hidden_tabs, tab_order, leadView) are untouched.
+  searchQ = "";
+  var _searchEl = document.getElementById("search");
+  if (_searchEl) _searchEl.value = "";
 
   // Do NOT loadState() before checkAuth — nothing should render until the account
   // is verified, otherwise a stale cache could flash before the real data loads.
