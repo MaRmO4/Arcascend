@@ -1124,6 +1124,10 @@ main { flex: 1; padding: 20px 24px; }
 </div>
 <div id="home-panel" style="display:none;padding:24px;"></div>
 <div class="filter-panel" id="filter-panel">
+  <!-- FILTER SECTIONS REMOVED (rebuild later). Commented out — NOT deleted — so they can
+       be restored. Removing these inputs also kills the browser-autofill surface (esp. the
+       #f-why text input that Chrome was filling with an email). With these gone, the F filter
+       state stays empty forever, so filterLeads() shows ALL leads (search still works).
   <div class="filter-grid">
     <div class="filter-group"><label>Level</label><select id="f-level"><option value="">Any</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
     <div class="filter-group"><label>Timeline</label><select id="f-timeline"><option value="">Any</option><option value="6+">6+ months</option><option value="3-6">3-6 months</option><option value="2-3">2-3 months</option><option value="4-6 weeks">4-6 weeks</option></select></div>
@@ -1136,7 +1140,11 @@ main { flex: 1; padding: 20px 24px; }
     <div class="filter-group"><label>Priority Pinned</label><select id="f-priority"><option value="">Any</option><option value="yes">⭐ Pinned</option><option value="no">Not pinned</option></select></div>
     <div class="filter-group"><label>Has Notes</label><select id="f-notes"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select></div>
   </div>
-  <div class="filter-bar">
+  -->
+  <div style="padding:16px;opacity:.6">Filter options are being rebuilt — coming soon.</div>
+  <!-- #active-chips + #clear-filters kept (hidden) so refreshFilterUI() and the Clear-All
+       listener never throw; with F empty they just render the "No filters" / 0 state. -->
+  <div class="filter-bar" style="display:none">
     <div class="active-filter-chips" id="active-chips"></div>
     <button class="btn btn-ghost" id="clear-filters">Clear All</button>
   </div>
