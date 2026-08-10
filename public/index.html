@@ -4618,7 +4618,7 @@ function openLead(name) {
           return '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (confirmed?"rgba(34,197,94,0.12)":"var(--panel)") + ';border:1px solid ' + (confirmed?"rgba(34,197,94,0.4)":"var(--border)") + ';">' +
             '<input type="checkbox" id="b-paid" ' + (confirmed?"checked":"") + (canConfirm?"":" disabled") + '>' +
             '<label for="b-paid" style="font-weight:600;cursor:' + (canConfirm?"pointer":"not-allowed") + ';color:' + (confirmed?"var(--won)":(canConfirm?"var(--text)":"var(--text-muted)")) + ';">' + lbl + '</label>' +
-            (canConfirm ? "" : '<span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Set a rate &amp; sessions to confirm</span>') +
+            '<span id="b-paid-hint" style="font-size:11px;color:var(--text-muted);margin-left:8px;' + (canConfirm?"display:none;":"") + '">Set a rate &amp; sessions to confirm</span>' +
           '</div>';
         })() +
       '</div>' +
@@ -4737,15 +4737,37 @@ saveState(); renderAll(); openLead(name);
     var r = parseInt($("b-rate").value || "0");
     $("b-total").textContent = fmt$(s * r);
   }
+  // Live-recompute the confirm gate from CURRENT input values, mirroring the render-time
+  // condition exactly (render uses canConfirm = leadTotal(L) > 0, i.e. sessions*rate > 0).
+  // Keeps #b-paid.disabled + the hint in sync as the user types/toggles — no reopen needed.
+  function updateConfirmGate() {
+    var s = parseInt($("b-sessions").value || "0");
+    var r = parseInt($("b-rate").value || "0");
+    var canConfirm = (s * r) > 0;
+    var box = $("b-paid");
+    if (!box) return;
+    var confirmed = isConfirmed(L, currentMonthKey());
+    box.disabled = !canConfirm;
+    var row = $("b-paid-row");
+    var lbl = row ? row.querySelector("label") : null;
+    if (lbl) {
+      lbl.style.cursor = canConfirm ? "pointer" : "not-allowed";
+      lbl.style.color = confirmed ? "var(--won)" : (canConfirm ? "var(--text)" : "var(--text-muted)");
+    }
+    var hint = $("b-paid-hint");
+    if (hint) hint.style.display = canConfirm ? "none" : "";
+  }
   $("b-active").addEventListener("change", function(e){
     b.active = e.target.checked;
 if (b.active) logEvent('active_client_marked', L.name, {});
 saveState(); renderAll();
 updateTotal();
+updateConfirmGate();
   });
   $("b-sessions").addEventListener("input", function(e){
     b.sessions = parseInt(e.target.value || "0");
     updateTotal();
+    updateConfirmGate();
     saveState();
     renderRevenueBanner();
     renderTabCounts();
@@ -4753,6 +4775,7 @@ updateTotal();
   $("b-rate").addEventListener("input", function(e){
     b.rate = parseInt(e.target.value || "0");
     updateTotal();
+    updateConfirmGate();
     saveState();
     renderRevenueBanner();
     renderTabCounts();
