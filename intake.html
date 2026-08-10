@@ -49,6 +49,11 @@
     </div>
 
     <div id="dynamic-fields"></div>
+    <!-- Honeypot: real text input hidden OFF-SCREEN (not display:none). Real users never
+         see/tab to it; bots that fill every field trip it → submission is silently dropped.
+         It is NOT a loadedQuestion, so it's never serialized into the lead payload. -->
+    <input type="text" id="hp-website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"
+           style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none">
     <button class="submit-btn" id="submit-btn" onclick="submitForm()">Submit & Get Started</button>
     <div class="err" id="err"></div>
     <div class="brand">Powered by ArcAscend</div>
@@ -151,6 +156,14 @@ function renderFields() {
 
 function submitForm() {
   var btn = document.getElementById('submit-btn');
+  // ---- Spam guard 1: honeypot ----
+  // A hidden off-screen input real users never touch. If a bot filled it, silently
+  // drop the submission — no POST, no error, no feedback (so the bot can't adapt).
+  var hp = document.getElementById('hp-website');
+  if (hp && hp.value) { if (window.console && console.log) console.log('intake: honeypot tripped — submission dropped'); return; }
+  // Reset any prior inline error so each attempt starts clean.
+  var errEl = document.getElementById('err');
+  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
   var fields = {};
   loadedQuestions.forEach(function(q) {
     if (q.type === 'multiselect') {
@@ -162,6 +175,14 @@ function submitForm() {
   });
   var missing = loadedQuestions.filter(function(q){ return q.required && !fields[q.id]; });
   if (missing.length > 0) { alert('Please fill in: ' + missing.map(function(q){ return q.label; }).join(', ')); return; }
+  // ---- Spam guard 2: require a non-empty name ----
+  // Enforced in JS regardless of the HTML `required` attr / question config, matching the
+  // server-side block_nameless_intake trigger. Real users get a clear inline message.
+  if (!((fields['q_name'] || '').trim())) {
+    if (errEl) { errEl.textContent = 'Please enter your name to submit.'; errEl.style.display = 'block'; }
+    var nameEl = document.getElementById('q_name'); if (nameEl) nameEl.focus();
+    return;
+  }
   var fullName = fields['q_name'] || '';
   var phoneVal = fields['q_phone'] || '';
   var emailVal = fields['q_email'] || '';
