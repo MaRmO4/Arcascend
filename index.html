@@ -4425,6 +4425,12 @@ function stopPolling() {
 // ==========================================================
 // LEAD MODAL
 // ==========================================================
+// One timeline row (icon + label + absolute date/time). Shared by the pinned + overflow lists.
+function activityRowHtml(a) {
+  return '<div class="activity-row"><div class="activity-icon ' + escapeAttr(a.kind) + '">' + timelineIcon(a.kind) + '</div>' +
+    '<div class="activity-body">' + escapeHtml(stripLeadingEmoji(a.label)) + '</div>' +
+    '<div class="activity-meta" title="' + escapeAttr(timeAgo(a.at)) + '">' + escapeHtml(formatDateTime(a.at)) + '</div></div>';
+}
 function renderActivityLog(L) {
   // Merged chronological timeline: L.activity + this lead's lead_events + the "Lead added"
   // marker, newest first, de-duped. Each row shows the ACTUAL date/time.
@@ -4433,12 +4439,26 @@ function renderActivityLog(L) {
     return '<div class="activity-log"><div class="activity-log-title">Activity</div>' +
       '<div style="color:var(--muted);font-size:12px;text-align:center;padding:8px 0;">No activity yet. Use the buttons above to log calls/texts/emails.</div></div>';
   }
-  var rows = items.slice(0, 12).map(function(a){
-    return '<div class="activity-row"><div class="activity-icon ' + escapeAttr(a.kind) + '">' + timelineIcon(a.kind) + '</div>' +
-      '<div class="activity-body">' + escapeHtml(stripLeadingEmoji(a.label)) + '</div>' +
-      '<div class="activity-meta" title="' + escapeAttr(timeAgo(a.at)) + '">' + escapeHtml(formatDateTime(a.at)) + '</div></div>';
-  }).join("");
-  return '<div class="activity-log"><div class="activity-log-title">Activity (' + items.length + ')</div>' + rows + '</div>';
+  // Pin the 4 most recent; any extras go into a bounded, scrollable box (collapsed by
+  // default) so the card height stays fixed no matter how long the history is.
+  var pinned = items.slice(0, 4).map(activityRowHtml).join('');
+  var extra = '';
+  if (items.length > 4) {
+    var more = items.length - 4;
+    var overflowRows = items.slice(4).map(activityRowHtml).join('');
+    extra = '<div id="activity-overflow" style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px;">' + overflowRows + '</div>' +
+      '<div id="activity-toggle" data-more="' + more + '" onclick="toggleActivityOverflow(this)" style="color:var(--accent);font-size:13px;cursor:pointer;margin-top:6px;user-select:none;">Show more (' + more + ')</div>';
+  }
+  return '<div class="activity-log"><div class="activity-log-title">Activity (' + items.length + ')</div>' + pinned + extra + '</div>';
+}
+// Transient per-modal toggle: reveal/hide the bounded overflow scroll box. No persistence —
+// renderActivityLog always emits it collapsed, so every openLead / re-render starts collapsed.
+function toggleActivityOverflow(el) {
+  var box = document.getElementById('activity-overflow');
+  if (!box) return;
+  var isOpen = box.style.display !== 'none';
+  if (isOpen) { box.style.display = 'none'; el.textContent = 'Show more (' + (el.dataset.more || '') + ')'; }
+  else { box.style.display = 'block'; el.textContent = 'Show less'; }
 }
 
 function renderTasksForLead(L) {
