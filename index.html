@@ -1629,6 +1629,20 @@ function timeAgo(iso) {
   if (diff < 86400*7) return Math.floor(diff/86400) + "d ago";
   return d.toLocaleDateString();
 }
+// Absolute date/time, e.g. "Aug 7, 2:30pm" (adds year when not the current year).
+function formatDateTime(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var h = d.getHours(), m = d.getMinutes();
+  var ampm = h >= 12 ? 'pm' : 'am';
+  var h12 = h % 12; if (h12 === 0) h12 = 12;
+  var mm = (m < 10 ? '0' : '') + m;
+  var base = months[d.getMonth()] + ' ' + d.getDate();
+  if (d.getFullYear() !== new Date().getFullYear()) base += ', ' + d.getFullYear();
+  return base + ', ' + h12 + ':' + mm + ampm;
+}
 function fmt$(n) {
   return "$" + (n || 0).toLocaleString();
 }
@@ -1734,9 +1748,89 @@ function activityList(L) {
   });
 }
 function logActivity(L, kind, summary) {
-  activityList(L).unshift({ kind: kind, summary: summary, at: new Date().toISOString() });
-  if (L.activity.length > 20) L.activity = L.activity.slice(0,20);
+  // Mutate L.activity DIRECTLY. (Previously unshifted onto activityList(L), which returns
+  // a .map() copy → the entry was discarded and L.activity never changed — a silent no-op.)
+  if (!Array.isArray(L.activity)) L.activity = [];
+  L.activity.unshift({ kind: kind, summary: summary, at: new Date().toISOString() });
+  if (L.activity.length > 20) L.activity = L.activity.slice(0, 20);
   saveState();
+}
+
+// Readable label for a lead_events row.
+function eventLabel(e) {
+  var t = e.event_type, d = e.event_data || {};
+  if (t === 'status_changed') return 'Status → ' + (d.to || '?');
+  if (t === 'consultation_completed') return 'Consultation completed' + (d.outcome ? ' (' + String(d.outcome).replace(/_/g,' ') + ')' : '');
+  if (t === 'follow_up_scheduled') return 'Follow-up scheduled' + (d.dueDate ? ' · due ' + d.dueDate : '');
+  if (t === 'active_client_marked') return 'Marked active client';
+  if (t === 'form_submitted') return 'Intake form submitted';
+  if (t === 'lead_created') return 'Lead added';
+  return String(t || '').replace(/_/g,' ');
+}
+function timelineIcon(kind) {
+  return kind === 'call' ? '📞' : kind === 'text' ? '💬' : kind === 'email' ? '✉️'
+    : kind === 'video' ? '🎥' : kind === 'voicemail' ? '🎙' : kind === 'status' ? '🔄'
+    : kind === 'consult' ? '✅' : kind === 'followup' ? '📅' : kind === 'active' ? '💎'
+    : kind === 'form' ? '📝' : kind === 'added' ? '➕' : '•';
+}
+// Strip a SINGLE leading emoji/pictograph (+ variation selectors/ZWJ + trailing space)
+// from a label so the renderer's kind-icon isn't doubled by an emoji baked into stored
+// summaries (e.g. "🔄 Status → …"). Only strips at the START; plain-text labels are left
+// intact (e.g. "Consultation completed"). Guarded so a bad regex can never break render.
+function stripLeadingEmoji(s) {
+  s = String(s == null ? '' : s);
+  try { return s.replace(/^\s*[\p{Extended_Pictographic}\u{1F000}-\u{1FAFF}\u2600-\u27BF][\uFE0F\u200D]*\s*/u, ''); }
+  catch (e) { return s; }
+}
+// Merge the two timestamped sources (L.activity + lead_events for this lead) plus the
+// DB "Lead added" marker into ONE chronological list (newest first), de-duped.
+function leadTimeline(L) {
+  var items = [];
+  // 1) In-lead activity (normalized shape via activityList).
+  activityList(L).forEach(function(a) {
+    var kind = a.kind || 'note';
+    var isStatus = kind === 'status' || /status/i.test(a.summary || '');
+    items.push({ at: a.at, label: a.summary || kind, kind: isStatus ? 'status' : kind, source: 'activity', dkey: isStatus ? 'status' : null });
+  });
+  // 2) lead_events for THIS lead (matched by lead_name). Skip lead_created — the created_at
+  //    marker below is the canonical "Lead added" so we don't double-list it.
+  var evs = (typeof cachedEvents !== 'undefined' && Array.isArray(cachedEvents)) ? cachedEvents : [];
+  var nm = String(L.name || '').trim().toLowerCase();
+  evs.forEach(function(e) {
+    if (!e || String(e.lead_name || '').trim().toLowerCase() !== nm) return;
+    if (e.event_type === 'lead_created') return;
+    var kind = e.event_type === 'status_changed' ? 'status'
+      : e.event_type === 'consultation_completed' ? 'consult'
+      : e.event_type === 'follow_up_scheduled' ? 'followup'
+      : e.event_type === 'active_client_marked' ? 'active'
+      : e.event_type === 'form_submitted' ? 'form' : 'note';
+    items.push({ at: e.created_at, label: eventLabel(e), kind: kind, source: 'event', dkey: e.event_type === 'status_changed' ? 'status' : e.event_type });
+  });
+  // 3) Canonical "Lead added" marker from the DB created_at.
+  if (L.created_at) items.push({ at: L.created_at, label: 'Lead added', kind: 'added', source: 'created', dkey: null });
+
+  // Keep only valid timestamps, newest first.
+  items = items.filter(function(x) { return x.at && !isNaN(new Date(x.at).getTime()); });
+  items.sort(function(a, b) { return new Date(b.at) - new Date(a.at); });
+
+  // De-dupe: same dkey within ~5s → one row; prefer the lead_events (server) timestamp.
+  var out = [];
+  items.forEach(function(it) {
+    if (it.dkey) {
+      var dup = null;
+      for (var i = 0; i < out.length; i++) {
+        if (out[i].dkey === it.dkey && Math.abs(new Date(out[i].at) - new Date(it.at)) <= 5000) { dup = out[i]; break; }
+      }
+      if (dup) { if (it.source === 'event' && dup.source !== 'event') out[out.indexOf(dup)] = it; return; }
+    }
+    out.push(it);
+  });
+  return out;
+}
+// Timestamp of the most recent real interaction (excludes the "Lead added" marker).
+function leadLastContactAt(L) {
+  var t = leadTimeline(L).filter(function(x) { return x.source !== 'created'; });
+  return t.length ? t[0].at : null;
 }
 
 // ==========================================================
@@ -2114,6 +2208,9 @@ async function loadFromSupabase() {
       // Stable identity: the Supabase row PK is authoritative. Carry it onto the in-memory
       // lead (and thus into the data blob on next save) so saves upsert instead of duplicating.
       L.id = r.id || L.id || newLeadId();
+      // Carry the DB row's real created_at so the home page + timeline show the actual
+      // "lead added" time (the data blob does not hold it). Never overwritten on upsert.
+      if (r.created_at) L.created_at = r.created_at;
       return L;
     });
     // Deduplicate by name+phone key
@@ -4326,18 +4423,19 @@ function stopPolling() {
 // LEAD MODAL
 // ==========================================================
 function renderActivityLog(L) {
-  var acts = activityList(L);
-  if (!acts.length) {
-    return '<div class="activity-log"><div class="activity-log-title">Recent Activity</div>' +
+  // Merged chronological timeline: L.activity + this lead's lead_events + the "Lead added"
+  // marker, newest first, de-duped. Each row shows the ACTUAL date/time.
+  var items = leadTimeline(L);
+  if (!items.length) {
+    return '<div class="activity-log"><div class="activity-log-title">Activity</div>' +
       '<div style="color:var(--muted);font-size:12px;text-align:center;padding:8px 0;">No activity yet. Use the buttons above to log calls/texts/emails.</div></div>';
   }
-  var rows = acts.slice(0, 6).map(function(a){
-    var ico = a.kind === "call" ? "📞" : a.kind === "text" ? "💬" : a.kind === "email" ? "✉️" : a.kind === "video" ? "🎥" : "🎙";
-    return '<div class="activity-row"><div class="activity-icon ' + a.kind + '">' + ico + '</div>' +
-      '<div class="activity-body">' + a.summary + '</div>' +
-      '<div class="activity-meta">' + timeAgo(a.at) + '</div></div>';
+  var rows = items.slice(0, 12).map(function(a){
+    return '<div class="activity-row"><div class="activity-icon ' + escapeAttr(a.kind) + '">' + timelineIcon(a.kind) + '</div>' +
+      '<div class="activity-body">' + escapeHtml(stripLeadingEmoji(a.label)) + '</div>' +
+      '<div class="activity-meta" title="' + escapeAttr(timeAgo(a.at)) + '">' + escapeHtml(formatDateTime(a.at)) + '</div></div>';
   }).join("");
-  return '<div class="activity-log"><div class="activity-log-title">Recent Activity (' + acts.length + ')</div>' + rows + '</div>';
+  return '<div class="activity-log"><div class="activity-log-title">Activity (' + items.length + ')</div>' + rows + '</div>';
 }
 
 function renderTasksForLead(L) {
@@ -4461,7 +4559,7 @@ function openLead(name) {
         
         
       '</div>' +
-      renderActivityLog(L) +
+      '<div id="lead-activity-mount">' + renderActivityLog(L) + '</div>' +
 
       (L.priority ? '<div class="section-title">📌 Priority Note</div><textarea class="notes-edit" id="m-pnote">' + (L.priorityNote||"") + '</textarea>' : '') +
 
@@ -4555,11 +4653,21 @@ function openLead(name) {
     btn.addEventListener("click", function(){
       var fromStatus = L.status;
 L.status = btn.dataset.s;
+if (fromStatus !== L.status) logActivity(L, 'status', '🔄 Status → ' + L.status);   // per-lead timeline consistency
 logEvent('status_changed', L.name, { from: fromStatus, to: L.status });
 saveState(); renderAll(); openLead(name);
     });
   });
-  $("m-notes").addEventListener("blur", function(e){ L.notes = e.target.value; saveState(); renderAll(); });
+  $("m-notes").addEventListener("blur", function(e){
+    var prev = L.notes || '';
+    L.notes = e.target.value;
+    var changed = (L.notes || '') !== prev;
+    if (changed) logActivity(L, 'note', '📝 Notes updated');   // timestamp note edits
+    saveState(); renderAll();
+    // Refresh ONLY the activity timeline (not the whole modal) so the new entry shows
+    // live — avoids a blur→rebuild→blur loop and doesn't eat the user's next click.
+    if (changed) { var am = document.getElementById('lead-activity-mount'); if (am) am.innerHTML = renderActivityLog(L); }
+  });
   wireDynamicProfile(L);
   if ($("m-pnote")) $("m-pnote").addEventListener("blur", function(e){ L.priorityNote = e.target.value; saveState(); renderAll(); });
   $("m-consult").addEventListener("change", function(e){
@@ -5258,21 +5366,19 @@ function buildICS() {
 
   (LEADS || []).forEach(function(lead) {
 if (lead.status === 'Closed Won' || lead.status === 'Closed Lost') return;
-    const activities = (window.activityLog || []).filter(function(a) { return a.lead_id === lead.id; });
-    const lastContact = activities
-      .filter(function(a) { return ['call','note','task'].includes(a.type); })
-      .sort(function(a,b) { return new Date(b.created_at) - new Date(a.created_at); })[0];
-
-   const created = lead.created_at ? new Date(lead.created_at) : new Date();
-    const lastDate = lastContact ? new Date(lastContact.created_at) : created;   
+    // Real sources: DB created_at (now carried onto the lead) + the merged activity timeline.
+    const lastContactAt = leadLastContactAt(lead);
+    const created = lead.created_at ? new Date(lead.created_at) : null;
+    const lastDate = lastContactAt ? new Date(lastContactAt) : (created || now);
     const daysSince = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
+    const addedStr = created ? formatDateTime(lead.created_at) : 'unknown';
 
-    if (!lastContact && daysSince < 2) {
-      reminders.push({ name: lead.name, meta: 'New lead · Added ' + (daysSince === 0 ? 'today' : daysSince + 'd ago'), badge: 'New Lead', type: 'new-lead', priority: 0, leadId: lead.id });
+    if (!lastContactAt && daysSince < 2) {
+      reminders.push({ name: lead.name, meta: 'New lead · Added ' + addedStr, badge: 'New Lead', type: 'new-lead', priority: 0, leadId: lead.id });
     } else if (daysSince >= 14) {
-      reminders.push({ name: lead.name, meta: 'No contact in ' + daysSince + ' days', badge: daysSince + 'd overdue', type: 'urgent', priority: 2, leadId: lead.id });
+      reminders.push({ name: lead.name, meta: 'No contact since ' + formatDateTime(lastDate.toISOString()) + ' · ' + daysSince + 'd', badge: daysSince + 'd overdue', type: 'urgent', priority: 2, leadId: lead.id });
     } else if (daysSince >= 7) {
-      reminders.push({ name: lead.name, meta: 'No contact in ' + daysSince + ' days', badge: daysSince + 'd overdue', type: '', priority: 1, leadId: lead.id });
+      reminders.push({ name: lead.name, meta: 'No contact since ' + formatDateTime(lastDate.toISOString()) + ' · ' + daysSince + 'd', badge: daysSince + 'd overdue', type: '', priority: 1, leadId: lead.id });
     }
   });
 
