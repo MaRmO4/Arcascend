@@ -3369,6 +3369,9 @@ async function loadTrainerQuestions() {
 }
 
 function escapeAttr(v){ return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// Shared anti-autofill attributes for generated modal text inputs (stops Chrome/Safari +
+// password managers from painting the saved email/name into lead-data fields).
+var ANTI_AUTOFILL = ' autocomplete="off" aria-autocomplete="none" data-1p-ignore data-lpignore';
 function escapeHtml(v){ return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // Special-case mapping: a few intake question ids correspond to existing top-level lead fields.
@@ -3473,7 +3476,7 @@ function renderDynamicProfile(L) {
     var full = (kind==='textarea' || kind==='checkbox' || kind==='select');
     var input;
     if (kind==='textarea'){
-      input = '<textarea class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'" rows="3">'+escapeHtml(v)+'</textarea>';
+      input = '<textarea class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'"'+ANTI_AUTOFILL+' rows="3">'+escapeHtml(v)+'</textarea>';
     } else if (kind==='checkbox'){
       var saved = v.split(/,\s*/).map(function(s){ return s.trim(); }).filter(Boolean);
       input = '<div class="opt-group">' + options.map(function(o){
@@ -3486,9 +3489,9 @@ function renderDynamicProfile(L) {
       var opts = '<option value="">-</option>' + optionList.map(function(o){
         return '<option value="'+escapeAttr(o)+'"'+(String(v)===String(o)?' selected':'')+'>'+escapeHtml(o)+'</option>';
       }).join('');
-      input = '<select class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'">'+opts+'</select>';
+      input = '<select class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'"'+ANTI_AUTOFILL+'>'+opts+'</select>';
     } else {
-      input = '<input type="text" class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'" value="'+escapeAttr(v)+'">';
+      input = '<input type="text" class="dyn-input" data-qid="'+qidAttr+'" id="'+attrId+'"'+ANTI_AUTOFILL+' value="'+escapeAttr(v)+'">';
     }
     rendered[cid] = true;
     return '<div class="form-field"'+(full?' style="grid-column:1/-1;"':'')+'><label>'+escapeHtml(labelFor(cid))+'</label>'+input+'</div>';
@@ -4631,7 +4634,7 @@ function openLead(name) {
         '<button class="task-preset" data-p="text">✉️ Send Text Today</button>' +
       '</div>' +
       '<div class="task-form">' +
-        '<input id="m-tnote" placeholder="Custom task note">' +
+        '<input id="m-tnote" type="text" name="task-note"' + ANTI_AUTOFILL + ' readonly onfocus="this.removeAttribute(\'readonly\')" onmousedown="this.removeAttribute(\'readonly\')" ontouchstart="this.removeAttribute(\'readonly\')" placeholder="Custom task note">' +
         '<input id="m-tdate" type="date" value="' + addDays(todayStr(),1) + '">' +
         '<button id="m-tadd">+ Add</button>' +
       '</div>' +
@@ -5742,6 +5745,61 @@ async function maybeAcceptPendingInvite() {
   } catch (e) { /* never block app load */ }
 }
 
+// ==========================================================
+// GLOBAL AUTOFILL HARDENER — protects EVERY text input (current + future) so we never
+// have to remember per-field attrs. A MutationObserver watches childList only (NOT
+// attributes) so hardening a field can't re-trigger the observer → no loop.
+// ==========================================================
+var AF_TEXT_TYPES = { text:1, search:1, email:1, tel:1, url:1 };
+function hardenInput(el) {
+  if (!el || el.tagName !== 'INPUT' || el.dataset.afHardened === '1') return;
+  var t = (el.type || 'text').toLowerCase();
+  if (!AF_TEXT_TYPES[t]) return;   // skip password/date/number/checkbox/radio/file/hidden/range/color/button/submit
+  el.setAttribute('autocomplete', 'off');
+  el.setAttribute('aria-autocomplete', 'none');
+  el.setAttribute('data-1p-ignore', '');
+  el.setAttribute('data-lpignore', 'true');
+  var nm = (el.getAttribute('name') || '').toLowerCase();
+  if (nm === 'email' || nm === 'username' || nm === 'user' || nm === 'login') {
+    el.setAttribute('name', el.id || ('f-' + Math.random().toString(36).slice(2, 8)));   // app reads by id, not name
+  }
+  // readonly-on-load / editable-on-interaction (skip if the field is currently focused so
+  // we never lock active typing). Setting readonly is an attribute mutation → not observed.
+  if (el !== document.activeElement) {
+    el.setAttribute('readonly', 'readonly');
+    var unlock = function(){ el.removeAttribute('readonly'); };
+    el.addEventListener('focus', unlock);
+    el.addEventListener('mousedown', unlock);
+    el.addEventListener('touchstart', unlock);
+  }
+  el.dataset.afHardened = '1';   // idempotent guard (coexists with the per-field ANTI_AUTOFILL)
+}
+function hardenAllInputs() {
+  var els = document.getElementsByTagName('input');
+  for (var i = 0; i < els.length; i++) hardenInput(els[i]);
+}
+var afObserver = null;
+function startAutofillHardener() {
+  hardenAllInputs();
+  if (afObserver || typeof MutationObserver === 'undefined' || !document.body) return;
+  afObserver = new MutationObserver(function(muts) {
+    for (var i = 0; i < muts.length; i++) {
+      var added = muts[i].addedNodes;
+      for (var j = 0; j < added.length; j++) {
+        var n = added[j];
+        if (!n || n.nodeType !== 1) continue;   // element nodes only
+        if (n.tagName === 'INPUT') hardenInput(n);
+        if (n.querySelectorAll) {
+          var inner = n.querySelectorAll('input');
+          for (var k = 0; k < inner.length; k++) hardenInput(inner[k]);
+        }
+      }
+    }
+  });
+  // childList + subtree ONLY (no attributes/characterData) → hardening never re-triggers it.
+  afObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 function initApp() {
   if (location.search.indexOf("reset") >= 0 || location.hash.indexOf("reset") >= 0) {
     Object.keys(localStorage).filter(function(k){ return k.indexOf("arcascend") === 0; }).forEach(function(k){ localStorage.removeItem(k); });
@@ -6064,6 +6122,8 @@ saveState(); renderAll(); closeAdd();
 
   refreshFilterUI();
   renderAll();
+  // Global safety net: harden all current text inputs + auto-harden any added later.
+  startAutofillHardener();
 }
 
 // Run with error boundary
