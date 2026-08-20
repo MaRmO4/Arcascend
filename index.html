@@ -1598,11 +1598,16 @@ function statusClass(s) {
   if (s.indexOf("open") >= 0) return "open";
   return "new";
 }
-function todayStr() { return new Date().toISOString().slice(0,10); }
+function pad2(n){ return (n<10?"0":"")+n; }
+// LOCAL calendar-date string (YYYY-MM-DD) — avoids the UTC shift toISOString() causes
+// (in evening Pacific, toISOString() already rolls to the next day). Use this for any
+// user-facing "today"/"tomorrow"/due-date math; keep toISOString() only for real timestamps.
+function localDateStr(d){ d = d || new Date(); return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+function todayStr() { return localDateStr(new Date()); }
 function addDays(d, n) {
   var date = d ? new Date(d+"T00:00:00") : new Date();
   date.setDate(date.getDate()+n);
-  return date.toISOString().slice(0,10);
+  return localDateStr(date);
 }
 function formatTaskDate(d) {
   if (!d) return "";
@@ -3036,7 +3041,7 @@ function showQaPopup(action, L, btnEl) {
     popup.innerHTML =
       '<div class="qa-popup-title">✅ Add Task — ' + L.name + '</div>' +
       '<input type="text" id="qa-task-text" placeholder="Task description..." />' +
-      '<input type="date" id="qa-task-date" value="' + new Date().toISOString().slice(0,10) + '" />' +
+      '<input type="date" id="qa-task-date" value="' + todayStr() + '" />' +
       '<div class="qa-popup-actions">' +
       '<button class="qa-cancel" onclick="document.getElementById(\'qa-popup\').remove()">Cancel</button>' +
       '<button class="qa-confirm" onclick="qaConfirmTask(\'' + L.name.replace(/'/g,"\\'") + '\')">Add Task</button>' +
@@ -6050,7 +6055,7 @@ saveState(); renderAll(); closeAdd();
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
-    var today = new Date().toISOString().slice(0,10);
+    var today = todayStr();
     a.href = url;
     a.download = "arcascend-export-" + today + ".json";
     a.click();
