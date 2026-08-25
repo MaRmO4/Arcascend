@@ -28,6 +28,26 @@
 .cf-promptbox{position:relative;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:14px}
 .cf-promptbox pre{margin:0;white-space:pre-wrap;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text)}
 .cf-copy{position:absolute;top:10px;right:10px;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:7px 12px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+/* Create Form — mockup styling (Phase 2a) */
+.cf-wrap{max-width:900px;margin:0 auto}
+.cf-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px}
+.cf-card + .cf-card{margin-top:14px}
+.cf-stitle{font-size:15px;font-weight:700;margin:0 0 4px;color:var(--text)}
+.cf-sub{color:#8b95a1;font-size:12.5px;margin:0 0 14px;line-height:1.5}
+.cf-lbl{display:block;font-size:12.5px;font-weight:600;color:#8b95a1;margin:0 0 6px}
+.cf-inp{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font:inherit}
+.cf-inp:focus{outline:none;border-color:var(--accent)}
+.cf-textarea{min-height:64px;resize:vertical}
+.cf-btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+.cf-btn.cf-g{background:transparent;border:1px solid var(--border);color:var(--text)}
+.cf-btn.cf-sm{padding:7px 12px;font-size:12.5px}
+.cf-row{display:flex;gap:10px;flex-wrap:wrap}
+.cf-g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:640px){.cf-g2{grid-template-columns:1fr}}
+.cf-chip{font-size:11.5px;font-weight:700;color:#8b95a1;background:var(--panel-2);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
+.cf-qrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);padding:11px 12px}
+.cf-qrow input[type=text], .cf-qrow input:not([type]), .cf-qrow select, .cf-qrow textarea{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 10px;font:inherit}
+.cf-qrow textarea{width:100%;min-height:44px;resize:vertical}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
        background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
@@ -1195,15 +1215,17 @@ main { flex: 1; padding: 20px 24px; }
     </div>
   </div>
 
-  <div style="max-width:720px;margin:0 auto;padding:24px 16px">
+  <div style="padding:24px 16px">
 
     <!-- Editing banner — above sub-nav so Update Form is always reachable -->
-    <div id="forms-editing-banner" style="display:none;background:linear-gradient(135deg,rgba(139,92,246,0.14),rgba(139,92,246,0.05));border:1px solid rgba(139,92,246,0.4);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:none;align-items:center;gap:14px;flex-wrap:wrap">
+    <div id="forms-editing-banner" style="display:none;background:linear-gradient(135deg,rgba(139,92,246,0.14),rgba(139,92,246,0.05));border:1px solid rgba(139,92,246,0.4);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:none;align-items:center;gap:14px;flex-wrap:wrap;max-width:900px;margin-left:auto;margin-right:auto">
       <div style="font-size:14px;color:var(--text-primary);font-weight:600;flex:1 1 auto">✏️ Editing: <span id="forms-editing-name" style="color:var(--purple)"></span></div>
-      <button onclick="formsUpdateForm()" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Update Form</button>
-      <button onclick="formsCancelEdit()" style="padding:9px 18px;background:transparent;color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
-      <span id="forms-update-status" style="font-size:13px;color:var(--text-muted);flex:0 0 auto"></span>
+      <button onclick="formsUpdateForm()" class="cf-btn cf-sm">Update Form</button>
+      <button onclick="formsCancelEdit()" class="cf-btn cf-g cf-sm">Cancel</button>
+      <span id="forms-update-status" style="font-size:13px;color:#8b95a1;flex:0 0 auto"></span>
     </div>
+
+    <div class="cf-wrap">
 
     <!-- Sub-nav -->
     <div class="cf-subnav">
@@ -1215,21 +1237,22 @@ main { flex: 1; padding: 20px 24px; }
     <!-- STEP 1: Import & AI -->
     <div class="cf-step cf-on" data-cf-step="0">
 
-      <!-- Import a Shared Form — unchanged -->
-      <div class="card" style="padding:20px;margin-bottom:20px">
-        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Import a Shared Form</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input id="forms-import-code" placeholder="ARC-XXXX-XXXX" style="flex:1;min-width:180px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;font-family:monospace;box-sizing:border-box" />
-          <button onclick="formsImportSharedForm(document.getElementById('forms-import-code').value)" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Import</button>
-          <span id="forms-import-status" style="font-size:13px;color:var(--text-muted)"></span>
+      <!-- Import a Shared Form -->
+      <div class="cf-card">
+        <p class="cf-stitle">Import a Shared Form</p>
+        <p class="cf-sub">Paste an ARC-XXXX-XXXX code to copy another trainer's questions into your builder.</p>
+        <div class="cf-row" style="align-items:center">
+          <input id="forms-import-code" placeholder="ARC-XXXX-XXXX" class="cf-inp" style="flex:1;min-width:180px;font-family:monospace" />
+          <button onclick="formsImportSharedForm(document.getElementById('forms-import-code').value)" class="cf-btn" style="white-space:nowrap">Import</button>
+          <span id="forms-import-status" style="font-size:13px;color:#8b95a1"></span>
         </div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:8px;line-height:1.5">Imported forms bring <b>questions only</b> — you set your own Internal Label and get your own link/QR on save.</div>
+        <p style="font-size:12px;color:#8b95a1;margin-top:10px;line-height:1.5">Imported forms bring <b>questions only</b> — you set your own Internal Label and get your own link/QR on save.</p>
       </div>
 
-      <!-- NEW: Write questions with AI -->
-      <div class="card" style="padding:20px;margin-bottom:20px">
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px">Write your questions with AI</div>
-        <p style="color:#8b95a1;font-size:12.5px;margin:0 0 12px">Have an AI draft your questions, then paste them into step 3. Works with ChatGPT, Claude, or Gemini.</p>
+      <!-- Write questions with AI -->
+      <div class="cf-card">
+        <p class="cf-stitle">Write your questions with AI</p>
+        <p class="cf-sub">Have an AI draft your questions, then paste them into step 3. Works with ChatGPT, Claude, or Gemini.</p>
         <ol class="cf-steps-list">
           <li>Copy the prompt below.</li>
           <li>Paste it into your AI and swap the [bracketed] parts for your details.</li>
@@ -1242,24 +1265,24 @@ main { flex: 1; padding: 20px 24px; }
         </div>
       </div>
 
-      <!-- Your Intake Form Link — unchanged, temporary here until Phase 2 -->
-      <div class="card" style="padding:20px;margin-bottom:20px">
-        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Your Intake Form Link</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="forms-link-input" readonly style="flex:1;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:13px;font-family:monospace" />
-          <button id="forms-copy-btn" onclick="formsCopyLink()" style="padding:10px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy Link</button>
-          <a id="forms-open-btn" href="#" target="_blank" style="padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Open &#x2197;</a>
+      <!-- Your Intake Form Link -->
+      <div class="cf-card">
+        <p class="cf-stitle">Your Intake Form Link</p>
+        <div class="cf-row" style="align-items:center">
+          <input id="forms-link-input" readonly class="cf-inp" style="flex:1;font-family:monospace" />
+          <button id="forms-copy-btn" onclick="formsCopyLink()" class="cf-btn" style="white-space:nowrap">Copy Link</button>
+          <a id="forms-open-btn" href="#" target="_blank" class="cf-btn cf-g" style="text-decoration:none;white-space:nowrap">Open &#x2197;</a>
         </div>
-        <div style="margin-top:16px;display:flex;align-items:flex-start;gap:16px">
-          <div id="forms-qr" style="background:#fff;padding:8px;border-radius:8px;display:inline-block"></div>
-          <div style="font-size:12px;color:var(--text-muted);padding-top:4px;line-height:1.6">Share this QR code in your gym, on social media, or in your bio.<br>It links directly to <em>your</em> intake form.</div>
+        <div style="margin-top:14px;display:flex;align-items:flex-start;gap:14px">
+          <div id="forms-qr" style="background:#fff;padding:8px;border-radius:8px;display:inline-block;flex-shrink:0"></div>
+          <p style="font-size:12px;color:#8b95a1;padding-top:4px;line-height:1.6;margin:0">Share this QR code in your gym, on social media, or in your bio.<br>It links directly to <em>your</em> intake form.</p>
         </div>
       </div>
 
-      <!-- Link Preview (Open Graph) — unchanged -->
-      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:20px">
-        <strong style="color:var(--text-secondary)">Link Preview (Open Graph)</strong><br>
-        When you share your intake form link in iMessage, WhatsApp, or Instagram DMs, it shows a branded card. Your gym name and form title appear automatically once saved.
+      <!-- Link Preview (Open Graph) -->
+      <div class="cf-card" style="margin-bottom:4px">
+        <p class="cf-stitle">Link Preview (Open Graph)</p>
+        <p class="cf-sub" style="margin-bottom:0">When you share your intake form link in iMessage, WhatsApp, or Instagram DMs, it shows a branded card. Your gym name and form title appear automatically once saved.</p>
       </div>
 
     </div><!-- /cf-step 0 -->
@@ -1267,44 +1290,44 @@ main { flex: 1; padding: 20px 24px; }
     <!-- STEP 2: Branding -->
     <div class="cf-step" data-cf-step="1">
 
-      <!-- Form Branding — unchanged -->
-      <div class="card" style="padding:20px;margin-bottom:20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Branding</div>
-          <button onclick="formsClearBranding()" style="padding:5px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">Clear</button>
+      <!-- Form Branding -->
+      <div class="cf-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <p class="cf-stitle" style="margin:0">Form Branding</p>
+          <button onclick="formsClearBranding()" class="cf-btn cf-g cf-sm">Clear</button>
         </div>
-        <div style="display:grid;gap:14px">
-          <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Gym / Business Name</label><input id="forms-gym-name" placeholder="e.g. Fit Club" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
-          <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Title <span style="color:var(--text-muted);font-weight:400">(clients see this on the form)</span></label><input id="forms-form-title" placeholder="e.g. Client Intake Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
-          <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Internal Label <span style="color:var(--text-muted);font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /><div id="forms-label-lock-note" style="display:none;font-size:11px;color:var(--text-muted);margin-top:5px">🔒 Label can't be changed after creation.</div></div>
-          <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Description</label><textarea id="forms-form-desc" rows="2" placeholder="e.g. Fill out the form and we will be in touch shortly." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;resize:vertical;box-sizing:border-box"></textarea></div>
-          <div>
-            <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Header Image</label>
-            <input type="hidden" id="forms-logo-url" />
-            <div id="forms-drop-zone" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s;background:var(--bg-secondary)">
-              <div style="font-size:13px;color:var(--text-secondary)">Drag & drop an image here, or click to browse</div>
-              <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Recommended: wide image, at least 1200x300px</div>
-            </div>
-            <input type="file" id="forms-file-input" accept="image/*" style="display:none" />
-            <div id="forms-logo-preview" style="margin-top:8px;display:none">
-              <img id="forms-logo-img" style="height:60px;object-fit:contain;border-radius:6px;border:1px solid var(--border)" />
-              <button onclick="document.getElementById('forms-file-input').click()" style="margin-left:10px;padding:6px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">Change image</button>
-            </div>
+        <div class="cf-g2">
+          <div><label class="cf-lbl">Gym / Business Name</label><input id="forms-gym-name" placeholder="e.g. Fit Club" class="cf-inp" /></div>
+          <div><label class="cf-lbl">Form Title <span style="color:#8b95a1;font-weight:400">(clients see this on the form)</span></label><input id="forms-form-title" placeholder="e.g. Client Intake Form" class="cf-inp" /></div>
+          <div><label class="cf-lbl">Internal Label <span style="color:#8b95a1;font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" class="cf-inp" /><div id="forms-label-lock-note" style="display:none;font-size:11px;color:#8b95a1;margin-top:5px">🔒 Label can't be changed after creation.</div></div>
+        </div>
+        <div style="margin-top:14px"><label class="cf-lbl">Form Description</label><textarea id="forms-form-desc" rows="2" placeholder="e.g. Fill out the form and we will be in touch shortly." class="cf-inp cf-textarea"></textarea></div>
+        <div style="margin-top:14px">
+          <label class="cf-lbl">Header Image</label>
+          <input type="hidden" id="forms-logo-url" />
+          <div id="forms-drop-zone" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s;background:var(--panel-2)">
+            <div style="font-size:13px;color:var(--text)">Drag & drop an image here, or click to browse</div>
+            <div style="font-size:11px;color:#8b95a1;margin-top:4px">Recommended: wide image, at least 1200x300px</div>
+          </div>
+          <input type="file" id="forms-file-input" accept="image/*" style="display:none" />
+          <div id="forms-logo-preview" style="margin-top:8px;display:none">
+            <img id="forms-logo-img" style="height:60px;object-fit:contain;border-radius:6px;border:1px solid var(--border)" />
+            <button onclick="document.getElementById('forms-file-input').click()" class="cf-btn cf-g cf-sm" style="margin-left:10px">Change image</button>
           </div>
         </div>
-        <div id="forms-default-actions" style="margin-top:20px;display:flex;gap:10px;align-items:center">
-          <button onclick="formsSaveSettings()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Settings</button>
-          <button onclick="formsSaveAs()" style="padding:10px 20px;background:transparent;color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save as New Form</button>
-          <span id="forms-save-status" style="font-size:13px;color:var(--text-muted)"></span>
-          <span id="forms-saveas-status" style="font-size:13px;color:var(--text-muted)"></span>
+        <div id="forms-default-actions" style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button onclick="formsSaveSettings()" class="cf-btn">Save Settings</button>
+          <button onclick="formsSaveAs()" class="cf-btn cf-g">Save as New Form</button>
+          <span id="forms-save-status" style="font-size:13px;color:#8b95a1"></span>
+          <span id="forms-saveas-status" style="font-size:13px;color:#8b95a1"></span>
         </div>
       </div>
 
-      <!-- Bucket Routing — unchanged -->
-      <div class="card" style="padding:20px;margin-bottom:20px">
-        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Bucket Routing</div>
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">New leads from your intake form will be tagged with this bucket. Leave blank for All Leads.</p>
-        <input id="forms-bucket" placeholder="e.g. InBody Scan Leads, Free Consult..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" />
+      <!-- Bucket Routing -->
+      <div class="cf-card">
+        <p class="cf-stitle">Bucket Routing</p>
+        <p class="cf-sub">New leads from your intake form will be tagged with this bucket. Leave blank for All Leads.</p>
+        <input id="forms-bucket" placeholder="e.g. InBody Scan Leads, Free Consult..." class="cf-inp" />
       </div>
 
     </div><!-- /cf-step 1 -->
@@ -1312,25 +1335,26 @@ main { flex: 1; padding: 20px 24px; }
     <!-- STEP 3: Questions -->
     <div class="cf-step" data-cf-step="2">
 
-      <!-- Form Questions — unchanged -->
-      <div class="card" style="padding:20px;margin-bottom:20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <!-- Form Questions -->
+      <div class="cf-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">
           <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Questions</div>
-            <p style="font-size:13px;color:var(--text-muted);margin:4px 0 0">Drag to reorder. Changes save with the button above.</p>
+            <p class="cf-stitle" style="margin:0">Form Questions</p>
+            <p class="cf-sub" style="margin:4px 0 0">Drag to reorder. Changes save with the button below.</p>
           </div>
-          <div style="display:flex;gap:8px">
-            <button onclick="openPasteModal()" style="padding:8px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer">📋 Paste Questions</button>
-            <button onclick="formsAddQuestion()" style="padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add Question</button>
+          <div class="cf-row">
+            <button onclick="openPasteModal()" class="cf-btn cf-g cf-sm">📋 Paste Questions</button>
+            <button onclick="formsAddQuestion()" class="cf-btn cf-sm">+ Add Question</button>
           </div>
         </div>
         <div id="forms-questions-list" style="display:flex;flex-direction:column;gap:10px"></div>
-        <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button onclick="formsResetQuestions()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);cursor:pointer">Reset to Defaults</button><button id="forms-save-questions-btn" onclick="formsSaveSettings()" style="padding:8px 16px;background:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer">Save Questions</button><span id="forms-q-save-status" style="font-size:12px;color:var(--text-muted)"></span></div>
+        <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button onclick="formsResetQuestions()" class="cf-btn cf-g cf-sm">Reset to Defaults</button><button id="forms-save-questions-btn" onclick="formsSaveSettings()" class="cf-btn cf-sm">Save Questions</button><span id="forms-q-save-status" style="font-size:12px;color:#8b95a1"></span></div>
       </div>
 
     </div><!-- /cf-step 2 -->
 
-  </div><!-- /max-width wrapper -->
+    </div><!-- /cf-wrap -->
+  </div><!-- /padding wrapper -->
 </div><!-- /tab-forms -->
 
 </div>
@@ -7172,11 +7196,12 @@ function formsRenderQuestions() {
     const row = document.createElement('div');
     row.draggable = true;
     row.dataset.idx = i;
-    row.style.cssText = 'background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:14px;display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:start;cursor:grab;transition:opacity .15s';
+    row.className = 'cf-qrow';
+    row.style.cssText = 'display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:start;cursor:grab;transition:opacity .15s';
     const typeOpts = ['text','textarea','tel','email','number','select','multiselect'].map(function(t) { return '<option value="'+t+'"'+(q.type===t?' selected':'')+'>'+t+'</option>'; }).join('');
     const showOpts = ['select','multiselect'].indexOf(q.type) > -1;
     var isStd = isStandardId(q.id);   // standard profile slot (id ∈ PROFILE_ORDER)
-    row.innerHTML = '<div style="padding-top:2px;color:var(--text-muted);user-select:none;font-size:18px;line-height:1">&#8995;</div>'
+    row.innerHTML = '<div class="cf-grip" style="padding-top:2px;color:var(--text-muted);user-select:none;font-size:18px;line-height:1">&#8995;</div>'
       + '<div style="display:flex;flex-direction:column;gap:8px">'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
       + '<input class="forms-q-label" data-idx="'+i+'" value="'+q.label.replace(/"/g,"&quot;")+'" placeholder="Question label" style="flex:1;min-width:160px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text-primary);font-size:13px" />'
