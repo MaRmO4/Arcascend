@@ -1265,19 +1265,7 @@ main { flex: 1; padding: 20px 24px; }
         </div>
       </div>
 
-      <!-- Your Intake Form Link -->
-      <div class="cf-card">
-        <p class="cf-stitle">Your Intake Form Link</p>
-        <div class="cf-row" style="align-items:center">
-          <input id="forms-link-input" readonly class="cf-inp" style="flex:1;font-family:monospace" />
-          <button id="forms-copy-btn" onclick="formsCopyLink()" class="cf-btn" style="white-space:nowrap">Copy Link</button>
-          <a id="forms-open-btn" href="#" target="_blank" class="cf-btn cf-g" style="text-decoration:none;white-space:nowrap">Open &#x2197;</a>
-        </div>
-        <div style="margin-top:14px;display:flex;align-items:flex-start;gap:14px">
-          <div id="forms-qr" style="background:#fff;padding:8px;border-radius:8px;display:inline-block;flex-shrink:0"></div>
-          <p style="font-size:12px;color:#8b95a1;padding-top:4px;line-height:1.6;margin:0">Share this QR code in your gym, on social media, or in your bio.<br>It links directly to <em>your</em> intake form.</p>
-        </div>
-      </div>
+      <!-- Your intake link + QR now live in the Forms tab (default-form card). -->
 
       <!-- Link Preview (Open Graph) -->
       <div class="cf-card" style="margin-bottom:4px">
@@ -6349,12 +6337,40 @@ async function renderFormsLibrary() {
 
   setFormsLibraryCount(forms.length);
 
-  if (!forms.length) {
-    listEl.innerHTML = emptyState("📚", "No saved forms yet. Use “Save as New Form” on the Create Form tab.");
-    return;
-  }
+  // Default form (lives in trainer_settings; has NO public_id → uses the ?trainer= link).
+  // Best-effort fetch of its title so the pinned card is labeled accurately.
+  var defaultTitle = 'Client Intake Form';
+  try {
+    var tsRes = await fetch(SUPABASE_URL + '/rest/v1/trainer_settings?user_id=eq.' + currentUser.id + '&select=form_title', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (tsRes.ok) { var tsRows = await tsRes.json(); if (Array.isArray(tsRows) && tsRows[0] && tsRows[0].form_title) defaultTitle = tsRows[0].form_title; }
+  } catch(e) { /* fall back to the generic title */ }
 
-  listEl.innerHTML = '<div class="lead-grid">' + forms.map(function(f){
+  // Tab may have changed during the settings fetch.
+  if (activeTab !== "forms-library") return;
+  listEl = $("forms-library-list");
+  if (!listEl) return;
+
+  var defaultLink = 'https://arcascend.app/intake.html?trainer=' + currentUser.id;
+  var defaultCard = '<div class="card" style="padding:18px;display:flex;flex-direction:column;gap:10px">' +
+    '<div>' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<div style="font-size:15px;font-weight:700;color:var(--text-primary)">' + escapeHtml(defaultTitle) + '</div>' +
+        '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);background:rgba(79,158,255,0.14);border:1px solid rgba(79,158,255,0.4);border-radius:999px;padding:2px 8px">Default</span>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#8b95a1;margin-top:2px">Your main form</div>' +
+    '</div>' +
+    '<input readonly value="' + escapeAttr(defaultLink) + '" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text-primary);font-size:12px;font-family:monospace;box-sizing:border-box" />' +
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
+      '<button class="btn" data-fl-copy="' + escapeAttr(defaultLink) + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">📋 Copy</button>' +
+      '<a class="btn btn-ghost" href="' + escapeAttr(defaultLink) + '" target="_blank" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap;text-decoration:none">Open ↗</a>' +
+      '<button class="btn btn-ghost" data-fl-default-edit="1" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">✏️ Edit</button>' +
+      '<button class="btn btn-ghost" data-fl-qr="' + escapeAttr(defaultLink) + '" data-fl-qrname="' + escapeAttr(defaultTitle) + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">🔲 QR</button>' +
+    '</div>' +
+  '</div>';
+
+  var savedCards = forms.map(function(f){
     var link = formsLibraryLink(f.public_id);
     var created = f.created_at ? new Date(f.created_at).toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}) : "";
     return '<div class="card" style="padding:18px;display:flex;flex-direction:column;gap:10px">' +
@@ -6372,7 +6388,20 @@ async function renderFormsLibrary() {
         '<button class="btn btn-ghost" data-fl-del="' + escapeAttr(f.id) + '" data-fl-title="' + escapeAttr(f.bucket_name || f.title || "Untitled Form") + '" style="flex:0 0 auto;padding:7px 11px;font-size:12px;white-space:nowrap">🗑 Delete</button>' +
       '</div>' +
     '</div>';
-  }).join("") + '</div>';
+  }).join("");
+
+  var savedNote = forms.length ? "" : '<div style="grid-column:1/-1;padding:6px 2px;color:#8b95a1;font-size:13px">No saved forms yet. Use “Save as New Form” on the Create Form tab to add more.</div>';
+
+  listEl.innerHTML = '<div class="lead-grid">' + defaultCard + savedCards + savedNote + '</div>';
+
+  // Default card's Edit → open the builder in default-form mode (clear any edit stash).
+  listEl.querySelectorAll("[data-fl-default-edit]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      formsEditingId = null;
+      formsEditingForm = null;
+      goToTab('forms');
+    });
+  });
 
   listEl.querySelectorAll("[data-fl-copy]").forEach(function(btn){
     btn.addEventListener("click", function(){
@@ -6813,12 +6842,18 @@ async function formsSaveAs() {
 
 async function formsInit() {
   if (!currentUser) return;
+  // The builder's link + QR moved to the Forms tab (default-form card). These
+  // elements may not exist here anymore, so fill them only if present.
   var link = 'https://arcascend.app/intake.html?trainer=' + currentUser.id;
-  document.getElementById('forms-link-input').value = link;
-  document.getElementById('forms-open-btn').href = link;
+  var linkInput = document.getElementById('forms-link-input');
+  if (linkInput) linkInput.value = link;
+  var openBtn = document.getElementById('forms-open-btn');
+  if (openBtn) openBtn.href = link;
   var qrEl = document.getElementById('forms-qr');
-  qrEl.innerHTML = '';
-  if (typeof QRCode !== 'undefined') new QRCode(qrEl, { text: link, width:100, height:100, colorDark:'#000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
+  if (qrEl) {
+    qrEl.innerHTML = '';
+    if (typeof QRCode !== 'undefined') new QRCode(qrEl, { text: link, width:100, height:100, colorDark:'#000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
+  }
   var token = localStorage.getItem('arcascend_token');
 
   // Edit-existing mode: populate from the stashed `forms` row instead of the
