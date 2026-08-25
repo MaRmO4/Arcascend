@@ -14,6 +14,20 @@
   --open: #f59e0b; --warm: #fb923c; --purple: #a78bfa;
   --shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
+/* Create Form — segmented steps (Phase 1) */
+.cf-subnav{display:flex;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px;margin:16px 0 18px;flex-wrap:wrap}
+.cf-subnav button{flex:1;min-width:120px;background:transparent;border:0;color:#8b95a1;font:inherit;font-weight:600;padding:10px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.cf-subnav button.cf-on{background:var(--panel-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--border)}
+.cf-stepn{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:11px;background:var(--panel-2);border:1px solid var(--border)}
+.cf-subnav button.cf-on .cf-stepn{background:var(--accent);color:#fff;border-color:transparent}
+.cf-step{display:none}
+.cf-step.cf-on{display:block}
+.cf-steps-list{margin:0;padding-left:0;list-style:none;counter-reset:s}
+.cf-steps-list li{counter-increment:s;position:relative;padding:0 0 10px 32px;font-size:13.5px}
+.cf-steps-list li::before{content:counter(s);position:absolute;left:0;top:-1px;width:22px;height:22px;border-radius:6px;background:var(--panel-2);border:1px solid var(--border);color:var(--accent);font-weight:700;font-size:11.5px;display:grid;place-items:center}
+.cf-promptbox{position:relative;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:14px}
+.cf-promptbox pre{margin:0;white-space:pre-wrap;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text)}
+.cf-copy{position:absolute;top:10px;right:10px;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:7px 12px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
        background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
@@ -1151,120 +1165,173 @@ main { flex: 1; padding: 20px 24px; }
 </div>
 
 <main id="main"></main>
-<div id="tab-forms" class="tab-panel" style="display:none"><div style="background:linear-gradient(135deg,#1e2235,#252a40);border-bottom:1px solid var(--border);padding:28px 32px">
-  <div style="max-width:720px;margin:0 auto;display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
-    <div style="flex:1;min-width:200px">
-      <h1 style="font-size:22px;font-weight:800;color:#fff;margin:0 0 6px">📋 Your Intake Form</h1>
-      <p style="font-size:14px;color:#8b95a1;margin:0">Share your link, collect leads automatically, and manage your questions — all in one place.</p>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px;min-width:240px">
-      <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
-        <span style="font-size:18px;line-height:1">🔗</span>
-        <span><strong style="color:#fff">Copy your link</strong> and share it in your Instagram bio, texts, or DMs</span>
+<div id="tab-forms" class="tab-panel" style="display:none">
+
+  <!-- Hero header — unchanged -->
+  <div style="background:linear-gradient(135deg,#1e2235,#252a40);border-bottom:1px solid var(--border);padding:28px 32px">
+    <div style="max-width:720px;margin:0 auto;display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <h1 style="font-size:22px;font-weight:800;color:#fff;margin:0 0 6px">📋 Your Intake Form</h1>
+        <p style="font-size:14px;color:#8b95a1;margin:0">Share your link, collect leads automatically, and manage your questions — all in one place.</p>
       </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
-        <span style="font-size:18px;line-height:1">📱</span>
-        <span><strong style="color:#fff">Use the QR code</strong> on flyers, at your gym, or in reels</span>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
-        <span style="font-size:18px;line-height:1">✏️</span>
-        <span><strong style="color:#fff">Customize questions</strong> to match your consultation style</span>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
-        <span style="font-size:18px;line-height:1">🎯</span>
-        <span><strong style="color:#fff">Set a bucket</strong> to auto-tag leads by campaign or source</span>
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:240px">
+        <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
+          <span style="font-size:18px;line-height:1">🔗</span>
+          <span><strong style="color:#fff">Copy your link</strong> and share it in your Instagram bio, texts, or DMs</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
+          <span style="font-size:18px;line-height:1">📱</span>
+          <span><strong style="color:#fff">Use the QR code</strong> on flyers, at your gym, or in reels</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
+          <span style="font-size:18px;line-height:1">✏️</span>
+          <span><strong style="color:#fff">Customize questions</strong> to match your consultation style</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
+          <span style="font-size:18px;line-height:1">🎯</span>
+          <span><strong style="color:#fff">Set a bucket</strong> to auto-tag leads by campaign or source</span>
+        </div>
       </div>
     </div>
   </div>
-</div>
+
   <div style="max-width:720px;margin:0 auto;padding:24px 16px">
-    <div style="margin-bottom:28px">
-      <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);margin:0 0 6px">Intake Form Settings</h2>
-      <p style="color:var(--text-muted);font-size:14px;margin:0">Customize your client intake form and share your unique link.</p>
-    </div>
-    <div class="card" style="padding:20px;margin-bottom:20px">
-      <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Your Intake Form Link</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="forms-link-input" readonly style="flex:1;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:13px;font-family:monospace" />
-        <button id="forms-copy-btn" onclick="formsCopyLink()" style="padding:10px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy Link</button>
-        <a id="forms-open-btn" href="#" target="_blank" style="padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Open &#x2197;</a>
-      </div>
-      <div style="margin-top:16px;display:flex;align-items:flex-start;gap:16px">
-        <div id="forms-qr" style="background:#fff;padding:8px;border-radius:8px;display:inline-block"></div>
-        <div style="font-size:12px;color:var(--text-muted);padding-top:4px;line-height:1.6">Share this QR code in your gym, on social media, or in your bio.<br>It links directly to <em>your</em> intake form.</div>
-      </div>
-    </div>
-    <div class="card" style="padding:20px;margin-bottom:20px">
-      <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Import a Shared Form</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input id="forms-import-code" placeholder="ARC-XXXX-XXXX" style="flex:1;min-width:180px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;font-family:monospace;box-sizing:border-box" />
-        <button onclick="formsImportSharedForm(document.getElementById('forms-import-code').value)" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Import</button>
-        <span id="forms-import-status" style="font-size:13px;color:var(--text-muted)"></span>
-      </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:8px;line-height:1.5">Imported forms bring <b>questions only</b> — you set your own Internal Label and get your own link/QR on save.</div>
-    </div>
+
+    <!-- Editing banner — above sub-nav so Update Form is always reachable -->
     <div id="forms-editing-banner" style="display:none;background:linear-gradient(135deg,rgba(139,92,246,0.14),rgba(139,92,246,0.05));border:1px solid rgba(139,92,246,0.4);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:none;align-items:center;gap:14px;flex-wrap:wrap">
       <div style="font-size:14px;color:var(--text-primary);font-weight:600;flex:1 1 auto">✏️ Editing: <span id="forms-editing-name" style="color:var(--purple)"></span></div>
       <button onclick="formsUpdateForm()" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Update Form</button>
       <button onclick="formsCancelEdit()" style="padding:9px 18px;background:transparent;color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
       <span id="forms-update-status" style="font-size:13px;color:var(--text-muted);flex:0 0 auto"></span>
     </div>
-    <div class="card" style="padding:20px;margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Branding</div>
-        <button onclick="formsClearBranding()" style="padding:5px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">Clear</button>
-      </div>
-      <div style="display:grid;gap:14px">
-        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Gym / Business Name</label><input id="forms-gym-name" placeholder="e.g. Fit Club" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
-        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Title <span style="color:var(--text-muted);font-weight:400">(clients see this on the form)</span></label><input id="forms-form-title" placeholder="e.g. Client Intake Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
-        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Internal Label <span style="color:var(--text-muted);font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /><div id="forms-label-lock-note" style="display:none;font-size:11px;color:var(--text-muted);margin-top:5px">🔒 Label can't be changed after creation.</div></div>
-        <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Description</label><textarea id="forms-form-desc" rows="2" placeholder="e.g. Fill out the form and we will be in touch shortly." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;resize:vertical;box-sizing:border-box"></textarea></div>
-        <div>
-  <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Header Image</label>
-  <input type="hidden" id="forms-logo-url" />
-  <div id="forms-drop-zone" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s;background:var(--bg-secondary)">
-    <div style="font-size:13px;color:var(--text-secondary)">Drag & drop an image here, or click to browse</div>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Recommended: wide image, at least 1200x300px</div>
-  </div>
-  <input type="file" id="forms-file-input" accept="image/*" style="display:none" />
-  <div id="forms-logo-preview" style="margin-top:8px;display:none">
-    <img id="forms-logo-img" style="height:60px;object-fit:contain;border-radius:6px;border:1px solid var(--border)" />
-    <button onclick="document.getElementById('forms-file-input').click()" style="margin-left:10px;padding:6px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">Change image</button>
-  </div>
-</div>
-      </div>
-      <div id="forms-default-actions" style="margin-top:20px;display:flex;gap:10px;align-items:center">
-        <button onclick="formsSaveSettings()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Settings</button>
-        <button onclick="formsSaveAs()" style="padding:10px 20px;background:transparent;color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save as New Form</button>
-        <span id="forms-save-status" style="font-size:13px;color:var(--text-muted)"></span>
-        <span id="forms-saveas-status" style="font-size:13px;color:var(--text-muted)"></span>
-      </div>
+
+    <!-- Sub-nav -->
+    <div class="cf-subnav">
+      <button type="button" class="cf-on" data-cf-go="0" onclick="cfStep(0)"><span class="cf-stepn">1</span> Import &amp; AI</button>
+      <button type="button" data-cf-go="1" onclick="cfStep(1)"><span class="cf-stepn">2</span> Branding</button>
+      <button type="button" data-cf-go="2" onclick="cfStep(2)"><span class="cf-stepn">3</span> Questions</button>
     </div>
-    <div class="card" style="padding:20px;margin-bottom:20px">
-      <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Bucket Routing</div>
-      <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">New leads from your intake form will be tagged with this bucket. Leave blank for All Leads.</p>
-      <input id="forms-bucket" placeholder="e.g. InBody Scan Leads, Free Consult..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" />
-    </div>
-    <div class="card" style="padding:20px;margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Questions</div>
-          <p style="font-size:13px;color:var(--text-muted);margin:4px 0 0">Drag to reorder. Changes save with the button above.</p>
+
+    <!-- STEP 1: Import & AI -->
+    <div class="cf-step cf-on" data-cf-step="0">
+
+      <!-- Import a Shared Form — unchanged -->
+      <div class="card" style="padding:20px;margin-bottom:20px">
+        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Import a Shared Form</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="forms-import-code" placeholder="ARC-XXXX-XXXX" style="flex:1;min-width:180px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;font-family:monospace;box-sizing:border-box" />
+          <button onclick="formsImportSharedForm(document.getElementById('forms-import-code').value)" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Import</button>
+          <span id="forms-import-status" style="font-size:13px;color:var(--text-muted)"></span>
         </div>
-        <div style="display:flex;gap:8px">
-          <button onclick="openPasteModal()" style="padding:8px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer">📋 Paste Questions</button>
-          <button onclick="formsAddQuestion()" style="padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add Question</button>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:8px;line-height:1.5">Imported forms bring <b>questions only</b> — you set your own Internal Label and get your own link/QR on save.</div>
+      </div>
+
+      <!-- NEW: Write questions with AI -->
+      <div class="card" style="padding:20px;margin-bottom:20px">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">Write your questions with AI</div>
+        <p style="color:#8b95a1;font-size:12.5px;margin:0 0 12px">Have an AI draft your questions, then paste them into step 3. Works with ChatGPT, Claude, or Gemini.</p>
+        <ol class="cf-steps-list">
+          <li>Copy the prompt below.</li>
+          <li>Paste it into your AI and swap the [bracketed] parts for your details.</li>
+          <li>Copy the questions it gives back.</li>
+          <li>Come to <strong>Questions</strong> and tap <strong>Paste</strong> to drop them in.</li>
+        </ol>
+        <div class="cf-promptbox">
+          <button type="button" class="cf-copy" onclick="cfCopyPrompt(this)">Copy prompt</button>
+          <pre id="cf-ai-prompt"></pre>
         </div>
       </div>
-      <div id="forms-questions-list" style="display:flex;flex-direction:column;gap:10px"></div>
-      <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button onclick="formsResetQuestions()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);cursor:pointer">Reset to Defaults</button><button id="forms-save-questions-btn" onclick="formsSaveSettings()" style="padding:8px 16px;background:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer">Save Questions</button><span id="forms-q-save-status" style="font-size:12px;color:var(--text-muted)"></span></div>
-    </div>
-    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--text-muted);line-height:1.6">
-      <strong style="color:var(--text-secondary)">Link Preview (Open Graph)</strong><br>
-      When you share your intake form link in iMessage, WhatsApp, or Instagram DMs, it shows a branded card. Your gym name and form title appear automatically once saved.
-    </div>
-  </div>
-</div>
+
+      <!-- Your Intake Form Link — unchanged, temporary here until Phase 2 -->
+      <div class="card" style="padding:20px;margin-bottom:20px">
+        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Your Intake Form Link</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="forms-link-input" readonly style="flex:1;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:13px;font-family:monospace" />
+          <button id="forms-copy-btn" onclick="formsCopyLink()" style="padding:10px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy Link</button>
+          <a id="forms-open-btn" href="#" target="_blank" style="padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Open &#x2197;</a>
+        </div>
+        <div style="margin-top:16px;display:flex;align-items:flex-start;gap:16px">
+          <div id="forms-qr" style="background:#fff;padding:8px;border-radius:8px;display:inline-block"></div>
+          <div style="font-size:12px;color:var(--text-muted);padding-top:4px;line-height:1.6">Share this QR code in your gym, on social media, or in your bio.<br>It links directly to <em>your</em> intake form.</div>
+        </div>
+      </div>
+
+      <!-- Link Preview (Open Graph) — unchanged -->
+      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:20px">
+        <strong style="color:var(--text-secondary)">Link Preview (Open Graph)</strong><br>
+        When you share your intake form link in iMessage, WhatsApp, or Instagram DMs, it shows a branded card. Your gym name and form title appear automatically once saved.
+      </div>
+
+    </div><!-- /cf-step 0 -->
+
+    <!-- STEP 2: Branding -->
+    <div class="cf-step" data-cf-step="1">
+
+      <!-- Form Branding — unchanged -->
+      <div class="card" style="padding:20px;margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Branding</div>
+          <button onclick="formsClearBranding()" style="padding:5px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">Clear</button>
+        </div>
+        <div style="display:grid;gap:14px">
+          <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Gym / Business Name</label><input id="forms-gym-name" placeholder="e.g. Fit Club" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
+          <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Title <span style="color:var(--text-muted);font-weight:400">(clients see this on the form)</span></label><input id="forms-form-title" placeholder="e.g. Client Intake Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /></div>
+          <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Internal Label <span style="color:var(--text-muted);font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" /><div id="forms-label-lock-note" style="display:none;font-size:11px;color:var(--text-muted);margin-top:5px">🔒 Label can't be changed after creation.</div></div>
+          <div><label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Form Description</label><textarea id="forms-form-desc" rows="2" placeholder="e.g. Fill out the form and we will be in touch shortly." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;resize:vertical;box-sizing:border-box"></textarea></div>
+          <div>
+            <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:6px">Header Image</label>
+            <input type="hidden" id="forms-logo-url" />
+            <div id="forms-drop-zone" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s;background:var(--bg-secondary)">
+              <div style="font-size:13px;color:var(--text-secondary)">Drag & drop an image here, or click to browse</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Recommended: wide image, at least 1200x300px</div>
+            </div>
+            <input type="file" id="forms-file-input" accept="image/*" style="display:none" />
+            <div id="forms-logo-preview" style="margin-top:8px;display:none">
+              <img id="forms-logo-img" style="height:60px;object-fit:contain;border-radius:6px;border:1px solid var(--border)" />
+              <button onclick="document.getElementById('forms-file-input').click()" style="margin-left:10px;padding:6px 12px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">Change image</button>
+            </div>
+          </div>
+        </div>
+        <div id="forms-default-actions" style="margin-top:20px;display:flex;gap:10px;align-items:center">
+          <button onclick="formsSaveSettings()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save Settings</button>
+          <button onclick="formsSaveAs()" style="padding:10px 20px;background:transparent;color:var(--text-primary);border:1px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Save as New Form</button>
+          <span id="forms-save-status" style="font-size:13px;color:var(--text-muted)"></span>
+          <span id="forms-saveas-status" style="font-size:13px;color:var(--text-muted)"></span>
+        </div>
+      </div>
+
+      <!-- Bucket Routing — unchanged -->
+      <div class="card" style="padding:20px;margin-bottom:20px">
+        <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Bucket Routing</div>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">New leads from your intake form will be tagged with this bucket. Leave blank for All Leads.</p>
+        <input id="forms-bucket" placeholder="e.g. InBody Scan Leads, Free Consult..." style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text-primary);font-size:14px;box-sizing:border-box" />
+      </div>
+
+    </div><!-- /cf-step 1 -->
+
+    <!-- STEP 3: Questions -->
+    <div class="cf-step" data-cf-step="2">
+
+      <!-- Form Questions — unchanged -->
+      <div class="card" style="padding:20px;margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Form Questions</div>
+            <p style="font-size:13px;color:var(--text-muted);margin:4px 0 0">Drag to reorder. Changes save with the button above.</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="openPasteModal()" style="padding:8px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--text-primary);cursor:pointer">📋 Paste Questions</button>
+            <button onclick="formsAddQuestion()" style="padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add Question</button>
+          </div>
+        </div>
+        <div id="forms-questions-list" style="display:flex;flex-direction:column;gap:10px"></div>
+        <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button onclick="formsResetQuestions()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-muted);cursor:pointer">Reset to Defaults</button><button id="forms-save-questions-btn" onclick="formsSaveSettings()" style="padding:8px 16px;background:var(--accent);border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer">Save Questions</button><span id="forms-q-save-status" style="font-size:12px;color:var(--text-muted)"></span></div>
+      </div>
+
+    </div><!-- /cf-step 2 -->
+
+  </div><!-- /max-width wrapper -->
+</div><!-- /tab-forms -->
 
 </div>
 
@@ -6773,7 +6840,48 @@ async function formsInit() {
   formsRenderQuestions();
   document.getElementById('forms-logo-url').addEventListener('input', function(e) { formsPreviewLogo(e.target.value); });
   formsInitDropZone();
+  cfStep(0);
 }
+
+function cfStep(n){
+  n = String(n);
+  document.querySelectorAll('#tab-forms .cf-step').forEach(function(s){ s.classList.toggle('cf-on', s.getAttribute('data-cf-step')===n); });
+  document.querySelectorAll('#tab-forms .cf-subnav button').forEach(function(b){ b.classList.toggle('cf-on', b.getAttribute('data-cf-go')===n); });
+}
+function cfCopyPrompt(btn){
+  var t = document.getElementById('cf-ai-prompt').textContent;
+  navigator.clipboard.writeText(t).then(function(){ var o=btn.textContent; btn.textContent='Copied'; setTimeout(function(){ btn.textContent=o; }, 1500); });
+}
+function cfInitPrompt(){
+  var el = document.getElementById('cf-ai-prompt'); if(!el) return;
+  el.textContent = [
+    'You are helping a personal trainer build a client intake form.',
+    '',
+    'My business: [e.g. 1-on-1 strength coaching for beginners]',
+    'My ideal client: [e.g. busy professionals, 30-50, new to lifting]',
+    'What I must know before their first session: [e.g. goals, injuries, availability, experience]',
+    '',
+    'Write 8-12 intake questions. Output them in EXACTLY this format, one question per block, blocks separated by a blank line:',
+    '',
+    'Q: <the question text>',
+    'Type: <one of: text, textarea, tel, email, number, select, multiselect>',
+    'Options: <only for select or multiselect - separate each option with a semicolon ;>',
+    'Required: <yes or no>',
+    '',
+    'Rules:',
+    '- Put the essentials first: Full Name (text), Phone Number (tel), Email Address (email).',
+    '- Use select or multiselect when there is a fixed set of answers, and list the Options with semicolons.',
+    '- Omit the Options line for text, textarea, tel, email, and number.',
+    '- Keep it fillable on a phone in under 2 minutes.',
+    '',
+    'Example:',
+    'Q: What is your primary fitness goal?',
+    'Type: multiselect',
+    'Options: Lose weight; Build muscle; Improve mobility; Event prep',
+    'Required: yes'
+  ].join('\n');
+}
+cfInitPrompt();
 
 // Toggle the builder chrome between default-form mode and edit-existing mode.
 // Editing: show the "✏️ Editing" banner, hide the default Save buttons (so the
