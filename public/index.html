@@ -1738,6 +1738,7 @@ function ensureBilling(L) {
   if (!L.billing) L.billing = { active: false, sessions: 0, rate: 0, package: "", paid: false };
   if (L.billing.paid === undefined) L.billing.paid = false;
   if (!L.billing.confirmations) L.billing.confirmations = {};   // month-map: { "YYYY-MM": { amount, at } }
+  if (!L.billing.projections) L.billing.projections = {};       // month-map: { "YYYY-MM": { amount?, active } }
   return L.billing;
 }
 function leadTotal(L) {
@@ -1781,6 +1782,73 @@ window.confirmedAmount = confirmedAmount;
 window.confirmedRevenueForMonth = confirmedRevenueForMonth;
 function activeClients() {
   return LEADS.filter(function(L){ return L.billing && L.billing.active; });
+}
+
+// ===== Future revenue projections (per client, per future month) =====
+// billing.projections["YYYY-MM"] = { amount?, active }. If no entry exists for a
+// future month, we AUTO-CARRY from the client's current sessions×rate (leadTotal).
+// The CURRENT month always reconciles with the live dashboard (leadTotal-based),
+// ignoring any stored projection, so the two views can never disagree.
+function ensureProjection(L, mk) {
+  var b = ensureBilling(L);
+  if (!b.projections) b.projections = {};
+  if (!b.projections[mk]) b.projections[mk] = { active: true };
+  return b.projections[mk];
+}
+function isProjectedActive(L, mk) {
+  var b = ensureBilling(L);
+  if (mk === currentMonthKey()) return !!b.active;   // current month mirrors live state
+  var p = b.projections && b.projections[mk];
+  if (p) return p.active !== false;
+  return !!b.active;   // auto-carry current active state
+}
+function projectedForClientMonth(L, mk) {
+  var b = ensureBilling(L);
+  // Current month is pinned to the live dashboard figure (auto-carry only).
+  if (mk === currentMonthKey()) return b.active ? leadTotal(L) : 0;
+  var p = b.projections && b.projections[mk];
+  if (p) {
+    if (p.active === false) return 0;
+    if (typeof p.amount === 'number') return p.amount;
+    if (typeof p.sessions === 'number' && typeof p.rate === 'number') return (p.sessions || 0) * (p.rate || 0);
+    return b.active ? leadTotal(L) : 0;   // entry exists but no explicit amount → auto-carry
+  }
+  return b.active ? leadTotal(L) : 0;      // no entry → auto-carry
+}
+function projectedRevenueForMonth(mk) {
+  var total = 0, seen = {};
+  activeClients().forEach(function(L){
+    total += projectedForClientMonth(L, mk);
+    seen[L.id || L.name] = true;
+  });
+  // Plus any client explicitly projected active for this month who isn't currently active.
+  (LEADS || []).forEach(function(L){
+    if (seen[L.id || L.name]) return;
+    var p = L.billing && L.billing.projections && L.billing.projections[mk];
+    if (p && p.active && (typeof p.amount === 'number' || (typeof p.sessions === 'number' && typeof p.rate === 'number'))) {
+      total += projectedForClientMonth(L, mk);
+    }
+  });
+  return total;
+}
+// [{ mk, label, full, i }] for the current month (i=0) plus the next n months.
+// new Date(y, m+i, 1) normalizes month overflow, so year rollover (Dec→Jan) is automatic.
+function projectionMonths(n) {
+  n = n || 6;
+  var names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var full  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var base = new Date();
+  var out = [];
+  for (var i = 0; i <= n; i++) {
+    var d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+    out.push({
+      mk: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'),
+      label: names[d.getMonth()] + " '" + String(d.getFullYear()).slice(2),
+      full: full[d.getMonth()] + ' ' + d.getFullYear(),
+      i: i
+    });
+  }
+  return out;
 }
 function totalRevenue() {
   var t = 0;
@@ -3718,8 +3786,7 @@ function renderMain() {
   }
     
 
-  if (activeTab === "clients" && typeof renderActiveClientsBoard === "function") { renderActiveClientsBoard(); return; }
-if (activeTab === "clients") { renderClientsTab(); return; }
+  if (activeTab === "clients") { renderActiveClientsV2(); return; }
   if (activeTab === "tasks") { renderTasksTab(); return; }
 if (activeTab === "reports" && typeof renderReportsTab === "function") { renderReportsTab(); return; }
 if (activeTab === "calendar") { renderCalendarTab(); return; }
@@ -3754,7 +3821,313 @@ function viewToggleWrap(leads) {
 }
 
 // ==========================================================
-// ACTIVE CLIENTS TAB
+// ACTIVE CLIENTS TAB — V2: KPI dashboard + clean client table
+// (fully replaces the old List/Board toggle + roster panel view)
+// ==========================================================
+var acSelectedMonth = null;   // "YYYY-MM" — month the dashboard + table are scoped to
+var acView = 'current';       // 'current' (dashboard+table) | 'projections' (forecast planner)
+var acProjMonths = 6;         // how many FUTURE months the projections planner shows (3 or 6)
+
+function renderActiveClientsV2() {
+  var main = $("main");
+  if (!main) return;
+  var mk = acSelectedMonth || currentMonthKey();
+  acSelectedMonth = mk;
+  var mkLabel = rosterMonthLabel(mk);
+
+  var clients = sortLeads(activeClients());
+  var notSetUp = LEADS.filter(function(L){
+    return (L.status || "").toLowerCase().indexOf("won") >= 0 && !(L.billing && L.billing.active);
+  });
+
+  // ---- KPIs (all money via helpers — never hand-summed) ----
+  var confirmed = confirmedRevenueForMonth(mk);
+  var projected = clients.reduce(function(s, L){ return s + leadTotal(L); }, 0);
+  var outstanding = projected - confirmed;
+  var clientCount = clients.length;
+  var avg = clientCount ? Math.round(projected / clientCount) : 0;
+  var sessionsPurchased = clients.reduce(function(s, L){ return s + ((L.billing && L.billing.sessions) || 0); }, 0);
+
+  function tile(label, value, valStyle, sub){
+    return '<div class="billing-mini-stat" style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;">' +
+      '<div class="billing-mini-label">' + label + '</div>' +
+      '<div class="billing-mini-value" style="font-size:22px;' + (valStyle || '') + '">' + value + '</div>' +
+      (sub ? '<div style="font-size:10px;color:var(--muted);margin-top:3px;">' + sub + '</div>' : '') +
+    '</div>';
+  }
+  var kpis = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px;">' +
+    tile('Active Clients', clientCount, '') +
+    tile('Confirmed · ' + escapeHtml(mkLabel), fmt$(confirmed), 'color:var(--won);') +
+    tile('Projected', fmt$(projected), 'color:var(--accent);') +
+    tile('Outstanding', fmt$(outstanding), 'color:' + (outstanding > 0 ? 'var(--open)' : 'var(--muted)') + ';') +
+    tile('Avg / Client', fmt$(avg), '') +
+    tile('Sessions Purchased', sessionsPurchased, 'color:var(--purple);') +
+    tile('Sessions Completed', '&mdash;', 'color:var(--muted);', 'coming soon') +
+  '</div>';
+
+  // ---- Month selector + header ----
+  var monthOpts = rosterMonthOptions().map(function(o){
+    return '<option value="' + o.key + '"' + (o.key === mk ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>';
+  }).join('');
+  var toggleBtns = '<div style="display:inline-flex;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;">' +
+    '<button id="acv2-tab-current" style="padding:7px 16px;border:none;font-size:13px;cursor:pointer;background:' + (acView === 'current' ? 'var(--accent)' : 'transparent') + ';color:' + (acView === 'current' ? '#fff' : 'var(--text)') + ';">Current</button>' +
+    '<button id="acv2-tab-proj" style="padding:7px 16px;border:none;font-size:13px;cursor:pointer;background:' + (acView === 'projections' ? 'var(--accent)' : 'transparent') + ';color:' + (acView === 'projections' ? '#fff' : 'var(--text)') + ';">Projections</button>' +
+  '</div>';
+  var rightControls = toggleBtns + (acView === 'current'
+    ? '<select id="acv2-month" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;">' + monthOpts + '</select>'
+    : '');
+  var header = '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
+    '<div><div class="page-title">💼 Active Clients</div>' +
+      '<div class="page-subtitle">' + (acView === 'current'
+        ? 'Revenue + sessions per client. Confirm inline; click a row to open the lead.'
+        : 'Plan projected revenue per client for the months ahead. Future cells auto-carry from current sessions × rate.') + '</div></div>' +
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' + rightControls + '</div>' +
+  '</div>';
+
+  // ---- Projections planner branch ----
+  if (acView === 'projections') {
+    main.innerHTML = header + buildProjectionsSection();
+    wireActiveV2Toggle();
+    wireProjectionsSection();
+    return;
+  }
+
+  // ---- Client table (CSS-grid rows; no <table> styles exist in the app) ----
+  var col = 'grid-template-columns:1.6fr 1.4fr 0.8fr 1fr 1.15fr 1.15fr 0.95fr;';
+  var tableSection;
+  if (!clientCount) {
+    tableSection = '<div class="empty"><div class="empty-icon">💼</div>' +
+      '<div style="font-size:16px;color:var(--text);margin-bottom:8px;">No active clients' + (mk !== currentMonthKey() ? ' for ' + escapeHtml(mkLabel) : '') + '</div>' +
+      'Close a deal (mark a lead <b>Closed Won</b>), then open the lead and toggle <b>Active Client</b> in the Billing section to start tracking revenue.</div>';
+  } else {
+    var head = '<div style="display:grid;' + col + 'gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;">' +
+      '<div>Client</div><div>Sessions</div><div>Rate</div><div>Projected</div><div>Confirm</div><div>Last Contact</div><div>Status</div>' +
+    '</div>';
+    var body = clients.map(function(L){
+      var b = ensureBilling(L);
+      var amt = leadTotal(L);
+      var conf = isConfirmed(L, mk);
+      var canConfirm = amt > 0;
+      var nm = L.name || '(no name)';
+      var initials = (nm.trim().split(/\s+/).map(function(w){ return w.charAt(0); }).join('').slice(0,2) || '?').toUpperCase();
+
+      // Sessions bar (lifetime used / purchased — real data, not monthly completed)
+      var total = b.sessions || 0, used = b.sessionsUsed || 0;
+      var pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+      var fillClass = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
+      var sessCell = total > 0
+        ? '<div><div class="session-bar" style="margin-bottom:4px;"><div class="session-bar-fill ' + fillClass + '" style="width:' + pct + '%"></div></div>' +
+          '<div style="font-size:11px;color:var(--muted);">' + used + ' / ' + total + ' used</div></div>'
+        : '<span style="color:var(--muted);font-size:12px;">&mdash;</span>';
+
+      var lastAt = leadLastContactAt(L);   // used by the Last Contact column below
+      // Status pill: payment-based for the selected month (mk).
+      var status, cls;
+      if (conf) { status = 'Confirmed'; cls = 'won'; }            // confirmed for this month
+      else if (!canConfirm) { status = 'Setup'; cls = 'open'; }   // no rate/sessions yet
+      else { status = 'Unpaid'; cls = 'lost'; }                   // has an amount, not confirmed
+
+      return '<div class="acv2-row" data-name="' + escapeAttr(nm) + '" style="display:grid;' + col + 'gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+        '<div style="display:flex;align-items:center;gap:10px;min-width:0;">' +
+          '<div style="width:30px;height:30px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text);flex-shrink:0;">' + escapeHtml(initials) + '</div>' +
+          '<div style="min-width:0;"><div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
+          (b.package ? '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(b.package) + '</div>' : '') + '</div>' +
+        '</div>' +
+        sessCell +
+        '<div style="font-size:13px;">' + (b.rate ? fmt$(b.rate) : '<span style="color:var(--muted);">&mdash;</span>') + '</div>' +
+        '<div style="font-size:13px;font-weight:600;">' + fmt$(amt) + '</div>' +
+        '<div class="acv2-confirm-cell" onclick="event.stopPropagation();">' +
+          '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;cursor:' + (canConfirm ? 'pointer' : 'not-allowed') + ';color:' + (conf ? 'var(--won)' : (canConfirm ? 'var(--text)' : 'var(--muted)')) + ';">' +
+            '<input type="checkbox" class="acv2-confirm" data-name="' + escapeAttr(nm) + '" ' + (conf ? 'checked' : '') + (canConfirm ? '' : ' disabled') + '> ' +
+            (conf ? 'Confirmed' : (canConfirm ? 'Confirm' : 'No rate')) +
+          '</label>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--muted);" title="' + (lastAt ? escapeAttr(timeAgo(lastAt)) : '') + '">' + (lastAt ? escapeHtml(formatDateTime(lastAt)) : 'Never') + '</div>' +
+        '<div><span class="badge ' + cls + '">' + status + '</span></div>' +
+      '</div>';
+    }).join('');
+
+    tableSection = '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow-x:auto;">' +
+      '<div style="min-width:760px;">' + head + body + '</div></div>';
+  }
+
+  // ---- Closed Won · Ready to Set Up (keeps the promote workflow accessible) ----
+  var promote = notSetUp.length ? '<div style="font-size:14px;font-weight:600;margin:26px 0 12px;">Closed Won · Ready to Set Up (' + notSetUp.length + ')</div><div class="lead-grid">' +
+    notSetUp.slice(0, 20).map(function(L){
+      var safeName = escapeAttr(L.name);
+      return '<div class="lead-card open" data-name="' + safeName + '">' +
+        '<div class="lead-header"><div><div class="lead-name">' + escapeHtml(L.name) + '</div>' +
+        '<div class="lead-date">' + escapeHtml(L.phone || '') + '</div></div>' +
+        '<span class="badge open">Won · Not Set Up</span></div>' +
+        '<div style="color:var(--muted);font-size:12px;margin-top:10px;">Add session count and rate to start tracking.</div>' +
+        '<button class="btn" style="width:100%;margin-top:10px;font-size:12px;padding:8px;" data-setup="' + safeName + '">💼 Set Up as Client</button>' +
+      '</div>';
+    }).join('') + '</div>' : '';
+
+  main.innerHTML = header + kpis + tableSection + promote;
+
+  // ---- Wiring ----
+  var sel = document.getElementById('acv2-month');
+  if (sel) sel.addEventListener('change', function(){ acSelectedMonth = sel.value; renderActiveClientsV2(); });
+
+  main.querySelectorAll('.acv2-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if (e.target.closest('.acv2-confirm-cell')) return;   // confirm control handles itself
+      openLead(row.dataset.name);
+    });
+  });
+
+  main.querySelectorAll('.acv2-confirm').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var L = LEADS.find(function(x){ return (x.name || '') === cb.dataset.name; });
+      if (!L) return;
+      if (cb.checked) {
+        if (!confirmMonth(L, acSelectedMonth)) { cb.checked = false; return; }   // $0 guard
+      } else {
+        unconfirmMonth(L, acSelectedMonth);
+      }
+      saveState();
+      if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
+      if (typeof renderTabCounts === 'function') renderTabCounts();
+      renderActiveClientsV2();
+    });
+  });
+
+  main.querySelectorAll('[data-setup]').forEach(function(btn){
+    btn.addEventListener('click', function(e){ e.stopPropagation(); openLead(btn.dataset.setup); });
+  });
+
+  wireActiveV2Toggle();
+}
+
+// Current | Projections toggle (shared by both views).
+function wireActiveV2Toggle() {
+  var c = document.getElementById('acv2-tab-current');
+  var p = document.getElementById('acv2-tab-proj');
+  if (c) c.addEventListener('click', function(){ acView = 'current'; renderActiveClientsV2(); });
+  if (p) p.addEventListener('click', function(){ acView = 'projections'; renderActiveClientsV2(); });
+}
+
+// ---- Projections planner: editable per-client, per-month forecast grid ----
+function buildProjectionsSection() {
+  var clients = sortLeads(activeClients());
+  var months = projectionMonths(acProjMonths);
+  var curKey = currentMonthKey();
+  var col = 'grid-template-columns:180px repeat(' + months.length + ',minmax(104px,1fr));';
+  var minW = 180 + months.length * 104;
+
+  // Months-ahead control (3 / 6)
+  var rangeCtrl = '<div style="display:inline-flex;gap:6px;align-items:center;">' +
+    '<span style="font-size:12px;color:var(--muted);">Months ahead:</span>' +
+    ['3','6'].map(function(n){
+      var on = String(acProjMonths) === n;
+      return '<button class="proj-range" data-n="' + n + '" style="padding:5px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;background:' + (on ? 'var(--accent)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text)') + ';">' + n + '</button>';
+    }).join('') +
+  '</div>';
+
+  if (!clients.length) {
+    return '<div style="display:flex;justify-content:flex-end;margin-bottom:16px;">' + rangeCtrl + '</div>' +
+      '<div class="empty"><div class="empty-icon">📈</div>' +
+      '<div style="font-size:16px;color:var(--text);margin-bottom:8px;">No active clients to project</div>' +
+      'Set up an active client first (mark a lead Closed Won, then toggle Active Client in Billing), then plan future months here.</div>';
+  }
+
+  // Header row
+  var head = '<div style="display:grid;' + col + 'gap:8px;padding:11px 14px;border-bottom:1px solid var(--border);">' +
+    '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;">Client</div>' +
+    months.map(function(m){
+      var isCur = m.mk === curKey;
+      return '<div style="text-align:right;font-size:11px;font-weight:600;color:' + (isCur ? 'var(--accent)' : 'var(--text)') + ';">' + escapeHtml(m.label) + (isCur ? ' <span style="color:var(--muted);font-weight:400;">now</span>' : '') + '</div>';
+    }).join('') +
+  '</div>';
+
+  // One row per active client
+  var body = clients.map(function(L){
+    var nm = L.name || '(no name)';
+    return '<div style="display:grid;' + col + 'gap:8px;padding:11px 14px;border-bottom:1px solid var(--border);align-items:center;">' +
+      '<div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
+      months.map(function(m){
+        var amt = projectedForClientMonth(L, m.mk);
+        if (m.mk === curKey) {
+          // Read-only: pinned to the live dashboard figure so the two can't disagree.
+          return '<div style="text-align:right;font-size:13px;color:var(--muted);" title="Current month — matches the dashboard">' + fmt$(amt) + '</div>';
+        }
+        if (!isProjectedActive(L, m.mk)) {
+          return '<div style="text-align:right;">' +
+            '<button class="proj-toggle" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" data-act="on" title="Add back for this month" style="background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;white-space:nowrap;">— add</button>' +
+          '</div>';
+        }
+        return '<div style="display:flex;align-items:center;gap:3px;justify-content:flex-end;">' +
+          '<span style="color:var(--muted);font-size:12px;">$</span>' +
+          '<input type="number" class="proj-amt" name="proj-' + m.mk + '" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" value="' + amt + '" min="0" step="1" style="width:66px;text-align:right;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:5px 6px;color:var(--text);font-size:12px;" />' +
+          '<button class="proj-toggle" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" data-act="off" title="Drop this month" style="background:transparent;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;padding:0 2px;">&times;</button>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }).join('');
+
+  // Totals row (all via projectedRevenueForMonth)
+  var totalsArr = months.map(function(m){ return projectedRevenueForMonth(m.mk); });
+  var totals = '<div style="display:grid;' + col + 'gap:8px;padding:13px 14px;border-top:2px solid var(--border);align-items:center;background:var(--panel-2);border-radius:0 0 12px 12px;">' +
+    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);">Projected total</div>' +
+    months.map(function(m, idx){
+      return '<div style="text-align:right;font-size:14px;font-weight:800;color:' + (m.mk === curKey ? 'var(--accent)' : 'var(--won)') + ';">' + fmt$(totalsArr[idx]) + '</div>';
+    }).join('') +
+  '</div>';
+
+  // Sparkline of monthly totals (plain divs, no chart lib)
+  var maxT = Math.max.apply(null, totalsArr.concat([1]));
+  var spark = '<div style="display:flex;align-items:flex-end;gap:8px;height:84px;padding:12px 14px;margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:12px;">' +
+    months.map(function(m, idx){
+      var t = totalsArr[idx];
+      var h = Math.max(4, Math.round((t / maxT) * 56));
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;">' +
+        '<div style="width:100%;background:' + (m.mk === curKey ? 'var(--accent)' : 'var(--won)') + ';height:' + h + 'px;border-radius:4px 4px 0 0;opacity:0.85;" title="' + escapeAttr(m.full + ': ' + fmt$(t)) + '"></div>' +
+        '<div style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">' + escapeHtml(m.label.split(" ")[0]) + '</div>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+
+  var forecastTotal = totalsArr.reduce(function(s, v){ return s + v; }, 0);
+
+  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;">' +
+      '<div style="font-size:13px;color:var(--muted);">' + months.length + '-month forecast total: <b style="color:var(--won);">' + fmt$(forecastTotal) + '</b> · edit any future cell to override, × to drop a client for a month.</div>' +
+      rangeCtrl +
+    '</div>' +
+    '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow-x:auto;"><div style="min-width:' + minW + 'px;">' + head + body + totals + '</div></div>' +
+    spark;
+}
+
+function wireProjectionsSection() {
+  document.querySelectorAll('.proj-range').forEach(function(b){
+    b.addEventListener('click', function(){ acProjMonths = parseInt(b.dataset.n, 10) || 6; renderActiveClientsV2(); });
+  });
+  document.querySelectorAll('.proj-amt').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var L = LEADS.find(function(x){ return (x.name || '') === inp.dataset.name; });
+      if (!L) return;
+      var p = ensureProjection(L, inp.dataset.mk);
+      p.active = true;
+      p.amount = Math.max(0, Number(inp.value) || 0);
+      delete p.sessions; delete p.rate;   // flat-amount UI is the source of truth once edited
+      saveState();
+      renderActiveClientsV2();
+    });
+  });
+  document.querySelectorAll('.proj-toggle').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var L = LEADS.find(function(x){ return (x.name || '') === btn.dataset.name; });
+      if (!L) return;
+      var p = ensureProjection(L, btn.dataset.mk);
+      p.active = (btn.dataset.act === 'on');   // 'off' drops, 'on' restores (auto-carry unless amount stored)
+      saveState();
+      renderActiveClientsV2();
+    });
+  });
+}
+
+// ==========================================================
+// ACTIVE CLIENTS TAB (legacy — kept for any external callers)
 // ==========================================================
 function renderClientsTab() {
   var main = $("main");
