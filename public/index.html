@@ -1739,11 +1739,110 @@ function ensureBilling(L) {
   if (L.billing.paid === undefined) L.billing.paid = false;
   if (!L.billing.confirmations) L.billing.confirmations = {};   // month-map: { "YYYY-MM": { amount, at } }
   if (!L.billing.projections) L.billing.projections = {};       // month-map: { "YYYY-MM": { amount?, active } }
+  migrateServiceLines(L.billing);                               // non-destructive → billing.serviceLines[]
   return L.billing;
+}
+// Backward-compat migration: if this billing has the legacy flat shape but no
+// serviceLines, seed ONE "In-Person" package line from it (carrying sessions/rate/
+// confirmations) so existing clients render with zero data loss. Old flat fields are
+// kept intact; serviceLines becomes the source of truth for the new Active Clients view.
+function migrateServiceLines(b) {
+  if (Array.isArray(b.serviceLines)) return;
+  b.serviceLines = [];
+  var hasConf = b.confirmations && Object.keys(b.confirmations).length > 0;
+  if (b.active || b.sessions || b.rate || hasConf) {
+    b.serviceLines.push({
+      id: (typeof uuid === 'function' ? uuid() : 'sl_' + Math.random().toString(36).slice(2)),
+      type: 'In-Person',
+      billingStyle: 'package',
+      sessions: b.sessions || 0,
+      sessionsUsed: b.sessionsUsed || 0,
+      rate: b.rate || 0,
+      monthlyFee: 0,
+      active: !!b.active,
+      confirmations: b.confirmations ? JSON.parse(JSON.stringify(b.confirmations)) : {}
+    });
+  }
 }
 function leadTotal(L) {
   var b = ensureBilling(L);
   return (b.sessions || 0) * (b.rate || 0);
+}
+
+// ===== Service lines: per-line + per-client revenue helpers =====
+function clientLines(L) { return ensureBilling(L).serviceLines || []; }
+function activeLines(L) { return clientLines(L).filter(function(ln){ return ln && ln.active; }); }
+function lineTotal(line) {
+  if (!line || !line.active) return 0;
+  if (line.billingStyle === 'recurring') return (line.monthlyFee || 0);
+  return (line.sessions || 0) * (line.rate || 0);   // 'package' (default)
+}
+// Combined monthly total across a client's active service lines. Falls back to the
+// legacy leadTotal when a client has no service lines (keeps other callers working).
+function clientTotal(L) {
+  var lines = clientLines(L);
+  if (lines && lines.length) return lines.reduce(function(s, ln){ return s + lineTotal(ln); }, 0);
+  return leadTotal(L);
+}
+// { "In-Person": $, "Online": $, ... } — line totals summed by type over active clients.
+function revenueByType(mk) {
+  var map = {};
+  activeClients().forEach(function(L){
+    activeLines(L).forEach(function(ln){
+      var t = lineTotal(ln);
+      if (!t) return;
+      var type = ln.type || 'Other';
+      map[type] = (map[type] || 0) + t;
+    });
+  });
+  return map;
+}
+// ---- Per-line month confirmations (keeps the client-level rollup in sync so
+// Reports + the revenue banner, which read billing.confirmations, stay correct) ----
+function lineConfirmed(line, mk) { return !!(line && line.confirmations && line.confirmations[mk]); }
+// Effective: a lone migrated line also reflects a legacy client-level confirm.
+function lineConfirmedEff(L, line, mk) {
+  if (lineConfirmed(line, mk)) return true;
+  if (activeLines(L).length === 1 && isConfirmed(L, mk)) return true;
+  return false;
+}
+function syncClientConfirmation(L, mk) {
+  var b = ensureBilling(L);
+  var sum = 0;
+  clientLines(L).forEach(function(ln){ if (ln.active && lineConfirmed(ln, mk)) sum += lineTotal(ln); });
+  if (sum > 0) b.confirmations[mk] = { amount: sum, at: new Date().toISOString() };
+  else if (b.confirmations) delete b.confirmations[mk];
+  b.paid = isConfirmed(L, currentMonthKey());   // derived compat field
+}
+function confirmLine(L, line, mk) {
+  if (lineTotal(line) <= 0) return false;   // $0 guard
+  if (!line.confirmations) line.confirmations = {};
+  line.confirmations[mk] = { amount: lineTotal(line), at: new Date().toISOString() };
+  syncClientConfirmation(L, mk);
+  return true;
+}
+function unconfirmLine(L, line, mk) {
+  if (line.confirmations) delete line.confirmations[mk];
+  syncClientConfirmation(L, mk);
+}
+// Client status across all active lines (payment-based, scoped to mk).
+function clientStatus(L, mk) {
+  var lines = activeLines(L);
+  if (!lines.length || clientTotal(L) <= 0) return { status: 'Setup', cls: 'open' };
+  var confN = 0;
+  lines.forEach(function(ln){ if (lineConfirmedEff(L, ln, mk)) confN++; });
+  if (confN === lines.length) return { status: 'Confirmed', cls: 'won' };
+  if (confN > 0) return { status: 'Partial', cls: 'open' };
+  return { status: 'Unpaid', cls: 'lost' };
+}
+// Type → chip color (reuses declared palette; unknown types fall to --open).
+function lineTypeColor(type) {
+  var t = (type || '').toLowerCase();
+  if (t.indexOf('online') >= 0) return 'var(--purple)';
+  if (t.indexOf('in-person') >= 0 || t.indexOf('in person') >= 0) return 'var(--accent)';
+  if (t.indexOf('group') >= 0) return 'var(--won)';
+  if (t.indexOf('nutrition') >= 0) return 'var(--warm)';
+  return 'var(--open)';
 }
 
 // ===== Per-month revenue confirmations (replaces the lifetime "Paid" flag) =====
@@ -1805,15 +1904,15 @@ function isProjectedActive(L, mk) {
 function projectedForClientMonth(L, mk) {
   var b = ensureBilling(L);
   // Current month is pinned to the live dashboard figure (auto-carry only).
-  if (mk === currentMonthKey()) return b.active ? leadTotal(L) : 0;
+  if (mk === currentMonthKey()) return b.active ? clientTotal(L) : 0;
   var p = b.projections && b.projections[mk];
   if (p) {
     if (p.active === false) return 0;
     if (typeof p.amount === 'number') return p.amount;
     if (typeof p.sessions === 'number' && typeof p.rate === 'number') return (p.sessions || 0) * (p.rate || 0);
-    return b.active ? leadTotal(L) : 0;   // entry exists but no explicit amount → auto-carry
+    return b.active ? clientTotal(L) : 0;   // entry exists but no explicit amount → auto-carry
   }
-  return b.active ? leadTotal(L) : 0;      // no entry → auto-carry
+  return b.active ? clientTotal(L) : 0;      // no entry → auto-carry
 }
 function projectedRevenueForMonth(mk) {
   var total = 0, seen = {};
@@ -3827,6 +3926,7 @@ function viewToggleWrap(leads) {
 var acSelectedMonth = null;   // "YYYY-MM" — month the dashboard + table are scoped to
 var acView = 'current';       // 'current' (dashboard+table) | 'projections' (forecast planner)
 var acProjMonths = 6;         // how many FUTURE months the projections planner shows (3 or 6)
+var acExpandedRows = {};      // transient: { clientName: true } for expanded service-line panels
 
 function renderActiveClientsV2() {
   var main = $("main");
@@ -3842,11 +3942,15 @@ function renderActiveClientsV2() {
 
   // ---- KPIs (all money via helpers — never hand-summed) ----
   var confirmed = confirmedRevenueForMonth(mk);
-  var projected = clients.reduce(function(s, L){ return s + leadTotal(L); }, 0);
+  var projected = clients.reduce(function(s, L){ return s + clientTotal(L); }, 0);   // combined line totals
   var outstanding = projected - confirmed;
   var clientCount = clients.length;
   var avg = clientCount ? Math.round(projected / clientCount) : 0;
-  var sessionsPurchased = clients.reduce(function(s, L){ return s + ((L.billing && L.billing.sessions) || 0); }, 0);
+  // Recurring = sum of flat monthly-fee (recurring-style) active lines — predictable revenue.
+  var recurring = clients.reduce(function(s, L){
+    return s + activeLines(L).reduce(function(t, ln){ return t + (ln.billingStyle === 'recurring' ? lineTotal(ln) : 0); }, 0);
+  }, 0);
+  var byType = revenueByType(mk);   // { type: $ } — whatever types actually exist
 
   function tile(label, value, valStyle, sub){
     return '<div class="billing-mini-stat" style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;">' +
@@ -3855,13 +3959,18 @@ function renderActiveClientsV2() {
       (sub ? '<div style="font-size:10px;color:var(--muted);margin-top:3px;">' + sub + '</div>' : '') +
     '</div>';
   }
+  // Per-type tiles: render whatever types are present (no hardcoded list, no synthetic Hybrid).
+  var typeTiles = Object.keys(byType).sort().map(function(type){
+    return tile(escapeHtml(type), fmt$(byType[type]), 'color:' + lineTypeColor(type) + ';');
+  }).join('');
   var kpis = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px;">' +
     tile('Active Clients', clientCount, '') +
+    tile('Total Monthly', fmt$(projected), 'color:var(--accent);') +
     tile('Confirmed · ' + escapeHtml(mkLabel), fmt$(confirmed), 'color:var(--won);') +
-    tile('Projected', fmt$(projected), 'color:var(--accent);') +
     tile('Outstanding', fmt$(outstanding), 'color:' + (outstanding > 0 ? 'var(--open)' : 'var(--muted)') + ';') +
     tile('Avg / Client', fmt$(avg), '') +
-    tile('Sessions Purchased', sessionsPurchased, 'color:var(--purple);') +
+    tile('Recurring (flat)', fmt$(recurring), 'color:var(--purple);', 'predictable') +
+    typeTiles +
     tile('Sessions Completed', '&mdash;', 'color:var(--muted);', 'coming soon') +
   '</div>';
 
@@ -3892,8 +4001,8 @@ function renderActiveClientsV2() {
     return;
   }
 
-  // ---- Client table (CSS-grid rows; no <table> styles exist in the app) ----
-  var col = 'grid-template-columns:1.6fr 1.4fr 0.8fr 1fr 1.15fr 1.15fr 0.95fr;';
+  // ---- Client table (Design 2: expandable service lines; CSS-grid rows) ----
+  var col = 'grid-template-columns:36px 2fr 1.1fr 1fr;';
   var tableSection;
   if (!clientCount) {
     tableSection = '<div class="empty"><div class="empty-icon">💼</div>' +
@@ -3901,54 +4010,65 @@ function renderActiveClientsV2() {
       'Close a deal (mark a lead <b>Closed Won</b>), then open the lead and toggle <b>Active Client</b> in the Billing section to start tracking revenue.</div>';
   } else {
     var head = '<div style="display:grid;' + col + 'gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;">' +
-      '<div>Client</div><div>Sessions</div><div>Rate</div><div>Projected</div><div>Confirm</div><div>Last Contact</div><div>Status</div>' +
+      '<div></div><div>Client</div><div style="text-align:right;">Monthly Total</div><div>Status</div>' +
     '</div>';
+
+    function chip(type){
+      return '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;color:' + lineTypeColor(type) + ';background:var(--panel-2);border:1px solid var(--border);">' + escapeHtml(type) + '</span>';
+    }
+    function stylePill(style){
+      var label = style === 'recurring' ? 'Recurring' : 'Package';
+      return '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);white-space:nowrap;">' + label + '</span>';
+    }
+
     var body = clients.map(function(L){
-      var b = ensureBilling(L);
-      var amt = leadTotal(L);
-      var conf = isConfirmed(L, mk);
-      var canConfirm = amt > 0;
       var nm = L.name || '(no name)';
       var initials = (nm.trim().split(/\s+/).map(function(w){ return w.charAt(0); }).join('').slice(0,2) || '?').toUpperCase();
+      var lines = activeLines(L);
+      var st = clientStatus(L, mk);
+      var open = !!acExpandedRows[nm];
+      var chips = lines.length ? lines.map(function(ln){ return chip(ln.type || 'Other'); }).join(' ') : '<span style="font-size:11px;color:var(--muted);">No service lines</span>';
 
-      // Sessions bar (lifetime used / purchased — real data, not monthly completed)
-      var total = b.sessions || 0, used = b.sessionsUsed || 0;
-      var pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-      var fillClass = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
-      var sessCell = total > 0
-        ? '<div><div class="session-bar" style="margin-bottom:4px;"><div class="session-bar-fill ' + fillClass + '" style="width:' + pct + '%"></div></div>' +
-          '<div style="font-size:11px;color:var(--muted);">' + used + ' / ' + total + ' used</div></div>'
-        : '<span style="color:var(--muted);font-size:12px;">&mdash;</span>';
-
-      var lastAt = leadLastContactAt(L);   // used by the Last Contact column below
-      // Status pill: payment-based for the selected month (mk).
-      var status, cls;
-      if (conf) { status = 'Confirmed'; cls = 'won'; }            // confirmed for this month
-      else if (!canConfirm) { status = 'Setup'; cls = 'open'; }   // no rate/sessions yet
-      else { status = 'Unpaid'; cls = 'lost'; }                   // has an amount, not confirmed
-
-      return '<div class="acv2-row" data-name="' + escapeAttr(nm) + '" style="display:grid;' + col + 'gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+      var row = '<div class="acv2-row" data-name="' + escapeAttr(nm) + '" style="display:grid;' + col + 'gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+        '<button class="acv2-caret" data-name="' + escapeAttr(nm) + '" onclick="event.stopPropagation();" style="background:transparent;border:none;color:var(--muted);font-size:13px;cursor:pointer;width:24px;height:24px;">' + (open ? '&#9662;' : '&#9656;') + '</button>' +
         '<div style="display:flex;align-items:center;gap:10px;min-width:0;">' +
           '<div style="width:30px;height:30px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text);flex-shrink:0;">' + escapeHtml(initials) + '</div>' +
           '<div style="min-width:0;"><div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
-          (b.package ? '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(b.package) + '</div>' : '') + '</div>' +
+            '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;">' + chips + '</div></div>' +
         '</div>' +
-        sessCell +
-        '<div style="font-size:13px;">' + (b.rate ? fmt$(b.rate) : '<span style="color:var(--muted);">&mdash;</span>') + '</div>' +
-        '<div style="font-size:13px;font-weight:600;">' + fmt$(amt) + '</div>' +
-        '<div class="acv2-confirm-cell" onclick="event.stopPropagation();">' +
-          '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;cursor:' + (canConfirm ? 'pointer' : 'not-allowed') + ';color:' + (conf ? 'var(--won)' : (canConfirm ? 'var(--text)' : 'var(--muted)')) + ';">' +
-            '<input type="checkbox" class="acv2-confirm" data-name="' + escapeAttr(nm) + '" ' + (conf ? 'checked' : '') + (canConfirm ? '' : ' disabled') + '> ' +
-            (conf ? 'Confirmed' : (canConfirm ? 'Confirm' : 'No rate')) +
-          '</label>' +
-        '</div>' +
-        '<div style="font-size:12px;color:var(--muted);" title="' + (lastAt ? escapeAttr(timeAgo(lastAt)) : '') + '">' + (lastAt ? escapeHtml(formatDateTime(lastAt)) : 'Never') + '</div>' +
-        '<div><span class="badge ' + cls + '">' + status + '</span></div>' +
+        '<div style="font-size:14px;font-weight:700;text-align:right;">' + fmt$(clientTotal(L)) + '</div>' +
+        '<div><span class="badge ' + st.cls + '">' + st.status + '</span></div>' +
       '</div>';
+
+      if (!open) return row;
+
+      // Expanded panel: one row per active service line (full-width, not in the grid).
+      var lineRows = lines.length ? lines.map(function(ln){
+        var lt = lineTotal(ln);
+        var lconf = lineConfirmedEff(L, ln, mk);
+        var canC = lt > 0;
+        var detail = ln.billingStyle === 'recurring'
+          ? fmt$(ln.monthlyFee || 0) + ' / mo'
+          : (ln.sessions || 0) + ' × ' + fmt$(ln.rate || 0) + ' · ' + (ln.sessionsUsed || 0) + '/' + (ln.sessions || 0) + ' used';
+        var lstatus = lconf ? 'Confirmed' : (canC ? 'Unpaid' : 'Setup');
+        var lcls = lconf ? 'won' : (canC ? 'lost' : 'open');
+        return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px 9px 54px;border-bottom:1px dashed var(--border);">' +
+          chip(ln.type || 'Other') + stylePill(ln.billingStyle) +
+          '<span style="font-size:12px;color:var(--muted);">' + detail + '</span>' +
+          '<span style="margin-left:auto;font-size:13px;font-weight:600;">' + fmt$(lt) + '</span>' +
+          '<label class="acv2-confirm-cell" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;cursor:' + (canC ? 'pointer' : 'not-allowed') + ';color:' + (lconf ? 'var(--won)' : (canC ? 'var(--text)' : 'var(--muted)')) + ';" onclick="event.stopPropagation();">' +
+            '<input type="checkbox" class="svc-line-confirm" data-name="' + escapeAttr(nm) + '" data-lineid="' + escapeAttr(ln.id) + '" ' + (lconf ? 'checked' : '') + (canC ? '' : ' disabled') + '> ' + (lconf ? 'Confirmed' : (canC ? 'Confirm' : 'No amount')) +
+          '</label>' +
+          '<span class="badge ' + lcls + '">' + lstatus + '</span>' +
+        '</div>';
+      }).join('') : '<div style="padding:9px 14px 9px 54px;color:var(--muted);font-size:12px;border-bottom:1px dashed var(--border);">No service lines yet — open the lead to add one.</div>';
+
+      var panel = '<div style="background:var(--bg);">' + lineRows + '</div>';
+      return row + panel;
     }).join('');
 
     tableSection = '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow-x:auto;">' +
-      '<div style="min-width:760px;">' + head + body + '</div></div>';
+      '<div style="min-width:560px;">' + head + body + '</div></div>';
   }
 
   // ---- Closed Won · Ready to Set Up (keeps the promote workflow accessible) ----
@@ -3972,19 +4092,31 @@ function renderActiveClientsV2() {
 
   main.querySelectorAll('.acv2-row').forEach(function(row){
     row.addEventListener('click', function(e){
-      if (e.target.closest('.acv2-confirm-cell')) return;   // confirm control handles itself
+      if (e.target.closest('.acv2-caret') || e.target.closest('.acv2-confirm-cell')) return;   // controls handle themselves
       openLead(row.dataset.name);
     });
   });
 
-  main.querySelectorAll('.acv2-confirm').forEach(function(cb){
+  // Caret → expand/collapse the service-line panel (transient).
+  main.querySelectorAll('.acv2-caret').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var nm = btn.dataset.name;
+      if (acExpandedRows[nm]) delete acExpandedRows[nm]; else acExpandedRows[nm] = true;
+      renderActiveClientsV2();
+    });
+  });
+
+  // Per-line confirm (writes the line's month-map + re-syncs the client rollup).
+  main.querySelectorAll('.svc-line-confirm').forEach(function(cb){
     cb.addEventListener('change', function(){
       var L = LEADS.find(function(x){ return (x.name || '') === cb.dataset.name; });
       if (!L) return;
+      var line = clientLines(L).find(function(ln){ return String(ln.id) === cb.dataset.lineid; });
+      if (!line) return;
       if (cb.checked) {
-        if (!confirmMonth(L, acSelectedMonth)) { cb.checked = false; return; }   // $0 guard
+        if (!confirmLine(L, line, acSelectedMonth)) { cb.checked = false; return; }   // $0 guard
       } else {
-        unconfirmMonth(L, acSelectedMonth);
+        unconfirmLine(L, line, acSelectedMonth);
       }
       saveState();
       if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
@@ -4006,6 +4138,80 @@ function wireActiveV2Toggle() {
   var p = document.getElementById('acv2-tab-proj');
   if (c) c.addEventListener('click', function(){ acView = 'current'; renderActiveClientsV2(); });
   if (p) p.addEventListener('click', function(){ acView = 'projections'; renderActiveClientsV2(); });
+}
+
+// ---- Service-lines editor (lightweight; lives in the lead modal's Billing section) ----
+// Lets you add / edit / remove service lines to exercise the multi-line model.
+// Writes directly to L.billing.serviceLines and persists via saveState().
+var SVC_LINE_TYPES = ['In-Person','Online','Group','Nutrition'];
+function renderServiceLinesEditor(L) {
+  var mount = document.getElementById('svc-lines-mount');
+  if (!mount) return;
+  var b = ensureBilling(L);
+  var lines = b.serviceLines;
+
+  var datalist = '<datalist id="svc-type-list">' + SVC_LINE_TYPES.map(function(t){ return '<option value="' + escapeAttr(t) + '">'; }).join('') + '</datalist>';
+
+  var cards = lines.map(function(ln, i){
+    var isRec = ln.billingStyle === 'recurring';
+    var fields = isRec
+      ? '<div class="billing-field"><label>Monthly Fee ($)</label><input type="number" class="svc-f" data-i="' + i + '" data-k="monthlyFee" name="svc-fee-' + i + '" value="' + (ln.monthlyFee || 0) + '" min="0"></div>'
+      : '<div class="billing-field"><label>Sessions</label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessions" name="svc-sess-' + i + '" value="' + (ln.sessions || 0) + '" min="0"></div>' +
+        '<div class="billing-field"><label>Used</label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessionsUsed" name="svc-used-' + i + '" value="' + (ln.sessionsUsed || 0) + '" min="0"></div>' +
+        '<div class="billing-field"><label>Rate ($)</label><input type="number" class="svc-f" data-i="' + i + '" data-k="rate" name="svc-rate-' + i + '" value="' + (ln.rate || 0) + '" min="0"></div>';
+    return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;background:var(--panel-2);">' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">' +
+        '<div class="billing-field" style="flex:1;min-width:130px;"><label>Type</label><input type="text" class="svc-f" data-i="' + i + '" data-k="type" name="svc-type-' + i + '" list="svc-type-list" value="' + escapeAttr(ln.type || '') + '"></div>' +
+        '<div class="billing-field"><label>Billing</label><select class="svc-f" data-i="' + i + '" data-k="billingStyle" name="svc-style-' + i + '"><option value="package"' + (isRec ? '' : ' selected') + '>Package</option><option value="recurring"' + (isRec ? ' selected' : '') + '>Recurring</option></select></div>' +
+        '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;"><input type="checkbox" class="svc-active" data-i="' + i + '" ' + (ln.active ? 'checked' : '') + '> Active</label>' +
+      '</div>' +
+      '<div class="billing-grid">' + fields + '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">' +
+        '<span style="font-size:12px;color:var(--muted);">Line total: <b style="color:var(--text);">' + fmt$(lineTotal(ln)) + '</b></span>' +
+        '<button class="svc-remove" data-i="' + i + '" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--lost);font-size:12px;padding:5px 10px;cursor:pointer;">Remove</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  mount.innerHTML = datalist +
+    '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">' +
+      '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">Service Lines <span style="color:var(--muted);font-weight:400;">(new multi-line model)</span></div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Combined total: <b style="color:var(--accent);">' + fmt$(clientTotal(L)) + '</b> · powers the new Active Clients view.</div>' +
+      (cards || '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">No service lines yet.</div>') +
+      '<button class="svc-add" style="background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer;">+ Add service line</button>' +
+    '</div>';
+
+  function persist(rerender){
+    saveState();
+    if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
+    if (typeof renderTabCounts === 'function') renderTabCounts();
+    if (rerender) renderServiceLinesEditor(L);
+  }
+
+  mount.querySelectorAll('.svc-f').forEach(function(el){
+    el.addEventListener('change', function(){
+      var ln = lines[+el.dataset.i]; if (!ln) return;
+      var k = el.dataset.k;
+      if (k === 'type' || k === 'billingStyle') ln[k] = el.value;
+      else ln[k] = Math.max(0, Number(el.value) || 0);
+      persist(true);   // re-render (billingStyle switch shows/hides fields; totals refresh)
+    });
+  });
+  mount.querySelectorAll('.svc-active').forEach(function(cb){
+    cb.addEventListener('change', function(){ var ln = lines[+cb.dataset.i]; if (!ln) return; ln.active = cb.checked; persist(true); });
+  });
+  mount.querySelectorAll('.svc-remove').forEach(function(btn){
+    btn.addEventListener('click', function(){ lines.splice(+btn.dataset.i, 1); persist(true); });
+  });
+  var addBtn = mount.querySelector('.svc-add');
+  if (addBtn) addBtn.addEventListener('click', function(){
+    lines.push({
+      id: (typeof uuid === 'function' ? uuid() : 'sl_' + Math.random().toString(36).slice(2)),
+      type: 'In-Person', billingStyle: 'package',
+      sessions: 0, sessionsUsed: 0, rate: 0, monthlyFee: 0, active: true, confirmations: {}
+    });
+    persist(true);
+  });
 }
 
 // ---- Projections planner: editable per-client, per-month forecast grid ----
@@ -5078,6 +5284,7 @@ function openLead(name) {
             '<span id="b-paid-hint" style="font-size:11px;color:var(--text-muted);margin-left:8px;' + (canConfirm?"display:none;":"") + '">Set a rate &amp; sessions to confirm</span>' +
           '</div>';
         })() +
+        '<div id="svc-lines-mount"></div>' +
       '</div>' +
       leadSecClose() +
       leadSecOpen('status','Deal Status') +
@@ -5267,6 +5474,8 @@ updateConfirmGate();
       lbl.textContent = "Confirm for " + currentMonthLabel();
     }
   });
+
+  renderServiceLinesEditor(L);   // service-lines editor (new multi-line billing model)
 
   document.querySelectorAll("[data-r]").forEach(function(btn){
     btn.addEventListener("click", function(){
