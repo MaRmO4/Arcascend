@@ -1766,6 +1766,10 @@ function migrateServiceLines(b) {
 }
 function leadTotal(L) {
   var b = ensureBilling(L);
+  // Service lines are the single source of truth. Sum active lines; the flat
+  // sessions×rate is only a fallback for un-migrated clients with no lines.
+  var lines = b.serviceLines || [];
+  if (lines.length) return lines.reduce(function(s, ln){ return s + lineTotal(ln); }, 0);
   return (b.sessions || 0) * (b.rate || 0);
 }
 
@@ -1775,14 +1779,19 @@ function activeLines(L) { return clientLines(L).filter(function(ln){ return ln &
 function lineTotal(line) {
   if (!line || !line.active) return 0;
   if (line.billingStyle === 'recurring') return (line.monthlyFee || 0);
+  if (line.billingStyle === 'one-time') return (line.amount || 0);   // single flat charge
   return (line.sessions || 0) * (line.rate || 0);   // 'package' (default)
 }
-// Combined monthly total across a client's active service lines. Falls back to the
-// legacy leadTotal when a client has no service lines (keeps other callers working).
-function clientTotal(L) {
-  var lines = clientLines(L);
-  if (lines && lines.length) return lines.reduce(function(s, ln){ return s + lineTotal(ln); }, 0);
-  return leadTotal(L);
+// Combined monthly total. leadTotal is now lines-based, so this is identical to it —
+// they can never drift (single body).
+function clientTotal(L) { return leadTotal(L); }
+// Total that CARRIES FORWARD to future months in the projections planner: recurring +
+// package auto-carry, but one-time is a single charge and is excluded from the carry.
+function carryTotal(L) {
+  return clientLines(L).reduce(function(s, ln){
+    if (!ln.active || ln.billingStyle === 'one-time') return s;
+    return s + lineTotal(ln);
+  }, 0);
 }
 // { "In-Person": $, "Online": $, ... } — line totals summed by type over active clients.
 function revenueByType(mk) {
@@ -1840,9 +1849,9 @@ function lineTypeColor(type) {
   var t = (type || '').toLowerCase();
   if (t.indexOf('online') >= 0) return 'var(--purple)';
   if (t.indexOf('in-person') >= 0 || t.indexOf('in person') >= 0) return 'var(--accent)';
-  if (t.indexOf('group') >= 0) return 'var(--won)';
-  if (t.indexOf('nutrition') >= 0) return 'var(--warm)';
-  return 'var(--open)';
+  if (t.indexOf('group') >= 0) return 'var(--open)';        // Group Training → amber
+  if (t.indexOf('nutrition') >= 0) return 'var(--won)';     // Nutrition Coaching → green
+  return 'var(--muted)';                                    // Other / custom → grey
 }
 
 // ===== Per-month revenue confirmations (replaces the lifetime "Paid" flag) =====
@@ -1910,9 +1919,9 @@ function projectedForClientMonth(L, mk) {
     if (p.active === false) return 0;
     if (typeof p.amount === 'number') return p.amount;
     if (typeof p.sessions === 'number' && typeof p.rate === 'number') return (p.sessions || 0) * (p.rate || 0);
-    return b.active ? clientTotal(L) : 0;   // entry exists but no explicit amount → auto-carry
+    return b.active ? carryTotal(L) : 0;   // future auto-carry (excludes one-time)
   }
-  return b.active ? clientTotal(L) : 0;      // no entry → auto-carry
+  return b.active ? carryTotal(L) : 0;      // future auto-carry (excludes one-time)
 }
 function projectedRevenueForMonth(mk) {
   var total = 0, seen = {};
@@ -3152,38 +3161,7 @@ function renderTabCounts() {
 // ==========================================================
 // LEAD CARD
 // ==========================================================
-function sessionProgressBar(L) {
-  var b = L.billing || {};
-  if (!b.active || !b.sessions) return '';
-  var total = b.sessions || 0;
-  var used = b.sessionsUsed || 0;
-  var remaining = Math.max(0, total - used);
-  var pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-  var fillClass = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
-  var safeName = (L.name||'').replace(/"/g,'&quot;');
-  return '<div class="session-progress">' +
-    '<div class="session-progress-label">Sessions Used <span>' + used + ' / ' + total + '</span></div>' +
-    '<div class="session-bar"><div class="session-bar-fill ' + fillClass + '" style="width:' + pct + '%"></div></div>' +
-    '<div class="session-counter">' +
-    '<button class="session-counter-btn" onclick="event.stopPropagation();adjustSessions(\'' + safeName + '\',-1)">−</button>' +
-    '<div class="session-counter-num">' + remaining + '</div>' +
-    '<button class="session-counter-btn" onclick="event.stopPropagation();adjustSessions(\'' + safeName + '\',1)">+</button>' +
-    '</div>' +
-    '<div class="session-remaining">' + remaining + ' session' + (remaining !== 1 ? 's' : '') + ' remaining</div>' +
-    '</div>';
-}
-
-function adjustSessions(name, delta) {
-  var L = LEADS.find(function(l) { return l.name === name; });
-  if (!L || !L.billing) return;
-  var current = L.billing.sessionsUsed || 0;
-  var newVal = Math.max(0, Math.min(L.billing.sessions || 0, current + delta));
-  if (newVal === current) return;
-  L.billing.sessionsUsed = newVal;
-  logActivity(L, 'note', delta > 0 ? '✅ Session completed (' + newVal + '/' + L.billing.sessions + ')' : '↩️ Session removed (' + newVal + '/' + L.billing.sessions + ')');
-  saveState();
-  renderAll();
-}
+// Session countdown UI retired — sessions now live per service line.
 function leadCard(L) {
   var b = ensureBilling(L);
   var sc = b.active ? "active-client" : statusClass(L.status);
@@ -3202,9 +3180,9 @@ function leadCard(L) {
 
   var billingBlock = b.active ?
     '<div class="billing-mini">' +
-      '<div class="billing-mini-stat"><div class="billing-mini-label">Sessions</div><div class="billing-mini-value sess">' + (b.sessions || 0) + '</div></div>' +
-      '<div class="billing-mini-stat"><div class="billing-mini-label">Rate</div><div class="billing-mini-value">' + fmt$(b.rate || 0) + '</div></div>' +
-      '<div class="billing-mini-stat"><div class="billing-mini-label">Total</div><div class="billing-mini-value total">' + fmt$(leadTotal(L)) + '</div></div>' +
+      '<div class="billing-mini-stat"><div class="billing-mini-label">Service Lines</div><div class="billing-mini-value sess">' + activeLines(L).length + '</div></div>' +
+      '<div class="billing-mini-stat"><div class="billing-mini-label">Confirmed</div><div class="billing-mini-value">' + fmt$(confirmedAmount(L, currentMonthKey())) + '</div></div>' +
+      '<div class="billing-mini-stat"><div class="billing-mini-label">Monthly</div><div class="billing-mini-value total">' + fmt$(clientTotal(L)) + '</div></div>' +
     '</div>' : '';
 
   var nextBlock = nt ?
@@ -3235,7 +3213,6 @@ function leadCard(L) {
       (L.consultStatus ? '<span class="meta-chip" style="background:rgba(167,139,250,0.15);color:var(--purple);">' + consultIcon(L.consultStatus) + ' ' + L.consultStatus + '</span>' : '') +
     '</div>' +
    billingBlock +
-sessionProgressBar(L) +
 '<div class="quick-actions">' +
 '<button class="qa-btn" data-qa="note" data-name="' + safeName + '">📝 Note</button>' +
 '<button class="qa-btn" data-qa="task" data-name="' + safeName + '">✅ Task</button>' +
@@ -4017,7 +3994,7 @@ function renderActiveClientsV2() {
       return '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;color:' + lineTypeColor(type) + ';background:var(--panel-2);border:1px solid var(--border);">' + escapeHtml(type) + '</span>';
     }
     function stylePill(style){
-      var label = style === 'recurring' ? 'Recurring' : 'Package';
+      var label = style === 'recurring' ? 'Recurring' : (style === 'one-time' ? 'One-time' : 'Package');
       return '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);white-space:nowrap;">' + label + '</span>';
     }
 
@@ -4049,7 +4026,9 @@ function renderActiveClientsV2() {
         var canC = lt > 0;
         var detail = ln.billingStyle === 'recurring'
           ? fmt$(ln.monthlyFee || 0) + ' / mo'
-          : (ln.sessions || 0) + ' × ' + fmt$(ln.rate || 0) + ' · ' + (ln.sessionsUsed || 0) + '/' + (ln.sessions || 0) + ' used';
+          : ln.billingStyle === 'one-time'
+            ? fmt$(ln.amount || 0) + ' one-time'
+            : (ln.sessions || 0) + ' × ' + fmt$(ln.rate || 0) + ' · ' + (ln.sessionsUsed || 0) + '/' + (ln.sessions || 0) + ' used';
         var lstatus = lconf ? 'Confirmed' : (canC ? 'Unpaid' : 'Setup');
         var lcls = lconf ? 'won' : (canC ? 'lost' : 'open');
         return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px 9px 54px;border-bottom:1px dashed var(--border);">' +
@@ -4143,26 +4122,48 @@ function wireActiveV2Toggle() {
 // ---- Service-lines editor (lightweight; lives in the lead modal's Billing section) ----
 // Lets you add / edit / remove service lines to exercise the multi-line model.
 // Writes directly to L.billing.serviceLines and persists via saveState().
-var SVC_LINE_TYPES = ['In-Person','Online','Group','Nutrition'];
+var SVC_PRESETS = [
+  { v: 'In-Person',          l: 'In Person' },
+  { v: 'Online',             l: 'Online' },
+  { v: 'Group Training',     l: 'Group Training' },
+  { v: 'Nutrition Coaching', l: 'Nutrition Coaching' }
+];
+var SVC_PRESET_VALUES = SVC_PRESETS.map(function(p){ return p.v; });
+// Auto-suggested billing style per preset type (overridable by the user afterward).
+var SVC_STYLE_BY_TYPE = { 'In-Person': 'package', 'Online': 'recurring', 'Group Training': 'package', 'Nutrition Coaching': 'recurring' };
 function renderServiceLinesEditor(L) {
   var mount = document.getElementById('svc-lines-mount');
   if (!mount) return;
   var b = ensureBilling(L);
   var lines = b.serviceLines;
 
-  var datalist = '<datalist id="svc-type-list">' + SVC_LINE_TYPES.map(function(t){ return '<option value="' + escapeAttr(t) + '">'; }).join('') + '</datalist>';
-
   var cards = lines.map(function(ln, i){
-    var isRec = ln.billingStyle === 'recurring';
-    var fields = isRec
+    var style = ln.billingStyle || 'package';
+    var fields = style === 'recurring'
       ? '<div class="billing-field"><label>Monthly Fee ($)</label><input type="number" class="svc-f" data-i="' + i + '" data-k="monthlyFee" name="svc-fee-' + i + '" value="' + (ln.monthlyFee || 0) + '" min="0"></div>'
-      : '<div class="billing-field"><label>Sessions</label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessions" name="svc-sess-' + i + '" value="' + (ln.sessions || 0) + '" min="0"></div>' +
-        '<div class="billing-field"><label>Used</label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessionsUsed" name="svc-used-' + i + '" value="' + (ln.sessionsUsed || 0) + '" min="0"></div>' +
-        '<div class="billing-field"><label>Rate ($)</label><input type="number" class="svc-f" data-i="' + i + '" data-k="rate" name="svc-rate-' + i + '" value="' + (ln.rate || 0) + '" min="0"></div>';
+      : style === 'one-time'
+        ? '<div class="billing-field"><label>Amount ($) <span style="color:var(--muted);font-weight:400;">(charged once)</span></label><input type="number" class="svc-f" data-i="' + i + '" data-k="amount" name="svc-amt-' + i + '" value="' + (ln.amount || 0) + '" min="0"></div>'
+        : '<div class="billing-field"><label>Sessions</label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessions" name="svc-sess-' + i + '" value="' + (ln.sessions || 0) + '" min="0"></div>' +
+          '<div class="billing-field"><label>Used</label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessionsUsed" name="svc-used-' + i + '" value="' + (ln.sessionsUsed || 0) + '" min="0"></div>' +
+          '<div class="billing-field"><label>Rate ($)</label><input type="number" class="svc-f" data-i="' + i + '" data-k="rate" name="svc-rate-' + i + '" value="' + (ln.rate || 0) + '" min="0"></div>';
+
+    var isPreset = SVC_PRESET_VALUES.indexOf(ln.type) >= 0;
+    var typeSel = '<select class="svc-type-sel" data-i="' + i + '" name="svc-type-' + i + '">' +
+      SVC_PRESETS.map(function(p){ return '<option value="' + escapeAttr(p.v) + '"' + (isPreset && ln.type === p.v ? ' selected' : '') + '>' + escapeHtml(p.l) + '</option>'; }).join('') +
+      '<option value="Other"' + (!isPreset ? ' selected' : '') + '>Other…</option>' +
+    '</select>';
+    var customInput = !isPreset
+      ? '<input type="text" class="svc-type-custom" data-i="' + i + '" name="svc-custom-' + i + '" placeholder="Custom label" value="' + escapeAttr(ln.type || '') + '" style="margin-top:6px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 9px;color:var(--text);font-size:13px;box-sizing:border-box;">'
+      : '';
+
     return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;background:var(--panel-2);">' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">' +
-        '<div class="billing-field" style="flex:1;min-width:130px;"><label>Type</label><input type="text" class="svc-f" data-i="' + i + '" data-k="type" name="svc-type-' + i + '" list="svc-type-list" value="' + escapeAttr(ln.type || '') + '"></div>' +
-        '<div class="billing-field"><label>Billing</label><select class="svc-f" data-i="' + i + '" data-k="billingStyle" name="svc-style-' + i + '"><option value="package"' + (isRec ? '' : ' selected') + '>Package</option><option value="recurring"' + (isRec ? ' selected' : '') + '>Recurring</option></select></div>' +
+        '<div class="billing-field" style="flex:1;min-width:150px;"><label>Type</label>' + typeSel + customInput + '</div>' +
+        '<div class="billing-field"><label>Billing</label><select class="svc-style-sel" data-i="' + i + '" name="svc-style-' + i + '">' +
+          '<option value="package"' + (style === 'package' ? ' selected' : '') + '>Package</option>' +
+          '<option value="recurring"' + (style === 'recurring' ? ' selected' : '') + '>Recurring</option>' +
+          '<option value="one-time"' + (style === 'one-time' ? ' selected' : '') + '>One-time</option>' +
+        '</select></div>' +
         '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;"><input type="checkbox" class="svc-active" data-i="' + i + '" ' + (ln.active ? 'checked' : '') + '> Active</label>' +
       '</div>' +
       '<div class="billing-grid">' + fields + '</div>' +
@@ -4173,7 +4174,7 @@ function renderServiceLinesEditor(L) {
     '</div>';
   }).join('');
 
-  mount.innerHTML = datalist +
+  mount.innerHTML =
     '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">' +
       '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">Service Lines <span style="color:var(--muted);font-weight:400;">(new multi-line model)</span></div>' +
       '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Combined total: <b style="color:var(--accent);">' + fmt$(clientTotal(L)) + '</b> · powers the new Active Clients view.</div>' +
@@ -4185,16 +4186,54 @@ function renderServiceLinesEditor(L) {
     saveState();
     if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
     if (typeof renderTabCounts === 'function') renderTabCounts();
+    // Keep the modal's "Total This Month" + confirm gate in sync with the lines.
+    var tot = document.getElementById('b-total');
+    if (tot) tot.textContent = fmt$(clientTotal(L));
+    var box = document.getElementById('b-paid');
+    if (box) {
+      var canConfirm = clientTotal(L) > 0;
+      box.disabled = !canConfirm;
+      var hint = document.getElementById('b-paid-hint');
+      if (hint) hint.style.display = canConfirm ? 'none' : '';
+    }
     if (rerender) renderServiceLinesEditor(L);
   }
 
+  // Numeric fields (sessions/used/rate/monthlyFee/amount).
   mount.querySelectorAll('.svc-f').forEach(function(el){
     el.addEventListener('change', function(){
       var ln = lines[+el.dataset.i]; if (!ln) return;
-      var k = el.dataset.k;
-      if (k === 'type' || k === 'billingStyle') ln[k] = el.value;
-      else ln[k] = Math.max(0, Number(el.value) || 0);
-      persist(true);   // re-render (billingStyle switch shows/hides fields; totals refresh)
+      ln[el.dataset.k] = Math.max(0, Number(el.value) || 0);
+      persist(true);
+    });
+  });
+  // Type dropdown: preset → set type + auto-suggest billing style; "Other" → custom input.
+  mount.querySelectorAll('.svc-type-sel').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var ln = lines[+sel.dataset.i]; if (!ln) return;
+      if (sel.value === 'Other') {
+        if (SVC_PRESET_VALUES.indexOf(ln.type) >= 0) ln.type = '';   // switch to a blank custom label
+      } else {
+        ln.type = sel.value;
+        if (SVC_STYLE_BY_TYPE[sel.value]) ln.billingStyle = SVC_STYLE_BY_TYPE[sel.value];   // suggest (overridable)
+      }
+      persist(true);
+    });
+  });
+  // Custom "Other" label text.
+  mount.querySelectorAll('.svc-type-custom').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var ln = lines[+inp.dataset.i]; if (!ln) return;
+      ln.type = (inp.value || '').trim();
+      persist(true);
+    });
+  });
+  // Billing-style dropdown (Package / Recurring / One-time) — user override.
+  mount.querySelectorAll('.svc-style-sel').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var ln = lines[+sel.dataset.i]; if (!ln) return;
+      ln.billingStyle = sel.value;
+      persist(true);   // swaps the visible fields
     });
   });
   mount.querySelectorAll('.svc-active').forEach(function(cb){
@@ -4208,7 +4247,7 @@ function renderServiceLinesEditor(L) {
     lines.push({
       id: (typeof uuid === 'function' ? uuid() : 'sl_' + Math.random().toString(36).slice(2)),
       type: 'In-Person', billingStyle: 'package',
-      sessions: 0, sessionsUsed: 0, rate: 0, monthlyFee: 0, active: true, confirmations: {}
+      sessions: 0, sessionsUsed: 0, rate: 0, monthlyFee: 0, amount: 0, active: true, confirmations: {}
     });
     persist(true);
   });
@@ -5256,8 +5295,6 @@ function openLead(name) {
           '<label for="b-active" style="font-weight:600;cursor:pointer;">Mark as Active Client (counts toward monthly revenue)</label>' +
         '</div>' +
         '<div class="billing-grid">' +
-          '<div class="billing-field"><label>Sessions Purchased</label><input type="number" id="b-sessions" value="' + (b.sessions||0) + '" min="0"></div>' +
-          '<div class="billing-field"><label>Session Price ($)</label><input type="number" id="b-rate" value="' + (b.rate||0) + '" min="0"></div>' +
           '<div class="billing-field"><label>Package</label>' +
             '<select id="b-package">' +
               '<option value="" ' + (!b.package?"selected":"") + '>—</option>' +
@@ -5271,17 +5308,17 @@ function openLead(name) {
         '</div>' +
         '<div class="billing-total">' +
           '<div class="billing-total-label">Total This Month</div>' +
-          '<div class="billing-total-value" id="b-total">' + fmt$(leadTotal(L)) + '</div>' +
+          '<div class="billing-total-value" id="b-total">' + fmt$(clientTotal(L)) + '</div>' +
         '</div>' +
         (function(){
           var mk = currentMonthKey();
           var confirmed = isConfirmed(L, mk);
-          var canConfirm = leadTotal(L) > 0;
+          var canConfirm = clientTotal(L) > 0;
           var lbl = confirmed ? ("✓ Confirmed for " + currentMonthLabel()) : ("Confirm for " + currentMonthLabel());
           return '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (confirmed?"rgba(34,197,94,0.12)":"var(--panel)") + ';border:1px solid ' + (confirmed?"rgba(34,197,94,0.4)":"var(--border)") + ';">' +
             '<input type="checkbox" id="b-paid" ' + (confirmed?"checked":"") + (canConfirm?"":" disabled") + '>' +
             '<label for="b-paid" style="font-weight:600;cursor:' + (canConfirm?"pointer":"not-allowed") + ';color:' + (confirmed?"var(--won)":(canConfirm?"var(--text)":"var(--text-muted)")) + ';">' + lbl + '</label>' +
-            '<span id="b-paid-hint" style="font-size:11px;color:var(--text-muted);margin-left:8px;' + (canConfirm?"display:none;":"") + '">Set a rate &amp; sessions to confirm</span>' +
+            '<span id="b-paid-hint" style="font-size:11px;color:var(--text-muted);margin-left:8px;' + (canConfirm?"display:none;":"") + '">Add a service line to confirm</span>' +
           '</div>';
         })() +
         '<div id="svc-lines-mount"></div>' +
@@ -5396,18 +5433,13 @@ saveState(); renderAll(); openLead(name);
     showToast("🗑 Lead deleted: " + L.name, "error");
   });
 
+  // Total + confirm gate derive from the service lines (single source of truth).
   function updateTotal() {
-    var s = parseInt($("b-sessions").value || "0");
-    var r = parseInt($("b-rate").value || "0");
-    $("b-total").textContent = fmt$(s * r);
+    var el = $("b-total");
+    if (el) el.textContent = fmt$(clientTotal(L));
   }
-  // Live-recompute the confirm gate from CURRENT input values, mirroring the render-time
-  // condition exactly (render uses canConfirm = leadTotal(L) > 0, i.e. sessions*rate > 0).
-  // Keeps #b-paid.disabled + the hint in sync as the user types/toggles — no reopen needed.
   function updateConfirmGate() {
-    var s = parseInt($("b-sessions").value || "0");
-    var r = parseInt($("b-rate").value || "0");
-    var canConfirm = (s * r) > 0;
+    var canConfirm = clientTotal(L) > 0;
     var box = $("b-paid");
     if (!box) return;
     var confirmed = isConfirmed(L, currentMonthKey());
@@ -5427,22 +5459,6 @@ if (b.active) logEvent('active_client_marked', L.name, {});
 saveState(); renderAll();
 updateTotal();
 updateConfirmGate();
-  });
-  $("b-sessions").addEventListener("input", function(e){
-    b.sessions = parseInt(e.target.value || "0");
-    updateTotal();
-    updateConfirmGate();
-    saveState();
-    renderRevenueBanner();
-    renderTabCounts();
-  });
-  $("b-rate").addEventListener("input", function(e){
-    b.rate = parseInt(e.target.value || "0");
-    updateTotal();
-    updateConfirmGate();
-    saveState();
-    renderRevenueBanner();
-    renderTabCounts();
   });
   $("b-package").addEventListener("change", function(e){
     b.package = e.target.value;
@@ -6094,16 +6110,8 @@ if (lead.status === 'Closed Won' || lead.status === 'Closed Lost') return;
     }
   });
 
-  // Low sessions — filter active clients from LEADS
-  (LEADS || []).filter(function(l) { return l.billing && l.billing.active === true; }).forEach(function(client) {
-    var total = (client.billing && client.billing.sessions) || 0;
-    var paid = (client.billing && client.billing.paid) ? 1 : 0;
-    var used = client.sessionsUsed || client.sessions_used || 0;
-    var remaining = total - used;
-    if (total > 0 && remaining / total <= 0.2) {
-      reminders.push({ name: client.name, meta: remaining + ' session' + (remaining !== 1 ? 's' : '') + ' remaining of ' + total, badge: 'Low sessions', type: remaining === 0 ? 'urgent' : '', priority: remaining === 0 ? 2 : 1, leadId: client.id });
-    }
-  });
+  // Low-sessions reminder retired: sessions now live per service line (no single
+  // client-level sessions/used count). Can be reintroduced per-line later if wanted.
 
   if (reminders.length === 0) return '';
   reminders.sort(function(a,b) { return b.priority - a.priority; });
@@ -6140,8 +6148,7 @@ document.getElementById('main').style.display = 'none';
   return b.active === true;
 });
   var totalProjection = LEADS.reduce(function(sum, l) {
-  var b = l.billing || {};
-  return sum + ((b.sessions || 0) * (b.rate || 0));
+  return sum + (l.billing && l.billing.active ? leadTotal(l) : 0);
 }, 0);
 var totalPaid = LEADS.reduce(function(sum, l) {
   return sum + confirmedAmount(l, currentMonthKey());
@@ -6290,8 +6297,8 @@ var totalPaid = LEADS.reduce(function(sum, l) {
       var s = (l.status||'').toLowerCase();
       return !s.includes('won') && !s.includes('lost');
     });
-    var wonVal = won.reduce(function(s,l){ return s+((l.sessions||0)*(l.rate||0)); }, 0);
-    var pipeVal = pipeline.reduce(function(s,l){ return s+((l.sessions||0)*(l.rate||0)); }, 0);
+    var wonVal = won.reduce(function(s,l){ return s + leadTotal(l); }, 0);
+    var pipeVal = pipeline.reduce(function(s,l){ return s + leadTotal(l); }, 0);
     revEl.innerHTML =
       '<div class="home-task-row"><div class="home-task-dot" style="background:#22c55e;"></div>' +
         '<div><div class="home-lead-name" style="font-size:12px;">Closed Won</div>' +
@@ -8920,11 +8927,9 @@ function renderRepRevenue(body) {
   var curKey = (typeof currentMonthKey === 'function') ? currentMonthKey() : null;
   var activeC = (LEADS || []).filter(function(L){ return L.billing && L.billing.active; });
 
-  // Current-month projection (live billing) vs confirmed (from the month-map)
+  // Current-month projection (service-line totals) vs confirmed (from the month-map)
   var projection = activeC.reduce(function(acc, L){
-    var sess = parseFloat(L.billing.sessions) || 0;
-    var rate = parseFloat(L.billing.rate) || 0;
-    return acc + sess * rate;
+    return acc + (typeof leadTotal === 'function' ? leadTotal(L) : 0);
   }, 0);
   var paidNow = curKey ? CR(curKey) : 0;
   var outstanding = projection - paidNow;
