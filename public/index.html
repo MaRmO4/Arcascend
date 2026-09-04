@@ -5,10 +5,13 @@
 <head>
 <meta charset="UTF-8">
 <title>ArcAscend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
-  --bg: #0f1419; --panel: #1a2129; --panel-2: #232c36;
+  --bg: #0f1419; --panel: #1a2129; --panel-2: #232c36; --panel-3: #3a4653;
   --border: #2d3742; --text: #e6e9ed; --muted: #8b95a1;
   --accent: #4f9eff; --won: #22c55e; --lost: #ef4444;
   --open: #f59e0b; --warm: #fb923c; --purple: #a78bfa;
@@ -108,22 +111,25 @@ header { position:sticky; top:0; z-index:100;
 
 /* Nav */
 nav.tabs { position:sticky; top:0; z-index:99;
-  display: flex; background: var(--panel); border-bottom: 1px solid var(--border);
-  padding: 0 24px; gap: 4px; overflow-x: auto; flex-wrap: nowrap;
+  display: flex; align-items: center; background: var(--panel); border-bottom: 1px solid var(--border);
+  padding: 6px 24px; gap: 6px; overflow-x: auto; flex-wrap: nowrap;
 }
+/* Bold + Outlined header style (option #5) */
 .tab {
-  padding: 14px 16px; cursor: pointer; color: var(--muted);
-  font-weight: 500; border-bottom: 2px solid transparent;
+  padding: 9px 14px; cursor: pointer; color: var(--muted);
+  font-family: 'Archivo', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-weight: 700; letter-spacing: -0.005em;
+  border: 2px solid transparent; border-radius: 8px;   /* 2px transparent → no shift when active */
   transition: all 0.15s; white-space: nowrap;
   display: flex; align-items: center; gap: 8px;
 }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:hover { color: var(--text); border-color: var(--panel-3); }
+.tab.active { color: var(--text); font-weight: 800; border-color: var(--accent); background: transparent; }
 .tab .count {
-  background: var(--panel-2); padding: 2px 8px; border-radius: 10px;
-  font-size: 11px; font-weight: 600;
+  background: var(--accent); color: #fff; padding: 1px 7px; border-radius: 10px;
+  font-size: 10.5px; font-weight: 700; line-height: 1.5;
 }
-.tab.active .count { background: var(--accent); color: white; }
+.tab.active .count { background: var(--accent); color: #fff; }
 .tab.custom-tab {
   background: rgba(79,158,255,0.08); border: 1px solid rgba(79,158,255,0.25);
   border-radius: 18px; padding: 8px 12px; margin: 6px 4px 6px 0; font-size: 12px;
@@ -1117,20 +1123,21 @@ main { flex: 1; padding: 20px 24px; }
 </header>
 
 <nav class="tabs" id="tabs">
-  <div class="tab" data-tab="home">🏠 Home</div>
-  <div class="tab active" data-tab="all">⋯ All Leads <span class="count" id="c-all">0</span></div>
-  <div class="tab" data-tab="clients">💼 Active Clients <span class="count" id="c-clients">0</span></div>
-  <div class="tab" data-tab="priority">⭐ Priority <span class="count" id="c-priority">0</span></div>
-  <div class="tab" data-tab="tasks">📅 Tasks <span class="count" id="c-tasks">0</span></div>
-<div class="tab" data-tab="calendar">📆 Calendar</div>
-<div class="tab" data-tab="reports">📊 Reports</div>
-  
-  <div class="tab" data-tab="buckets">🎯 Buckets <span class="count" id="c-buckets">0</span></div>
-  <div class="tab" data-tab="sync">🔄 Sync <span class="count" id="c-sync">0</span></div>
-  
-  <div class="tab" data-tab="remaining">○ Pipeline <span class="count" id="c-remaining">0</span></div>
-  <div class="tab" data-tab="forms">📝 Create Form</div>
-  <div class="tab" data-tab="forms-library">📚 Forms <span class="count" id="c-forms-library">0</span></div>
+  <div class="tab" data-tab="home">Home</div>
+  <div class="tab active" data-tab="all">All Leads <span class="count" id="c-all">0</span></div>
+  <div class="tab" data-tab="clients">Active Clients <span class="count" id="c-clients">0</span></div>
+  <div class="tab" data-tab="sessions">Sessions</div>
+  <div class="tab" data-tab="priority">Priority <span class="count" id="c-priority">0</span></div>
+  <div class="tab" data-tab="tasks">Tasks <span class="count" id="c-tasks">0</span></div>
+<div class="tab" data-tab="calendar">Calendar</div>
+<div class="tab" data-tab="reports">Reports</div>
+
+  <div class="tab" data-tab="buckets">Buckets <span class="count" id="c-buckets">0</span></div>
+  <div class="tab" data-tab="sync">Sync <span class="count" id="c-sync">0</span></div>
+
+  <div class="tab" data-tab="remaining">Pipeline <span class="count" id="c-remaining">0</span></div>
+  <div class="tab" data-tab="forms">Create Form</div>
+  <div class="tab" data-tab="forms-library">Forms <span class="count" id="c-forms-library">0</span></div>
 </nav>
 
 <div class="toolbar">
@@ -2505,6 +2512,495 @@ async function prefetchEvents() {
     if (res.ok) cachedEvents = await res.json();  // else leave null → tabs fall back to their own fetch
   } catch(e) {}
 }
+
+// ==========================================================
+// SESSION TRACKER (Stage 1) — completed sessions per service line
+// Backed by the Supabase `sessions` table. window.SESSIONS is the cache
+// (mirrors the cachedEvents pattern). Soft-delete only (status 'voided').
+// ==========================================================
+window.SESSIONS = null;
+window.__sessionsLoading = false;
+async function loadSessions() {
+  var token = localStorage.getItem('arcascend_token');
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
+  if (!token || !uid) { if (!window.SESSIONS) window.SESSIONS = []; return; }
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/sessions?user_id=eq.' + uid + '&select=*&order=when_at.desc&limit=5000', {
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
+    });
+    if (res.ok) window.SESSIONS = await res.json();
+    else if (!window.SESSIONS) window.SESSIONS = [];
+  } catch(e) { if (!window.SESSIONS) window.SESSIONS = []; }
+}
+async function logSession(L, line, whenAt) {
+  var token = localStorage.getItem('arcascend_token');
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
+  var payload = {
+    user_id: uid,
+    client_id: L.id || null,
+    client_name: L.name || '',
+    service_line_id: line.id,
+    service_type: line.type || '',
+    when_at: whenAt,
+    status: 'completed',
+    pay_source: (line.billingStyle === 'package' ? 'package' : line.billingStyle),
+    charge_amount: line.rate || 0,
+    completed_at: whenAt
+  };
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) return null;
+    var rows = await res.json();
+    var row = Array.isArray(rows) ? rows[0] : rows;
+    if (!window.SESSIONS) window.SESSIONS = [];
+    if (row) window.SESSIONS.unshift(row);
+    return row;
+  } catch(e) { return null; }
+}
+async function setSessionStatus(id, status) {
+  var token = localStorage.getItem('arcascend_token');
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/sessions?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ status: status })
+    });
+    if (res.ok || res.status === 204) {
+      var s = (window.SESSIONS || []).find(function(x){ return String(x.id) === String(id); });
+      if (s) s.status = status;
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+function voidSession(id) { return setSessionStatus(id, 'voided'); }
+function restoreSession(id) { return setSessionStatus(id, 'completed'); }
+function sessionsForLine(lineId) { return (window.SESSIONS || []).filter(function(s){ return s.service_line_id === lineId && s.status === 'completed'; }); }
+function voidedForLine(lineId) { return (window.SESSIONS || []).filter(function(s){ return s.service_line_id === lineId && s.status === 'voided'; }); }
+function countCompletedForLine(lineId) { return sessionsForLine(lineId).length; }
+
+// Toast with an inline Undo action (~8s), for the just-logged session.
+function showSessionUndoToast(onUndo, msg) {
+  var existing = document.querySelector('.toast'); if (existing) existing.remove();
+  var t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = '<span style="font-size:18px;">✓</span><span>' + escapeHtml(msg || 'Session logged') + '</span>';
+  var btn = document.createElement('button');
+  btn.textContent = 'Undo';
+  btn.style.cssText = 'margin-left:10px;background:transparent;border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;';
+  btn.onclick = function(){ t.remove(); onUndo(); };
+  t.appendChild(btn);
+  document.body.appendChild(t);
+  setTimeout(function(){ t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(function(){ t.remove(); }, 300); }, 8000);
+}
+
+
+// ==========================================================
+// SESSIONS TAB (Stage 2) — command center for logging sessions + package tracking.
+// Reads/writes the SAME window.SESSIONS cache + helpers as the in-profile tracker.
+// ==========================================================
+var sessionsSearchTerm = '';
+function sessionLocalDateStr(s) { var d = new Date(s.when_at || s.completed_at || s.created_at); return isNaN(d.getTime()) ? '' : localDateStr(d); }
+function completedSessionsAll() { return (window.SESSIONS || []).filter(function(s){ return s.status === 'completed'; }); }
+// Completed counts + revenue for today / this-week (MONDAY-start, Mon–Sun) / this calendar
+// month, all in LOCAL dates (reuses localDateStr → no evening-Pacific UTC off-by-one).
+function sessionPeriodStats() {
+  var today = todayStr();
+  var now = new Date();
+  var dow = now.getDay();                         // 0 Sun .. 6 Sat
+  var backToMon = (dow === 0) ? 6 : (dow - 1);    // Monday-start week
+  var ws = new Date(now.getFullYear(), now.getMonth(), now.getDate() - backToMon);
+  var we = new Date(ws.getFullYear(), ws.getMonth(), ws.getDate() + 6);
+  var weekStart = localDateStr(ws), weekEnd = localDateStr(we);
+  var monthPrefix = today.slice(0, 7);
+  var t = { n:0, rev:0 }, w = { n:0, rev:0 }, m = { n:0, rev:0 };
+  completedSessionsAll().forEach(function(s){
+    var d = sessionLocalDateStr(s); if (!d) return;
+    var amt = Number(s.charge_amount) || 0;
+    if (d === today) { t.n++; t.rev += amt; }
+    if (d >= weekStart && d <= weekEnd) { w.n++; w.rev += amt; }
+    if (d.slice(0, 7) === monthPrefix) { m.n++; m.rev += amt; }
+  });
+  return { today: t, week: w, month: m };
+}
+// One entry per active PACKAGE-style service line across active clients.
+function packageLinesAcrossClients() {
+  var out = [];
+  activeClients().forEach(function(L){
+    activeLines(L).forEach(function(ln){ if ((ln.billingStyle || 'package') === 'package') out.push({ L: L, line: ln }); });
+  });
+  return out;
+}
+
+function renderSessionsTab() {
+  var main = $("main");
+  if (!main) return;
+  // Lazy-load the shared cache on first open (same cache the profile tracker uses).
+  if (window.SESSIONS === null && !window.__sessionsLoading) {
+    window.__sessionsLoading = true;
+    loadSessions().then(function(){ window.__sessionsLoading = false; if (activeTab === 'sessions') renderSessionsTab(); });
+  }
+
+  var rows = packageLinesAcrossClients().map(function(pl){
+    var total = pl.line.sessions || 0;
+    var done = countCompletedForLine(pl.line.id);
+    return { L: pl.L, line: pl.line, total: total, done: done, rem: Math.max(0, total - done) };
+  });
+
+  // Quick-log list order: the SAME shared sort control the other tabs use (sortBy +
+  // sortLeads). Defaults to newest-first ("date-new") on this tab. Order the client
+  // rows by their position in the sorted lead list.
+  var eff = sortBy || 'date-new';
+  var savedSort = sortBy; sortBy = eff;
+  var orderedClients = sortLeads(activeClients());
+  sortBy = savedSort;
+  var cpos = {};
+  orderedClients.forEach(function(L, i){ cpos[L.id || L.name] = i; });
+  var listRowsData = rows.slice().sort(function(a, b){
+    var pa = cpos[a.L.id || a.L.name]; if (pa === undefined) pa = 1e9;
+    var pb = cpos[b.L.id || b.L.name]; if (pb === undefined) pb = 1e9;
+    return pa - pb;
+  });
+
+  var stats = sessionPeriodStats();
+  var lowFinished = rows.filter(function(r){ return r.total > 0 && r.rem <= 1; });
+
+  function tile(label, value, sub, color) {
+    return '<div class="billing-mini-stat" style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;">' +
+      '<div class="billing-mini-label">' + label + '</div>' +
+      '<div class="billing-mini-value" style="font-size:22px;' + (color ? 'color:' + color + ';' : '') + '">' + value + '</div>' +
+      (sub ? '<div style="font-size:10px;color:var(--muted);margin-top:3px;">' + sub + '</div>' : '') +
+    '</div>';
+  }
+  var strip = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;">' +
+    tile('Completed Today', stats.today.n, fmt$(stats.today.rev), 'var(--won)') +
+    tile('This Week', stats.week.n, fmt$(stats.week.rev), 'var(--accent)') +
+    tile('This Month', stats.month.n, fmt$(stats.month.rev), 'var(--purple)') +
+    tile('Low / Finished', lowFinished.length, 'packages need attention', lowFinished.length ? 'var(--open)' : 'var(--muted)') +
+  '</div>';
+
+  var naItems = rows.filter(function(r){ return r.total > 0 && (r.rem === 1 || r.done >= r.total); })
+    .sort(function(a, b){ return a.rem - b.rem; });   // priority-surfaced: finished (0) first, then 1-left
+  var naCards = naItems.length
+    ? '<div style="margin-bottom:20px;"><div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);margin-bottom:8px;">Needs Attention</div>' +
+      '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;">' +
+      naItems.map(function(r){
+        var finished = r.done >= r.total;
+        var situ = finished ? 'Renew / new package' : 'Only 1 left — re-sell';
+        return '<div style="flex:0 0 230px;background:var(--panel);border:1px solid ' + (finished ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)') + ';border-radius:10px;padding:12px;">' +
+          '<div style="font-weight:700;font-size:13px;">' + escapeHtml(r.L.name || '(no name)') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px;">' + escapeHtml(r.line.type || '') + ' · ' + r.done + '/' + r.total + '</div>' +
+          '<div style="margin-bottom:10px;"><span class="badge ' + (finished ? 'lost' : 'open') + '">' + situ + '</span></div>' +
+          '<button class="na-open" data-name="' + escapeAttr(r.L.name) + '" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;padding:7px;cursor:pointer;">Open client</button>' +
+        '</div>';
+      }).join('') + '</div></div>'
+    : '';
+
+  var listRows = listRowsData.map(function(r){
+    var nm = r.L.name || '(no name)';
+    var initials = (nm.trim().split(/\s+/).map(function(w){ return w.charAt(0); }).join('').slice(0, 2) || '?').toUpperCase();
+    var pct = r.total > 0 ? Math.min(100, Math.round((r.done / r.total) * 100)) : 0;
+    var fill = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
+    var low = r.total > 0 && r.rem <= 1;
+    var canLog = r.total > 0 && r.rem > 0;
+    var nowH = pad2(new Date().getHours()) + ':' + pad2(new Date().getMinutes());
+    return '<div class="sess-row" data-name="' + escapeAttr(nm) + '" title="Open session tracking" style="border-bottom:1px solid var(--border);padding:12px 14px;cursor:pointer;">' +
+      '<div style="display:grid;grid-template-columns:34px 1.6fr 1.5fr auto;gap:12px;align-items:center;">' +
+        '<div style="width:34px;height:34px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">' + escapeHtml(initials) + '</div>' +
+        '<div style="min-width:0;"><div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);">' + escapeHtml(r.line.type || '') + ' · ' + fmt$(r.line.rate || 0) + '/session</div></div>' +
+        '<div><div class="session-bar" style="margin-bottom:4px;"><div class="session-bar-fill ' + fill + '" style="width:' + pct + '%"></div></div>' +
+          '<div style="font-size:11px;color:' + (low ? 'var(--open)' : 'var(--muted)') + ';">' + r.done + ' of ' + r.total + ' · ' + r.rem + ' left' + (low ? ' ⚠️' : '') + '</div></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;white-space:nowrap;">' +
+          '<button class="sess-complete" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(r.line.id) + '"' + (canLog ? '' : ' disabled') + ' style="background:' + (canLog ? 'var(--won)' : 'var(--panel-2)') + ';color:' + (canLog ? '#fff' : 'var(--muted)') + ';border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 14px;cursor:' + (canLog ? 'pointer' : 'not-allowed') + ';">' + (canLog ? '✓ Complete' : 'Done') + '</button>' +
+          '<button class="sess-backdate-toggle" title="Backdate" style="background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;font-size:12.5px;padding:8px 10px;cursor:pointer;">⤺</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="sess-backdate-panel" style="display:none;margin-top:10px;padding-left:46px;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
+        '<div class="billing-field"><label>Date</label><input type="date" class="sess-bd-date" name="sess-date-' + escapeAttr(r.line.id) + '" value="' + todayStr() + '"></div>' +
+        '<div class="billing-field"><label>Time</label><input type="time" class="sess-bd-time" name="sess-time-' + escapeAttr(r.line.id) + '" value="' + nowH + '"></div>' +
+        '<button class="sess-backdate-log" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(r.line.id) + '"' + (r.total > 0 ? '' : ' disabled') + ' style="background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer;">Log</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  var listSection = rows.length
+    ? '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;">' + listRows + '</div>'
+    : '<div class="empty"><div class="empty-icon">📆</div><div style="font-size:16px;color:var(--text);margin-bottom:8px;">No active package clients</div>Add a <b>package</b>-style service line to an active client (In-Person, Group, etc.) to start logging sessions here.</div>';
+
+  main.innerHTML =
+    '<div class="page-header"><div><div class="page-title">📆 Sessions</div>' +
+      '<div class="page-subtitle">Log completed sessions and track package countdowns across your active clients.</div></div></div>' +
+    strip + naCards +
+    (rows.length ? '<div style="margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
+      '<input type="text" id="sessions-search" name="sessions-filter" placeholder="Search clients…" autocomplete="off" value="' + escapeAttr(sessionsSearchTerm) + '" style="flex:1;min-width:180px;max-width:320px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;box-sizing:border-box;">' +
+      '<select class="filter-toggle" id="sessions-sort" style="cursor:pointer;" title="Sort clients">' +
+        '<option value="name-az"' + (eff === 'name-az' ? ' selected' : '') + '>A → Z (name)</option>' +
+        '<option value="name-za"' + (eff === 'name-za' ? ' selected' : '') + '>Z → A (name)</option>' +
+        '<option value="date-new"' + (eff === 'date-new' ? ' selected' : '') + '>Date: Newest first</option>' +
+        '<option value="date-old"' + (eff === 'date-old' ? ' selected' : '') + '>Date: Oldest first</option>' +
+        '<option value="viewed"' + (eff === 'viewed' ? ' selected' : '') + '>Recently viewed</option>' +
+      '</select>' +
+    '</div>' : '') +
+    listSection;
+
+  wireSessionsTab();
+  filterSessionRows();
+}
+
+function filterSessionRows() {
+  var term = (sessionsSearchTerm || '').toLowerCase();
+  document.querySelectorAll('#main .sess-row').forEach(function(row){
+    var nm = (row.dataset.name || '').toLowerCase();
+    row.style.display = (!term || nm.indexOf(term) >= 0) ? '' : 'none';
+  });
+}
+
+// Shared logger used by the tab AND the detail view: toast FIRST (so it always shows),
+// then re-render whatever surfaces are live. Reuses the single window.SESSIONS cache.
+function sessLookup(name, lid) {
+  var L = LEADS.find(function(x){ return (x.name || '') === name; });
+  if (!L) return null;
+  var line = clientLines(L).find(function(ln){ return String(ln.id) === String(lid); });
+  return line ? { L: L, line: line } : null;
+}
+function sessRefreshLive(L) {
+  if (typeof activeTab !== 'undefined' && activeTab === 'sessions') renderSessionsTab();
+  var sd = document.getElementById('session-detail-modal');
+  if (sd && sd.classList.contains('show') && L) renderSessionDetail(L);
+}
+function sessDoLog(name, lid, whenAt, btn) {
+  var ref = sessLookup(name, lid); if (!ref) return;
+  if (btn) btn.disabled = true;
+  logSession(ref.L, ref.line, whenAt).then(function(row){
+    if (!row) { showToast('Could not log session', 'error'); if (btn) btn.disabled = false; return; }
+    showSessionUndoToast(function(){ voidSession(row.id).then(function(){ sessRefreshLive(ref.L); }); }, '✓ ' + (ref.L.name || 'Client') + ': session logged');
+    sessRefreshLive(ref.L);
+  });
+}
+
+function wireSessionsTab() {
+  var main = $("main");
+  main.querySelectorAll('.sess-complete').forEach(function(btn){
+    if (btn.disabled) return;
+    btn.addEventListener('click', function(e){ e.stopPropagation(); sessDoLog(btn.dataset.name, btn.dataset.lid, new Date().toISOString(), btn); });
+  });
+  main.querySelectorAll('.sess-backdate-toggle').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var row = btn.closest('.sess-row'); if (!row) return;
+      var panel = row.querySelector('.sess-backdate-panel');
+      if (panel) panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'flex' : 'none';
+    });
+  });
+  main.querySelectorAll('.sess-backdate-panel').forEach(function(p){ p.addEventListener('click', function(e){ e.stopPropagation(); }); });
+  main.querySelectorAll('.sess-backdate-log').forEach(function(btn){
+    if (btn.disabled) return;
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var row = btn.closest('.sess-row'); if (!row) return;
+      var d = row.querySelector('.sess-bd-date'), t = row.querySelector('.sess-bd-time');
+      if (!d || !d.value) { showToast('Pick a date', 'error'); return; }
+      var dp = d.value.split('-'), tp = (t && t.value ? t.value : '12:00').split(':');
+      var dt = new Date(+dp[0], (+dp[1]) - 1, +dp[2], (+tp[0] || 0), (+tp[1] || 0));   // LOCAL datetime
+      sessDoLog(btn.dataset.name, btn.dataset.lid, dt.toISOString(), btn);
+    });
+  });
+  // Row click → dedicated session-tracking view (NOT the profile modal).
+  main.querySelectorAll('.sess-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if (e.target.closest('.sess-complete, .sess-backdate-toggle, .sess-backdate-log, .sess-backdate-panel')) return;
+      openSessionDetail(row.dataset.name);
+    });
+  });
+  main.querySelectorAll('.na-open').forEach(function(btn){
+    btn.addEventListener('click', function(){ openSessionDetail(btn.dataset.name); });
+  });
+  var search = document.getElementById('sessions-search');
+  if (search) search.addEventListener('input', function(){ sessionsSearchTerm = search.value; filterSessionRows(); });
+  // Reuse the SAME shared sort state (sortBy) + sortLeads logic as the other tabs.
+  var sortSel = document.getElementById('sessions-sort');
+  if (sortSel) sortSel.addEventListener('change', function(){ sortBy = sortSel.value; renderSessionsTab(); });
+}
+
+// ==========================================================
+// DEDICATED SESSION-TRACKING DETAIL VIEW (distinct from the lead profile modal)
+// ==========================================================
+var SDU = {};
+function sdu(id) { if (!SDU[id]) SDU[id] = { backdate:false, expanded:false, showVoided:false }; return SDU[id]; }
+function sessionDetailModal() {
+  var m = document.getElementById('session-detail-modal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'session-detail-modal';
+    m.className = 'modal-bg';
+    m.innerHTML = '<div class="modal" id="session-detail-content" style="max-width:680px;"></div>';
+    document.body.appendChild(m);
+    m.addEventListener('click', function(e){ if (e.target === m) closeSessionDetail(); });
+  }
+  return m;
+}
+function closeSessionDetail() { var m = document.getElementById('session-detail-modal'); if (m) m.classList.remove('show'); }
+function openSessionDetail(name) {
+  var L = LEADS.find(function(x){ return (x.name || '') === name; });
+  if (!L) return;
+  var m = sessionDetailModal();
+  renderSessionDetail(L);
+  m.classList.add('show');
+}
+function sdEntry(s, isVoided) {
+  var when = escapeHtml(formatDateTime(s.when_at || s.completed_at || s.created_at));
+  var type = escapeHtml(s.service_type || '');
+  var amt = s.charge_amount ? fmt$(s.charge_amount) : '—';
+  return '<div style="display:grid;grid-template-columns:1.5fr 0.9fr 0.7fr 0.8fr 0.7fr auto;gap:8px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--border);' + (isVoided ? 'opacity:0.55;' : '') + '">' +
+    '<span style="font-size:12px;' + (isVoided ? 'text-decoration:line-through;color:var(--muted);' : 'color:var(--text);') + '">' + when + '</span>' +
+    '<span style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + type + '</span>' +
+    '<span style="font-size:12px;color:var(--text);">' + amt + '</span>' +
+    '<span><span class="badge ' + (isVoided ? 'lost' : 'won') + '">' + (isVoided ? 'voided' : 'done') + '</span></span>' +
+    '<span style="font-size:11px;color:var(--muted);" title="Payment reconciliation coming soon">—</span>' +
+    (isVoided
+      ? '<button class="sd-restore" data-sid="' + escapeAttr(s.id) + '" style="background:transparent;border:1px solid var(--border);color:var(--accent);border-radius:6px;font-size:11px;padding:3px 8px;cursor:pointer;white-space:nowrap;">↺ restore</button>'
+      : '<button class="sd-void" data-sid="' + escapeAttr(s.id) + '" title="Void this session" style="background:transparent;border:none;color:var(--muted);font-size:14px;cursor:pointer;">✕</button>') +
+  '</div>';
+}
+function renderSessionDetail(L) {
+  var content = document.getElementById('session-detail-content');
+  if (!content) return;
+  var nm = L.name || '(no name)';
+  var pkg = activeLines(L).filter(function(ln){ return (ln.billingStyle || 'package') === 'package'; });
+  var lineIds = pkg.map(function(ln){ return String(ln.id); });
+  var nowH = pad2(new Date().getHours()) + ':' + pad2(new Date().getMinutes());
+
+  // ---- Aggregate totals across all package lines ----
+  var tCompleted = 0, tRemaining = 0, tEarned = 0, tOutstanding = 0;
+  var perLine = pkg.map(function(ln){
+    var total = ln.sessions || 0;
+    var done = countCompletedForLine(ln.id);
+    var rem = Math.max(0, total - done);
+    tCompleted += done; tRemaining += rem; tEarned += done * (ln.rate || 0); tOutstanding += rem * (ln.rate || 0);
+    return { ln: ln, total: total, done: done, rem: rem };
+  });
+
+  // ---- Header status pills (per package line; no contact info) ----
+  var pills = perLine.map(function(p){
+    var cls = (p.total > 0 && p.rem <= 0) ? 'lost' : (p.rem === 1 ? 'open' : 'won');
+    return '<span class="badge ' + cls + '" style="margin:0 6px 4px 0;display:inline-block;">' + escapeHtml(p.ln.type || 'Package') + ' ' + p.done + '/' + p.total + (p.total > 0 && p.rem <= 0 ? ' ✓' : '') + '</span>';
+  }).join('');
+
+  // ---- Totals summary bar ----
+  function stat(label, val, color) {
+    return '<div style="text-align:center;flex:1;min-width:92px;">' +
+      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);">' + label + '</div>' +
+      '<div style="font-size:20px;font-weight:800;' + (color ? 'color:' + color + ';' : '') + '">' + val + '</div></div>';
+  }
+  var summary = '<div style="display:flex;gap:10px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(79,158,255,0.10),rgba(167,139,250,0.06));border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;">' +
+    stat('Completed', tCompleted, 'var(--won)') +
+    stat('Remaining', tRemaining, 'var(--open)') +
+    stat('Earned', fmt$(tEarned), 'var(--won)') +
+    stat('Outstanding', fmt$(tOutstanding), 'var(--accent)') +
+  '</div>';
+
+  // ---- Per-line progress + log/backdate actions ----
+  var lineRows = perLine.map(function(p){
+    var ln = p.ln, st = sdu(ln.id);
+    var pct = p.total > 0 ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+    var fill = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
+    var canLog = p.total > 0 && p.rem > 0;
+    return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--panel-2);">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
+        '<div style="font-weight:700;font-size:13px;">' + escapeHtml(ln.type || 'Package') + ' <span style="color:var(--muted);font-weight:400;">· ' + fmt$(ln.rate || 0) + '/session</span></div>' +
+        '<div style="font-size:12px;color:' + (p.rem <= 1 ? 'var(--open)' : 'var(--muted)') + ';">' + p.done + ' of ' + p.total + ' · ' + p.rem + ' left' + (p.rem <= 1 && p.total > 0 ? ' ⚠️' : '') + '</div>' +
+      '</div>' +
+      '<div class="session-bar"><div class="session-bar-fill ' + fill + '" style="width:' + pct + '%"></div></div>' +
+      (p.rem === 1 ? '<div style="margin-top:8px;font-size:11.5px;color:var(--open);background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:6px;padding:7px 9px;">⚠️ Only 1 session left — renew / session-to-session / auto-pay.</div>' : '') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
+        '<button class="sd-complete" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(ln.id) + '"' + (canLog ? '' : ' disabled') + ' style="background:' + (canLog ? 'var(--won)' : 'var(--panel)') + ';color:' + (canLog ? '#fff' : 'var(--muted)') + ';border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:' + (canLog ? 'pointer' : 'not-allowed') + ';">' + (canLog ? '✓ Complete session' : 'Package complete') + '</button>' +
+        '<button class="sd-backdate-toggle" data-lid="' + escapeAttr(ln.id) + '" style="background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;font-size:12.5px;padding:8px 12px;cursor:pointer;">⤺ Backdate</button>' +
+      '</div>' +
+      (st.backdate ? '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
+        '<div class="billing-field"><label>Date</label><input type="date" class="sd-bd-date" name="sd-date-' + escapeAttr(ln.id) + '" value="' + todayStr() + '"></div>' +
+        '<div class="billing-field"><label>Time</label><input type="time" class="sd-bd-time" name="sd-time-' + escapeAttr(ln.id) + '" value="' + nowH + '"></div>' +
+        '<button class="sd-backdate-log" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(ln.id) + '"' + (p.total > 0 ? '' : ' disabled') + ' style="background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer;">Log</button>' +
+      '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  // ---- Combined session log (every completed session across this client's package lines) ----
+  var logKey = 'log:' + (L.id || nm);
+  var logSt = sdu(logKey);
+  var descSort = function(a,b){ return new Date(b.when_at || b.completed_at) - new Date(a.when_at || a.completed_at); };
+  var allDone = (window.SESSIONS || []).filter(function(s){ return s.status === 'completed' && lineIds.indexOf(String(s.service_line_id)) >= 0; }).sort(descSort);
+  var allVoid = (window.SESSIONS || []).filter(function(s){ return s.status === 'voided' && lineIds.indexOf(String(s.service_line_id)) >= 0; }).sort(descSort);
+  var logHead = '<div style="display:grid;grid-template-columns:1.5fr 0.9fr 0.7fr 0.8fr 0.7fr auto;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;"><span>When</span><span>Type</span><span>Amount</span><span>Status</span><span>Payment</span><span></span></div>';
+  var logBody;
+  if (!allDone.length) {
+    logBody = '<div style="font-size:12px;color:var(--muted);padding:8px 4px;">No sessions logged yet.</div>';
+  } else {
+    logBody = allDone.slice(0, 6).map(function(s){ return sdEntry(s, false); }).join('');
+    if (allDone.length > 6) {
+      logBody += '<div style="' + (logSt.expanded ? '' : 'display:none;') + 'max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-top:6px;">' + allDone.slice(6).map(function(s){ return sdEntry(s, false); }).join('') + '</div>';
+      logBody += '<div class="sd-expand" data-lid="' + escapeAttr(logKey) + '" style="color:var(--accent);font-size:12.5px;cursor:pointer;margin-top:6px;user-select:none;">' + (logSt.expanded ? 'Show less' : 'Show more (' + (allDone.length - 6) + ')') + '</div>';
+    }
+  }
+  var voidedBlock = allVoid.length
+    ? '<div class="sd-voided-toggle" data-lid="' + escapeAttr(logKey) + '" style="color:var(--muted);font-size:12px;cursor:pointer;margin-top:8px;user-select:none;">' + (logSt.showVoided ? 'Hide voided' : 'Show ' + allVoid.length + ' voided') + '</div>' +
+      (logSt.showVoided ? '<div style="margin-top:6px;">' + allVoid.map(function(s){ return sdEntry(s, true); }).join('') + '</div>' : '')
+    : '';
+  var logSection = '<div style="margin-top:4px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;margin-bottom:6px;">Session Log (' + allDone.length + ')</div>' + logHead + logBody + voidedBlock + '</div>';
+
+  content.innerHTML =
+    '<div class="modal-head" style="background:linear-gradient(135deg,#1e2235,#252a40);">' +
+      '<div style="min-width:0;"><div class="modal-title">📆 Session Tracking</div>' +
+        '<div style="font-size:14px;font-weight:600;margin-top:4px;">' + escapeHtml(nm) + '</div>' +
+        '<div style="margin-top:8px;">' + (pills || '<span style="font-size:12px;color:var(--muted);">No package lines</span>') + '</div></div>' +
+      '<button class="modal-close" onclick="closeSessionDetail()">✕</button>' +
+    '</div>' +
+    '<div class="modal-body">' + (pkg.length ? summary + lineRows + logSection : '<div style="color:var(--muted);font-size:13px;">No package service lines for this client.</div>') + '</div>';
+
+  wireSessionDetail(L);
+}
+function wireSessionDetail(L) {
+  var content = document.getElementById('session-detail-content');
+  if (!content) return;
+  content.querySelectorAll('.sd-complete').forEach(function(btn){
+    if (btn.disabled) return;
+    btn.addEventListener('click', function(){ sessDoLog(btn.dataset.name, btn.dataset.lid, new Date().toISOString(), btn); });
+  });
+  content.querySelectorAll('.sd-backdate-toggle').forEach(function(btn){
+    btn.addEventListener('click', function(){ var st = sdu(btn.dataset.lid); st.backdate = !st.backdate; renderSessionDetail(L); });
+  });
+  content.querySelectorAll('.sd-backdate-log').forEach(function(btn){
+    if (btn.disabled) return;
+    btn.addEventListener('click', function(){
+      var lid = btn.dataset.lid;
+      var d = content.querySelector('.sd-bd-date'), t = content.querySelector('.sd-bd-time');
+      if (!d || !d.value) { showToast('Pick a date', 'error'); return; }
+      var dp = d.value.split('-'), tp = (t && t.value ? t.value : '12:00').split(':');
+      var dt = new Date(+dp[0], (+dp[1]) - 1, +dp[2], (+tp[0] || 0), (+tp[1] || 0));
+      sdu(lid).backdate = false;
+      sessDoLog(btn.dataset.name, lid, dt.toISOString(), btn);
+    });
+  });
+  content.querySelectorAll('.sd-void').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if (!confirm('Void this session? It will be kept in history and can be restored.')) return;
+      voidSession(btn.dataset.sid).then(function(){ sessRefreshLive(L); });
+    });
+  });
+  content.querySelectorAll('.sd-restore').forEach(function(btn){
+    btn.addEventListener('click', function(){ restoreSession(btn.dataset.sid).then(function(){ sessRefreshLive(L); }); });
+  });
+  content.querySelectorAll('.sd-expand').forEach(function(el){
+    el.addEventListener('click', function(){ var st = sdu(el.dataset.lid); st.expanded = !st.expanded; renderSessionDetail(L); });
+  });
+  content.querySelectorAll('.sd-voided-toggle').forEach(function(el){
+    el.addEventListener('click', function(){ var st = sdu(el.dataset.lid); st.showVoided = !st.showVoided; renderSessionDetail(L); });
+  });
+}
 // ==========================================
 var UNDO_STACK = [];
 var UNDO_PREV_SNAPSHOT = null;
@@ -3458,7 +3954,7 @@ function goToTab(name) {
   renderMain();
 }
 
-var leadView = localStorage.getItem('arcascend_lead_view') || 'list';
+var leadView = localStorage.getItem('arcascend_lead_view') || 'board';
 
 function renderKanban() {
   var main = $("main");
@@ -3514,8 +4010,8 @@ function dismissKanbanTip(checked) {
 
 function viewToggleHTML() {
   return '<div class="view-toggle">' +
-    '<button class="' + (leadView === 'list' ? 'active' : '') + '" onclick="setLeadView(\'list\')">List</button>' +
     '<button class="' + (leadView === 'board' ? 'active' : '') + '" onclick="setLeadView(\'board\')">Board</button>' +
+    '<button class="' + (leadView === 'list' ? 'active' : '') + '" onclick="setLeadView(\'list\')">List</button>' +
     '</div>';
 }
 
@@ -3863,6 +4359,7 @@ function renderMain() {
     
 
   if (activeTab === "clients") { renderActiveClientsV2(); return; }
+  if (activeTab === "sessions") { renderSessionsTab(); return; }
   if (activeTab === "tasks") { renderTasksTab(); return; }
 if (activeTab === "reports" && typeof renderReportsTab === "function") { renderReportsTab(); return; }
 if (activeTab === "calendar") { renderCalendarTab(); return; }
@@ -4251,6 +4748,7 @@ function renderServiceLinesEditor(L) {
     });
     persist(true);
   });
+  // Session-completion tracking lives on the dedicated Sessions tab now — no tracker here.
 }
 
 // ---- Projections planner: editable per-client, per-month forecast grid ----
@@ -6547,6 +7045,7 @@ function initApp() {
       loadFromSupabase().then(function(loaded) {
         if (!loaded) loadState();   // network/auth error only → this verified user's own cache
         prefetchEvents();   // fire-and-forget — warms cachedEvents in background while Home renders
+        loadSessions();     // fire-and-forget — warms the session-tracker cache
         loadBuckets();
         loadCampaigns();
         loadGoal();
