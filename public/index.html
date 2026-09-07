@@ -1310,6 +1310,14 @@ main { flex: 1; padding: 20px 24px; }
             <button onclick="document.getElementById('forms-file-input').click()" class="cf-btn cf-g cf-sm" style="margin-left:10px">Change image</button>
           </div>
         </div>
+        <div style="margin-top:14px">
+          <label class="cf-lbl">Form Display Mode</label>
+          <select id="forms-mode" class="cf-inp">
+            <option value="guided">Guided — welcome screen, then one question at a time</option>
+            <option value="classic">Classic — all questions on one page</option>
+          </select>
+          <div style="font-size:11px;color:#8b95a1;margin-top:5px">Guided shows a branded welcome, groups name/phone/email, then asks the rest one at a time.</div>
+        </div>
         <div id="forms-default-actions" style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button onclick="formsSaveSettings()" class="cf-btn">Save Settings</button>
           <button onclick="formsSaveAs()" class="cf-btn cf-g">Save as New Form</button>
@@ -7871,6 +7879,7 @@ async function formsSaveAs() {
     logo_url: (document.getElementById('forms-logo-url').value || '').trim(),
     questions: formsQuestions,
     bucket_name: bucketName,
+    mode: formsGetMode(),
     is_default: false
   };
   if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = 'var(--text-muted)'; statusEl.style.fontWeight = ''; }
@@ -7928,6 +7937,16 @@ async function formsSaveAs() {
   if (activeTab === 'forms-library') renderFormsLibrary();
 }
 
+// Form display mode (classic all-at-once vs guided one-at-a-time). Persisted on the
+// forms/trainer_settings row's `mode` column; read by intake.html.
+function formsGetMode() {
+  var el = document.getElementById('forms-mode');
+  return (el && el.value === 'guided') ? 'guided' : 'classic';
+}
+function formsSetMode(m) {
+  var el = document.getElementById('forms-mode');
+  if (el) el.value = (m === 'guided') ? 'guided' : 'classic';
+}
 async function formsInit() {
   if (!currentUser) return;
   // The builder's link + QR moved to the Forms tab (default-form card). These
@@ -7955,6 +7974,7 @@ async function formsInit() {
     document.getElementById('forms-form-desc').value     = ef.form_description || '';
     document.getElementById('forms-logo-url').value      = ef.logo_url || '';
     document.getElementById('forms-internal-label').value = ef.bucket_name || '';
+    formsSetMode(ef.mode || 'guided');   // existing forms keep saved mode; missing → guided
     formsPreviewLogo(ef.logo_url);
     formsQuestions = (ef.questions && ef.questions.length > 0) ? JSON.parse(JSON.stringify(ef.questions)) : JSON.parse(JSON.stringify(INTAKE_DEFAULT_QUESTIONS));
     formsApplyEditModeUI(true, label);
@@ -7964,6 +7984,7 @@ async function formsInit() {
     return;
   }
   formsApplyEditModeUI(false, '');
+  formsSetMode('guided');   // NEW/blank forms default to Guided; overridden by saved data below
 
   try {
     var res = await fetch(SUPABASE_URL + '/rest/v1/trainer_settings?user_id=eq.' + currentUser.id + '&select=*', {
@@ -7978,6 +7999,7 @@ async function formsInit() {
       document.getElementById('forms-form-desc').value  = data.form_description || '';
       document.getElementById('forms-logo-url').value   = data.logo_url || '';
       document.getElementById('forms-bucket').value     = data.default_bucket || '';
+      formsSetMode(data.mode || 'guided');   // default form keeps saved mode; missing → guided
       formsPreviewLogo(data.logo_url);
       formsQuestions = (data.questions && data.questions.length > 0) ? data.questions : JSON.parse(JSON.stringify(INTAKE_DEFAULT_QUESTIONS));
     } else {
@@ -8072,7 +8094,8 @@ async function formsUpdateForm() {
     gym_name: (document.getElementById('forms-gym-name').value || '').trim(),
     form_description: (document.getElementById('forms-form-desc').value || '').trim(),
     logo_url: (document.getElementById('forms-logo-url').value || '').trim(),
-    questions: formsQuestions
+    questions: formsQuestions,
+    mode: formsGetMode()
   };
   if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = 'var(--text-muted)'; statusEl.style.fontWeight = ''; }
   try {
@@ -8633,6 +8656,7 @@ async function formsSaveSettings() {
     form_description: document.getElementById('forms-form-desc').value.trim(),
     logo_url: document.getElementById('forms-logo-url').value.trim(),
     default_bucket: document.getElementById('forms-bucket').value.trim() || null,
+    mode: formsGetMode(),
     questions: formsQuestions,
   };
   try {

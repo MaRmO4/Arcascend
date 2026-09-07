@@ -37,11 +37,33 @@
   .success p { color:var(--muted); }
   .err { color:#ef4444; font-size:13px; margin-top:8px; display:none; }
   .brand { text-align:center; font-size:12px; color:var(--muted); margin-top:24px; }
+  /* Guided (one-question-at-a-time) flow */
+  .g-card { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:28px 24px; margin-bottom:20px; }
+  .g-welcome { text-align:center; padding:44px 24px; }
+  .g-eyebrow { font-size:13px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px; }
+  .g-headline { font-size:28px; font-weight:700; margin-bottom:14px; line-height:1.25; }
+  .g-body { font-size:15px; color:var(--muted); white-space:pre-wrap; overflow-wrap:break-word; margin-bottom:26px; }
+  .g-progress { height:6px; background:var(--panel2); border-radius:99px; overflow:hidden; margin-bottom:18px; }
+  .g-progress-fill { height:100%; background:var(--accent); border-radius:99px; transition:width 0.25s; }
+  .g-qnum { font-size:12px; color:var(--muted); font-weight:600; margin-bottom:8px; }
+  .g-q { font-size:20px; font-weight:700; margin-bottom:18px; line-height:1.35; }
+  .g-nav { display:flex; align-items:center; gap:12px; margin-top:20px; }
+  .g-nav .g-ok { flex:1; margin-top:0; }
+  .g-nav .g-ok:disabled { opacity:0.5; cursor:not-allowed; }
+  .g-back, .g-skip { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:13px 16px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+  .g-back:hover, .g-skip:hover { color:var(--text); border-color:var(--accent); }
+  .g-err { color:#ef4444; font-size:13px; margin-top:12px; display:none; }
 </style>
 </head>
 <body>
 <img class="header-img" id="header-img" src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1200&h=320&fit=crop" alt="">
 <div class="container">
+  <!-- Honeypot at .container level so neither classic (#dynamic-fields) nor guided
+       (#guided-wrap) rendering can wipe it. Real users never see/tab to it; bots that
+       fill every field trip it → submission silently dropped in submitLead(). -->
+  <input type="text" id="hp-website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"
+         style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none">
+
   <div id="form-wrap">
     <div class="form-head">
       <div class="form-title" id="form-title">Client Intake Form</div>
@@ -49,15 +71,13 @@
     </div>
 
     <div id="dynamic-fields"></div>
-    <!-- Honeypot: real text input hidden OFF-SCREEN (not display:none). Real users never
-         see/tab to it; bots that fill every field trip it → submission is silently dropped.
-         It is NOT a loadedQuestion, so it's never serialized into the lead payload. -->
-    <input type="text" id="hp-website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"
-           style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none">
     <button class="submit-btn" id="submit-btn" onclick="submitForm()">Submit & Get Started</button>
     <div class="err" id="err"></div>
     <div class="brand">Powered by ArcAscend</div>
   </div>
+
+  <!-- Guided (one-question-at-a-time) flow renders here; #form-wrap is hidden in guided mode -->
+  <div id="guided-wrap" style="display:none;"></div>
 
   <div id="success-wrap" class="success" style="display:none;">
     <div class="success-icon">✅</div>
@@ -87,6 +107,10 @@ var FALLBACK_QUESTIONS = [
 ];
 var loadedQuestions = [];
 var loadedBucket = '';
+var loadedMode = 'classic';
+var branding = { gym:'', title:'', desc:'', logo:'' };
+var gState = { step:0, answers:{}, steps:[] };
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // Per-form public link: ?form=<public_id> reads ONE published form via the
 // get_public_form RPC (anon key). Sets TRAINER_ID from the form's owner so the
@@ -107,9 +131,11 @@ async function loadPublicForm(formId) {
     if (s.form_description) document.getElementById('form-desc').textContent = s.form_description;
     if (s.logo_url) { var img = document.getElementById('header-img'); img.src = s.logo_url; img.style.objectFit = 'contain'; img.style.background = '#111'; img.style.maxHeight = '200px'; }
     loadedBucket = s.bucket_name || '';
+    loadedMode = (s.mode === 'guided') ? 'guided' : 'classic';
+    branding = { gym: s.gym_name || '', title: s.title || '', desc: s.form_description || '', logo: s.logo_url || '' };
     loadedQuestions = (s.questions && s.questions.length > 0) ? s.questions : FALLBACK_QUESTIONS;
   } catch(e) { showFormNotFound(); return; }
-  renderFields();
+  renderForm();
 }
 
 function showFormNotFound() {
@@ -130,9 +156,11 @@ async function loadForm() {
     if (s.form_description) document.getElementById('form-desc').textContent = s.form_description;
     if (s.logo_url) { var img = document.getElementById('header-img'); img.src = s.logo_url; img.style.objectFit = 'contain'; img.style.background = '#111'; img.style.maxHeight = '200px'; }
     loadedBucket = s.default_bucket || '';
+    loadedMode = (s.mode === 'guided') ? 'guided' : 'classic';
+    branding = { gym: s.gym_name || '', title: s.form_title || '', desc: s.form_description || '', logo: s.logo_url || '' };
     loadedQuestions = (s.questions && s.questions.length > 0) ? s.questions : FALLBACK_QUESTIONS;
   } catch(e) { loadedQuestions = FALLBACK_QUESTIONS; }
-  renderFields();
+  renderForm();
 }
 
 function renderFields() {
@@ -154,43 +182,28 @@ function renderFields() {
   }).join('');
 }
 
-function submitForm() {
-  var btn = document.getElementById('submit-btn');
-  // ---- Spam guard 1: honeypot ----
-  // A hidden off-screen input real users never touch. If a bot filled it, silently
-  // drop the submission — no POST, no error, no feedback (so the bot can't adapt).
+// Dispatch: guided one-at-a-time flow, or the classic all-at-once form (unchanged).
+function renderForm() {
+  if (loadedMode === 'guided') renderGuided();
+  else renderFields();
+}
+
+// ===== Shared submit: SAME payload + protections for classic AND guided =====
+// Returns a Promise resolving to a result object the caller renders around.
+// Preserves: honeypot silent-drop, non-empty-name guard, __labels snapshot,
+// source:'Intake Form' tagging, and the exact /rest/v1/leads POST shape.
+function submitLead(fields) {
+  // ---- Spam guard 1: honeypot (silent drop — no POST, no feedback) ----
   var hp = document.getElementById('hp-website');
-  if (hp && hp.value) { if (window.console && console.log) console.log('intake: honeypot tripped — submission dropped'); return; }
-  // Reset any prior inline error so each attempt starts clean.
-  var errEl = document.getElementById('err');
-  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
-  var fields = {};
-  loadedQuestions.forEach(function(q) {
-    if (q.type === 'multiselect') {
-      fields[q.id] = Array.from(document.querySelectorAll('input[name="' + q.id + '"]:checked')).map(function(c){ return c.value; }).join(', ');
-    } else {
-      var el = document.getElementById(q.id);
-      fields[q.id] = el ? el.value : '';
-    }
-  });
-  var missing = loadedQuestions.filter(function(q){ return q.required && !fields[q.id]; });
-  if (missing.length > 0) { alert('Please fill in: ' + missing.map(function(q){ return q.label; }).join(', ')); return; }
-  // ---- Spam guard 2: require a non-empty name ----
-  // Enforced in JS regardless of the HTML `required` attr / question config, matching the
-  // server-side block_nameless_intake trigger. Real users get a clear inline message.
-  if (!((fields['q_name'] || '').trim())) {
-    if (errEl) { errEl.textContent = 'Please enter your name to submit.'; errEl.style.display = 'block'; }
-    var nameEl = document.getElementById('q_name'); if (nameEl) nameEl.focus();
-    return;
-  }
+  if (hp && hp.value) { if (window.console && console.log) console.log('intake: honeypot tripped — submission dropped'); return Promise.resolve({ dropped: true }); }
+  // ---- Spam guard 2: require a non-empty name (server block_nameless_intake backstops replays) ----
+  if (!((fields['q_name'] || '').trim())) { return Promise.resolve({ error: 'name' }); }
+
   var fullName = fields['q_name'] || '';
   var phoneVal = fields['q_phone'] || '';
   var emailVal = fields['q_email'] || '';
   var goalVal = fields['q_goal'] || '';
-  // Snapshot this form's question labels (id -> label AS SHOWN ON THIS FORM) so the
-  // trainer app can render each answer with its form-accurate label, even if the id's
-  // default meaning differs (e.g. a relabeled q_style). '__labels' can't collide with
-  // any answer key: question ids are always 'q_*'.
+  // Snapshot this form's question labels (id -> label AS SHOWN ON THIS FORM).
   var __labels = {};
   loadedQuestions.forEach(function(q){ if (q && q.id) __labels[q.id] = q.label || ''; });
   var dataObj = Object.assign({}, fields, {
@@ -214,21 +227,215 @@ function submitForm() {
     status: 'New',
     data: JSON.stringify(dataObj)
   };
-  btn.disabled = true; btn.textContent = 'Submitting...';
-  fetch(SUPABASE_URL + '/rest/v1/leads', {
+  return fetch(SUPABASE_URL + '/rest/v1/leads', {
     method: 'POST',
     headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
     body: JSON.stringify(lead)
   }).then(function(resp) {
     if (resp.ok || resp.status === 201) {
-    fetch(SUPABASE_URL + '/rest/v1/lead_events', {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ user_id: TRAINER_ID, lead_name: fullName, event_type: 'form_submitted', event_data: { goal: goalVal } })
-    }).catch(function(){});
-    document.getElementById('form-wrap').innerHTML = '<div class="success"><div class="success-icon">✅</div><h2>You\'re all set!</h2><p>We\'ll be in touch with you shortly.</p></div>';
-    } else { btn.disabled = false; btn.textContent = 'Submit & Get Started'; alert('Something went wrong. Please try again.'); }
-  }).catch(function(e) { btn.disabled = false; btn.textContent = 'Submit & Get Started'; alert('Error: ' + e.message); });
+      fetch(SUPABASE_URL + '/rest/v1/lead_events', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ user_id: TRAINER_ID, lead_name: fullName, event_type: 'form_submitted', event_data: { goal: goalVal } })
+      }).catch(function(){});
+      return { ok: true, firstName: (fullName.trim().split(/\s+/)[0] || 'there') };
+    }
+    return { ok: false };
+  }).catch(function(e){ return { ok: false, err: e.message }; });
+}
+
+// ===== CLASSIC (unchanged behavior) =====
+function submitForm() {
+  var btn = document.getElementById('submit-btn');
+  var errEl = document.getElementById('err');
+  if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+  var fields = {};
+  loadedQuestions.forEach(function(q) {
+    if (q.type === 'multiselect') {
+      fields[q.id] = Array.from(document.querySelectorAll('input[name="' + q.id + '"]:checked')).map(function(c){ return c.value; }).join(', ');
+    } else {
+      var el = document.getElementById(q.id);
+      fields[q.id] = el ? el.value : '';
+    }
+  });
+  var missing = loadedQuestions.filter(function(q){ return q.required && !fields[q.id]; });
+  if (missing.length > 0) { alert('Please fill in: ' + missing.map(function(q){ return q.label; }).join(', ')); return; }
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  submitLead(fields).then(function(r){
+    if (!r || r.dropped) return;   // honeypot: silent
+    if (r.error === 'name') {
+      if (errEl) { errEl.textContent = 'Please enter your name to submit.'; errEl.style.display = 'block'; }
+      var nameEl = document.getElementById('q_name'); if (nameEl) nameEl.focus();
+      btn.disabled = false; btn.textContent = 'Submit & Get Started';
+      return;
+    }
+    if (r.ok) {
+      document.getElementById('form-wrap').innerHTML = '<div class="success"><div class="success-icon">✅</div><h2>You\'re all set!</h2><p>We\'ll be in touch with you shortly.</p></div>';
+    } else {
+      btn.disabled = false; btn.textContent = 'Submit & Get Started';
+      alert('Something went wrong. Please try again.');
+    }
+  });
+}
+
+// ===== GUIDED (welcome → grouped contact → one question at a time → submit) =====
+var GUIDED_CONTACT_IDS = ['q_name','q_phone','q_email'];
+function guidedBuildSteps() {
+  var contactQs = loadedQuestions.filter(function(q){ return GUIDED_CONTACT_IDS.indexOf(q.id) >= 0; })
+    .sort(function(a,b){ return GUIDED_CONTACT_IDS.indexOf(a.id) - GUIDED_CONTACT_IDS.indexOf(b.id); });
+  var restQs = loadedQuestions.filter(function(q){ return GUIDED_CONTACT_IDS.indexOf(q.id) < 0; });
+  var steps = [{ type:'welcome' }];
+  if (contactQs.length) steps.push({ type:'contact', qs:contactQs });
+  restQs.forEach(function(q){ steps.push({ type:'question', q:q }); });
+  return steps;
+}
+function renderGuided() {
+  var fw = document.getElementById('form-wrap'); if (fw) fw.style.display = 'none';
+  var img = document.getElementById('header-img'); if (img && !branding.logo) img.style.display = 'none';
+  var gw = document.getElementById('guided-wrap'); gw.style.display = 'block';
+  gState = { step: 0, answers: {}, steps: guidedBuildSteps() };
+  renderGuidedStep();
+}
+// One field's input HTML (prefilled from prior answers), mirroring classic types.
+function guidedInput(q) {
+  var val = gState.answers[q.id] || '';
+  if (q.type === 'textarea') return '<textarea id="g_' + q.id + '">' + esc(val) + '</textarea>';
+  if (q.type === 'select') {
+    var opts = '<option value="">Choose</option>' + (q.options||[]).map(function(o){ return '<option value="' + esc(o) + '"' + (val === o ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('');
+    return '<select id="g_' + q.id + '">' + opts + '</select>';
+  }
+  if (q.type === 'multiselect') {
+    var chosen = val ? val.split(', ') : [];
+    return '<div>' + (q.options||[]).map(function(o){ return '<label class="opt"><input type="checkbox" name="' + q.id + '" value="' + esc(o) + '"' + (chosen.indexOf(o) >= 0 ? ' checked' : '') + '> ' + esc(o) + '</label>'; }).join('') + '</div>';
+  }
+  return '<input type="' + q.type + '" id="g_' + q.id + '" value="' + esc(val) + '">';
+}
+function guidedReadValue(q) {
+  if (q.type === 'multiselect') {
+    return Array.from(document.querySelectorAll('#guided-wrap input[name="' + q.id + '"]:checked')).map(function(c){ return c.value; }).join(', ');
+  }
+  var el = document.getElementById('g_' + q.id);
+  return el ? el.value : '';
+}
+function guidedCollect() {
+  var s = gState.steps[gState.step];
+  if (s.type === 'contact') s.qs.forEach(function(q){ gState.answers[q.id] = guidedReadValue(q); });
+  else if (s.type === 'question') gState.answers[s.q.id] = guidedReadValue(s.q);
+}
+// name is ALWAYS required (mirrors the server guard), regardless of its .required flag.
+function guidedStepValid() {
+  var s = gState.steps[gState.step];
+  if (s.type === 'welcome') return true;
+  if (s.type === 'contact') return s.qs.every(function(q){ return (q.required || q.id === 'q_name') ? (gState.answers[q.id] || '').trim() !== '' : true; });
+  if (s.type === 'question') return s.q.required ? (gState.answers[s.q.id] || '').trim() !== '' : true;
+  return true;
+}
+function guidedProgress() {
+  var total = gState.steps.length - 1;   // exclude welcome
+  var pct = total > 0 ? Math.round((gState.step / total) * 100) : 0;
+  return '<div class="g-progress"><div class="g-progress-fill" style="width:' + pct + '%"></div></div>';
+}
+function renderGuidedStep() {
+  var gw = document.getElementById('guided-wrap');
+  var s = gState.steps[gState.step];
+  var isLast = gState.step === gState.steps.length - 1;
+  var html = '';
+  if (s.type === 'welcome') {
+    html = '<div class="g-card g-welcome">' +
+      (branding.gym ? '<div class="g-eyebrow">' + esc(branding.gym) + '</div>' : '') +
+      '<h1 class="g-headline">' + esc(branding.title || 'Client Intake Form') + '</h1>' +
+      (branding.desc ? '<p class="g-body">' + esc(branding.desc) + '</p>' : '') +
+      '<button class="submit-btn g-ok" type="button">Let’s get started</button>' +
+    '</div>';
+  } else if (s.type === 'contact') {
+    html = '<div class="g-card">' + guidedProgress() +
+      '<h2 class="g-q">Your contact details</h2>' +
+      s.qs.map(function(q){ return '<div class="field"><label>' + esc(q.label) + ((q.required || q.id === 'q_name') ? '<span class="req">*</span>' : '') + '</label>' + guidedInput(q) + '</div>'; }).join('') +
+      '<div class="g-err" id="g-err"></div>' +
+      '<div class="g-nav"><button class="g-back" type="button">← Back</button><button class="submit-btn g-ok" type="button">OK</button></div>' +
+    '</div>';
+  } else { // question
+    var q = s.q;
+    var qIndex = gState.step - (gState.steps[1] && gState.steps[1].type === 'contact' ? 1 : 0);   // human number after contact
+    html = '<div class="g-card">' + guidedProgress() +
+      '<div class="g-qnum">Question ' + qIndex + '</div>' +
+      '<h2 class="g-q">' + esc(q.label) + (q.required ? ' <span class="req">*</span>' : '') + '</h2>' +
+      guidedInput(q) +
+      '<div class="g-err" id="g-err"></div>' +
+      '<div class="g-nav"><button class="g-back" type="button">← Back</button>' +
+        (!q.required ? '<button class="g-skip" type="button">Skip</button>' : '') +
+        '<button class="submit-btn g-ok" type="button">' + (isLast ? 'Submit' : 'OK') + '</button></div>' +
+    '</div>';
+  }
+  gw.innerHTML = html;
+  guidedWire();
+}
+function guidedWire() {
+  var gw = document.getElementById('guided-wrap');
+  var s = gState.steps[gState.step];
+  var okBtn = gw.querySelector('.g-ok');
+  var backBtn = gw.querySelector('.g-back');
+  var skipBtn = gw.querySelector('.g-skip');
+
+  function refreshOk() { if (okBtn && s.type !== 'welcome') okBtn.disabled = !(guidedCollect(), guidedStepValid()); }
+  // Live-gate OK as the user types/selects.
+  gw.querySelectorAll('input, select, textarea').forEach(function(el){
+    el.addEventListener('input', refreshOk);
+    el.addEventListener('change', refreshOk);
+    // Enter-to-advance (not for textarea / multiselect checkboxes).
+    if (el.tagName !== 'TEXTAREA' && el.type !== 'checkbox') {
+      el.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); if (okBtn && !okBtn.disabled) okBtn.click(); } });
+    }
+  });
+  if (okBtn) { okBtn.disabled = false; refreshOk(); }
+  if (okBtn) okBtn.addEventListener('click', guidedNext);
+  if (backBtn) backBtn.addEventListener('click', guidedBack);
+  if (skipBtn) skipBtn.addEventListener('click', function(){ guidedCollect(); guidedAdvance(); });
+
+  // Focus first field for flow.
+  var first = gw.querySelector('input:not([type=checkbox]), textarea, select'); if (first) first.focus();
+}
+function guidedAdvance() {
+  if (gState.step >= gState.steps.length - 1) { guidedSubmit(); return; }
+  gState.step++; renderGuidedStep();
+}
+function guidedNext() {
+  guidedCollect();
+  if (!guidedStepValid()) {
+    var e = document.getElementById('g-err');
+    if (e) { e.textContent = 'This field is required.'; e.style.display = 'block'; }
+    return;
+  }
+  guidedAdvance();
+}
+function guidedBack() {
+  guidedCollect();
+  if (gState.step > 0) { gState.step--; renderGuidedStep(); }
+}
+function guidedSubmit() {
+  guidedCollect();
+  // Build the SAME fields map classic produces (every question id → its answer string).
+  var fields = {};
+  loadedQuestions.forEach(function(q){ fields[q.id] = (gState.answers[q.id] != null) ? gState.answers[q.id] : ''; });
+  var okBtn = document.querySelector('#guided-wrap .g-ok');
+  if (okBtn) { okBtn.disabled = true; okBtn.textContent = 'Submitting...'; }
+  submitLead(fields).then(function(r){
+    if (!r || r.dropped) return;   // honeypot: silent
+    if (r.error === 'name') {
+      // Jump back to the contact step so the client can add their name.
+      var ci = gState.steps.findIndex(function(st){ return st.type === 'contact'; });
+      gState.step = ci >= 0 ? ci : 0;
+      renderGuidedStep();
+      var e = document.getElementById('g-err'); if (e) { e.textContent = 'Please enter your name to submit.'; e.style.display = 'block'; }
+      return;
+    }
+    if (r.ok) {
+      document.getElementById('guided-wrap').innerHTML = '<div class="g-card success"><div class="success-icon">✅</div><h2>Thanks, ' + esc(r.firstName) + '!</h2><p>Your information has been received. We’ll be in touch with you soon.</p></div>';
+    } else {
+      if (okBtn) { okBtn.disabled = false; okBtn.textContent = 'Submit'; }
+      var e2 = document.getElementById('g-err'); if (e2) { e2.textContent = 'Something went wrong. Please try again.'; e2.style.display = 'block'; }
+    }
+  });
 }
 
 loadForm();
