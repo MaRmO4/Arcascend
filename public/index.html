@@ -1127,6 +1127,7 @@ main { flex: 1; padding: 20px 24px; }
   <div class="tab active" data-tab="all">All Leads <span class="count" id="c-all">0</span></div>
   <div class="tab" data-tab="clients">Active Clients <span class="count" id="c-clients">0</span></div>
   <div class="tab" data-tab="sessions">Sessions</div>
+  <div class="tab" data-tab="schedule">Schedule</div>
   <div class="tab" data-tab="priority">Priority <span class="count" id="c-priority">0</span></div>
   <div class="tab" data-tab="tasks">Tasks <span class="count" id="c-tasks">0</span></div>
 <div class="tab" data-tab="calendar">Calendar</div>
@@ -2591,6 +2592,485 @@ function sessionsForLine(lineId) { return (window.SESSIONS || []).filter(functio
 function voidedForLine(lineId) { return (window.SESSIONS || []).filter(function(s){ return s.service_line_id === lineId && s.status === 'voided'; }); }
 function countCompletedForLine(lineId) { return sessionsForLine(lineId).length; }
 
+// ==========================================================
+// SCHEDULING CALENDAR — books into the SAME `sessions` table + window.SESSIONS cache
+// as the Sessions tab / in-profile tracker (one source of truth). Booked blocks become
+// 'completed' via the block menu → feed countCompletedForLine + the Sessions tab.
+// ==========================================================
+async function bookSession(o) {
+  var token = localStorage.getItem('arcascend_token');
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
+  var payload = {
+    user_id: uid,
+    client_id: o.clientId || null,
+    client_name: o.name || '',
+    service_line_id: o.lineId || null,
+    service_type: o.serviceType || '',
+    when_at: o.whenAt,
+    status: 'booked',
+    pay_source: o.paySource || 'package',
+    charge_amount: o.chargeAmount || 0,
+    duration_min: o.durationMin || 60
+  };
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) return null;
+    var rows = await res.json();
+    var row = Array.isArray(rows) ? rows[0] : rows;
+    if (!window.SESSIONS) window.SESSIONS = [];
+    if (row) window.SESSIONS.unshift(row);
+    return row;
+  } catch(e) { return null; }
+}
+async function patchSession(id, obj) {
+  var token = localStorage.getItem('arcascend_token');
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/sessions?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify(obj)
+    });
+    if (res.ok || res.status === 204) {
+      var s = (window.SESSIONS || []).find(function(x){ return String(x.id) === String(id); });
+      if (s) Object.assign(s, obj);
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+async function deleteSessionRow(id) {
+  var token = localStorage.getItem('arcascend_token');
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/sessions?id=eq.' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY, 'Prefer': 'return=minimal' }
+    });
+    if (res.ok || res.status === 204) {
+      window.SESSIONS = (window.SESSIONS || []).filter(function(x){ return String(x.id) !== String(id); });
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+// ---- Schedule state + geometry ----
+var SCHED_START_HOUR = 5, SCHED_END_HOUR = 20;                 // 5:00 AM → 8:00 PM
+var SCHED_SLOTS = (SCHED_END_HOUR - SCHED_START_HOUR) * 2;     // 30 half-hour rows
+var schedWeekStart = null;                                     // local Sunday 00:00
+var schedDensity = localStorage.getItem('arcascend_sched_density') || 'scroll';
+// Unified "armed" booking source (click-to-place). null, or a payload:
+//   { type:'client', name, clientId, lineId, serviceType, rate }  OR  { type:'consult', name, clientId }
+var schedArmed = null;
+var schedRenderSeq = 0;                                        // render token — stale async renders abort
+
+function schedStartOfWeek(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - x.getDay()); return x; }
+function schedInitWeek() { if (!schedWeekStart) schedWeekStart = schedStartOfWeek(new Date()); }
+function schedSlotToISO(dayIndex, slotIndex) {
+  var d = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() + dayIndex);
+  var mins = SCHED_START_HOUR * 60 + slotIndex * 30;
+  d.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+  return d.toISOString();   // built from LOCAL components → correct instant
+}
+function schedTimeLabel(d) { var h = d.getHours(), m = d.getMinutes(); var ap = h >= 12 ? 'PM' : 'AM'; var h12 = h % 12; if (h12 === 0) h12 = 12; return h12 + (m ? ':' + pad2(m) : '') + ' ' + ap; }
+function schedPos(s) {
+  // Convert the UTC when_at to LOCAL time first, then map to day column + slot row.
+  var d = new Date(s.when_at);                                   // local time
+  var wk0 = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate());
+  var sd = new Date(d.getFullYear(), d.getMonth(), d.getDate()); // session's local calendar date
+  var dayIndex = Math.round((sd.getTime() - wk0.getTime()) / 86400000);
+  var slotIndex = (d.getHours() - SCHED_START_HOUR) * 2 + (d.getMinutes() >= 30 ? 1 : 0);   // 5:00am = slot 0
+  var span = Math.max(1, Math.round((s.duration_min || 60) / 30));
+  return { dayIndex: dayIndex, slotIndex: slotIndex, span: span };
+}
+function schedWeekSessions() {
+  // Use the SAME local day mapping as rendering (schedPos) so "in-week" and "renders"
+  // can never disagree at UTC/local day boundaries.
+  return (window.SESSIONS || []).filter(function(s){
+    if (!s || !s.when_at || s.status === 'voided') return false;
+    if (isNaN(new Date(s.when_at).getTime())) return false;
+    var di = schedPos(s).dayIndex;
+    return di >= 0 && di <= 6;
+  });
+}
+// Booked + completed occupy time; cancelled slots are free to rebook.
+function schedOverlaps(dayCol, startSlot, span, ignoreId) {
+  // Same getDay()/slot mapping as schedRenderBlocks so overlap ↔ placement never disagree.
+  var wk0 = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate()).getTime();
+  var wk7 = wk0 + 7 * 86400000;
+  var s1 = startSlot + span;
+  return (window.SESSIONS || []).some(function(s){
+    if (!s || !s.when_at) return false;
+    if (ignoreId && String(s.id) === String(ignoreId)) return false;
+    if (s.status === 'voided' || s.status === 'cancelled_charge' || s.status === 'cancelled_no_charge') return false;
+    var d = new Date(s.when_at); if (isNaN(d.getTime())) return false;
+    var sd = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    if (sd < wk0 || sd >= wk7) return false;
+    if (d.getDay() !== dayCol) return false;
+    var e0 = (d.getHours() - 5) * 2 + (d.getMinutes() >= 30 ? 1 : 0);
+    var e1 = e0 + Math.max(1, Math.round((s.duration_min || 60) / 30));
+    return startSlot < e1 && e0 < s1;   // slot-range overlap
+  });
+}
+
+async function renderScheduleTab() {
+  var main = $("main"); if (!main) return;
+  var seq = ++schedRenderSeq;   // token: if a newer render starts, this one must abort
+  // GUARANTEE the shared sessions cache is populated BEFORE drawing, so the block
+  // injection always has data (the old fire-and-forget re-render could miss).
+  if (!Array.isArray(window.SESSIONS)) {
+    await loadSessions();
+    if (seq !== schedRenderSeq || activeTab !== 'schedule') return;   // superseded / navigated away
+    main = $("main"); if (!main) return;
+  }
+  schedInitWeek();
+  var rowH = schedDensity === 'compact' ? 15 : 26;
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var todayKey = todayStr();
+
+  // Week label
+  var wkEnd = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() + 6);
+  var wkLabel = months[schedWeekStart.getMonth()] + ' ' + schedWeekStart.getDate() + ' – ' + months[wkEnd.getMonth()] + ' ' + wkEnd.getDate() + ', ' + wkEnd.getFullYear();
+
+  // ---- Top bar ----
+  // Armed banner (client=accent, consult=purple/dashed). Draggable AND click-to-place.
+  var consultChip = '';
+  if (schedArmed) {
+    var isC = schedArmed.type === 'consult';
+    var aClr = isC ? 'var(--purple)' : 'var(--accent)';
+    var aBg = isC ? 'rgba(167,139,250,0.15)' : 'rgba(79,158,255,0.15)';
+    consultChip = '<span id="sched-armed-chip" draggable="true" style="display:inline-flex;align-items:center;gap:6px;background:' + aBg + ';border:1px ' + (isC ? 'dashed' : 'solid') + ' ' + aClr + ';color:' + aClr + ';border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:grab;">▶ ' + escapeHtml(schedArmed.name) + (isC ? ' — consult' : '') + ' <span style="color:var(--muted);font-weight:400;">click a slot to place</span><button id="sched-armed-x" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;margin-left:2px;">✕</button></span>';
+  }
+  var topBar = '<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+      '<button id="sched-prev" class="cf-btn cf-g cf-sm" style="padding:6px 12px;">‹</button>' +
+      '<button id="sched-today" class="cf-btn cf-g cf-sm" style="padding:6px 12px;">Today</button>' +
+      '<button id="sched-next" class="cf-btn cf-g cf-sm" style="padding:6px 12px;">›</button>' +
+      '<span style="font-size:15px;font-weight:700;margin-left:6px;">' + escapeHtml(wkLabel) + '</span>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+      '<div style="position:relative;">' +
+        '<input type="text" id="sched-consult-search" name="consult-search" autocomplete="off" placeholder="Search consult (lead)…" style="background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;width:200px;">' +
+        '<div id="sched-consult-results" style="display:none;position:absolute;top:38px;left:0;right:0;z-index:30;background:var(--panel);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;"></div>' +
+      '</div>' +
+      consultChip +
+      '<div style="display:inline-flex;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;">' +
+        '<button id="sched-dens-scroll" style="padding:7px 12px;border:none;font-size:12.5px;cursor:pointer;background:' + (schedDensity === 'scroll' ? 'var(--accent)' : 'transparent') + ';color:' + (schedDensity === 'scroll' ? '#fff' : 'var(--text)') + ';">Scroll</button>' +
+        '<button id="sched-dens-compact" style="padding:7px 12px;border:none;font-size:12.5px;cursor:pointer;background:' + (schedDensity === 'compact' ? 'var(--accent)' : 'transparent') + ';color:' + (schedDensity === 'compact' ? '#fff' : 'var(--text)') + ';">Compact</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+
+  // ---- Left: active clients A–Z (contained, self-scrolling column) ----
+  var clients = activeClients().slice().sort(function(a,b){ return (a.name||'').toLowerCase() < (b.name||'').toLowerCase() ? -1 : 1; });
+  var sidebar = '<div id="sched-sidebar" style="flex:0 0 190px;width:190px;position:sticky;top:0;align-self:flex-start;">' +
+    '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;margin-bottom:4px;">Active Clients</div>' +
+    '<div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Click to arm, then click a slot — or drag.</div>' +
+    '<div id="sched-client-list" style="display:flex;flex-direction:column;gap:6px;max-height:620px;overflow-y:auto;padding-right:2px;">' +
+    (clients.length ? clients.map(function(L){
+      var line = (activeLines(L).filter(function(ln){ return (ln.billingStyle||'package')==='package'; })[0]) || activeLines(L)[0] || null;
+      var payload = { type:'client', name:L.name||'', clientId:L.id||'', lineId: line ? line.id : '', serviceType: line ? (line.type||'') : '', rate: line ? (line.rate||0) : 0 };
+      var armed = schedArmed && schedArmed.type === 'client' && String(schedArmed.clientId) === String(L.id||'');
+      var chipStyle = armed
+        ? 'background:rgba(79,158,255,0.18);border:1px solid var(--accent);color:var(--accent);'
+        : 'background:var(--panel-2);border:1px solid var(--border);';
+      return '<div class="sched-chip" draggable="true" data-client-id="' + escapeAttr(L.id||'') + '" data-payload="' + escapeAttr(JSON.stringify(payload)) + '" style="' + chipStyle + 'border-radius:8px;padding:8px 10px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;">' + (armed ? '▶ ' : '') + escapeHtml(L.name || '(no name)') + '</div>';
+    }).join('') : '<div style="font-size:12px;color:var(--muted);">No active clients yet.</div>') +
+    '</div></div>';
+
+  // ---- Grid ----
+  var headCells = '<div style="width:52px;flex:0 0 52px;"></div>' + [0,1,2,3,4,5,6].map(function(di){
+    var d = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() + di);
+    var isToday = localDateStr(d) === todayKey;
+    return '<div style="flex:1;text-align:center;padding:6px 2px;font-size:12px;font-weight:700;color:' + (isToday ? 'var(--accent)' : 'var(--text)') + ';">' + dayNames[di] + ' <span style="color:var(--muted);font-weight:500;">' + d.getDate() + '</span></div>';
+  }).join('');
+
+  // time gutter
+  var gutter = '<div style="flex:0 0 52px;width:52px;position:relative;height:' + (SCHED_SLOTS * rowH) + 'px;">';
+  for (var i = 0; i < SCHED_SLOTS; i++) {
+    if (i % 2 === 0) {
+      var hd = new Date(2000,0,1, SCHED_START_HOUR + i/2, 0);
+      gutter += '<div style="position:absolute;top:' + (i*rowH) + 'px;right:6px;font-size:10px;color:var(--muted);">' + schedTimeLabel(hd) + '</div>';
+    }
+  }
+  gutter += '</div>';
+
+  // Grid draws EMPTY slot cells only; session blocks are injected into the cells after
+  // the grid is in the DOM (schedRenderBlocks), using the proven getDay()/slot mapping.
+  var dayCols = [0,1,2,3,4,5,6].map(function(di){
+    var d = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() + di);
+    var isToday = localDateStr(d) === todayKey;
+    var slots = '';
+    for (var si = 0; si < SCHED_SLOTS; si++) {
+      slots += '<div class="sched-slot" data-day="' + di + '" data-slot="' + si + '" style="position:relative;height:' + rowH + 'px;border-top:1px solid ' + (si % 2 === 0 ? 'var(--border)' : 'rgba(45,55,66,0.4)') + ';"></div>';
+    }
+    return '<div class="sched-day" data-day="' + di + '" style="flex:1;position:relative;height:' + (SCHED_SLOTS * rowH) + 'px;border-left:1px solid var(--border);' + (isToday ? 'background:rgba(79,158,255,0.05);' : '') + '">' + slots + '</div>';
+  }).join('');
+
+  var gridInner = '<div style="display:flex;">' + gutter + dayCols + '</div>';
+  var gridWrap = '<div id="sched-grid" style="flex:1 1 auto;min-width:0;">' +
+    '<div style="display:flex;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:5;">' + headCells + '</div>' +
+    '<div style="' + (schedDensity === 'scroll' ? 'max-height:560px;overflow-y:auto;' : '') + 'border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;">' + gridInner + '</div>' +
+  '</div>';
+
+  main.innerHTML = topBar + '<div id="sched-body" style="display:flex;gap:16px;align-items:flex-start;">' + sidebar + gridWrap + '</div>';
+  var gridEl = main.querySelector('#sched-grid');   // the LIVE grid just inserted
+  schedRenderBlocks(gridEl, rowH);                  // inject into THIS grid's live cells
+  wireSchedule(rowH);
+  // FINAL settled count: how many block elements are live in the on-page grid right now.
+  console.log('[schedule] FINAL live blocks in grid:', document.querySelectorAll('#sched-grid .sched-block').length);
+}
+
+// Inject a block for every in-week, on-grid session by locating its exact slot cell.
+// Uses the VERIFIED mapping: local getDay() = column, (getHours-5)*2 + (min>=30?1:0) = slot.
+function schedRenderBlocks(gridEl, rowH) {
+  if (!gridEl) { console.log('[schedule] schedRenderBlocks: no live grid element — aborted'); return; }
+  var wk0 = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate()).getTime();
+  var wk7 = wk0 + 7 * 86400000;
+  var count = 0;
+  (window.SESSIONS || []).forEach(function(s){
+    if (!s || !s.when_at || s.status === 'voided') return;
+    var d = new Date(s.when_at);
+    if (isNaN(d.getTime())) return;
+    // Week membership by LOCAL calendar date (not UTC).
+    var sd = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    if (sd < wk0 || sd >= wk7) return;
+    var day = d.getDay();                                           // 0=Sun..6=Sat (LOCAL) = column
+    var slot = (d.getHours() - 5) * 2 + (d.getMinutes() >= 30 ? 1 : 0);
+    if (slot < 0 || slot >= SCHED_SLOTS) return;
+    // Query the LIVE grid element that was just inserted (not a possibly-replaced global),
+    // and append the block INTO the slot cell (cell is position:relative → block anchors to it).
+    var cell = gridEl.querySelector('.sched-slot[data-day="' + day + '"][data-slot="' + slot + '"]');
+    if (!cell) return;
+    var span = Math.max(1, Math.round((s.duration_min || 60) / 30));
+    cell.insertAdjacentHTML('beforeend', schedBlockDiv(s, span, rowH));
+    count++;
+  });
+  console.log('[schedule] rendered', count, 'blocks for this week (cache total ' + ((window.SESSIONS || []).length) + ', grid live:', document.contains(gridEl) + ')');
+}
+// Block HTML anchored to its slot CELL (which is position:relative): top:0, spans `span` slots downward.
+function schedBlockDiv(s, span, rowH) {
+  var isConsult = s.pay_source === 'consult' || s.service_type === 'Consultation';
+  var cancelled = (s.status === 'cancelled_charge' || s.status === 'cancelled_no_charge');
+  // Color by status first (completed=green, cancelled=red), else by type: consult=PURPLE, session=blue.
+  var color, bg;
+  if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(34,197,94,0.15)'; }
+  else if (cancelled) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.12)'; }
+  else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(167,139,250,0.22)'; }   // distinct purple
+  else { color = 'var(--accent)'; bg = 'rgba(79,158,255,0.15)'; }                    // blue session
+  var h = span * rowH - 3;
+  var nm = ((s.client_name || '').split(/\s+/)[0]) || s.client_name || '(client)';
+  var timeStr = schedTimeLabel(new Date(s.when_at));
+  return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '" style="position:absolute;z-index:2;left:2px;right:2px;top:0;height:' + h + 'px;background:' + bg + ';border:1px solid ' + color + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:pointer;line-height:1.25;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' +
+    '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(nm) + (isConsult ? ' · consult' : '') + '</div>' +
+    '<div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(timeStr) + '</div>' +
+  '</div>';
+}
+
+function schedBlockHTML(s, rowH) {
+  var p = schedPos(s);
+  // Only render sessions in this week's columns AND within the 5:00am–8:00pm grid window.
+  if (p.dayIndex < 0 || p.dayIndex > 6) return '';
+  if (p.slotIndex < 0 || p.slotIndex >= SCHED_SLOTS) return '';
+  var isConsult = s.pay_source === 'consult';
+  var cancelled = (s.status === 'cancelled_charge' || s.status === 'cancelled_no_charge');
+  var color, bg;
+  if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(34,197,94,0.15)'; }
+  else if (cancelled) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.12)'; }
+  else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(167,139,250,0.15)'; }
+  else { color = 'var(--accent)'; bg = 'rgba(79,158,255,0.15)'; }
+  var top = p.slotIndex * rowH, h = p.span * rowH - 3;
+  var nm = ((s.client_name || '').split(/\s+/)[0]) || s.client_name || '(client)';
+  return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '" style="position:absolute;z-index:2;left:3px;right:3px;top:' + top + 'px;height:' + h + 'px;background:' + bg + ';border:1px solid ' + color + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:pointer;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' +
+    '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(nm) + (isConsult ? ' • consult' : '') + '</div>' +
+    (rowH * p.span >= 40 ? '<div style="font-size:10px;color:var(--muted);">' + schedTimeLabel(new Date(s.when_at)) + '</div>' : '') +
+  '</div>';
+}
+
+function wireSchedule(rowH) {
+  var main = $("main");
+  var reRender = function(){ if (activeTab === 'schedule') renderScheduleTab(); };
+
+  // Week nav + density
+  var prev = $("sched-prev"), next = $("sched-next"), today = $("sched-today");
+  if (prev) prev.addEventListener('click', function(){ schedWeekStart = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() - 7); reRender(); });
+  if (next) next.addEventListener('click', function(){ schedWeekStart = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() + 7); reRender(); });
+  if (today) today.addEventListener('click', function(){ schedWeekStart = schedStartOfWeek(new Date()); reRender(); });
+  var ds = $("sched-dens-scroll"), dc = $("sched-dens-compact");
+  if (ds) ds.addEventListener('click', function(){ schedDensity = 'scroll'; localStorage.setItem('arcascend_sched_density','scroll'); reRender(); });
+  if (dc) dc.addEventListener('click', function(){ schedDensity = 'compact'; localStorage.setItem('arcascend_sched_density','compact'); reRender(); });
+
+  // Consult search
+  var search = $("sched-consult-search"), results = $("sched-consult-results");
+  if (search) search.addEventListener('input', function(){
+    var q = search.value.trim().toLowerCase();
+    if (!q) { results.style.display = 'none'; results.innerHTML = ''; return; }
+    var matches = (LEADS || []).filter(function(L){ return (L.name||'').toLowerCase().indexOf(q) >= 0; }).slice(0, 8);
+    results.innerHTML = matches.length ? matches.map(function(L){ return '<div class="sched-consult-opt" data-name="' + escapeAttr(L.name||'') + '" data-lead-id="' + escapeAttr(L.id||'') + '" style="padding:8px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);">' + escapeHtml(L.name || '(no name)') + '</div>'; }).join('') : '<div style="padding:8px 10px;font-size:12px;color:var(--muted);">No matches</div>';
+    results.style.display = 'block';
+  });
+  // DELEGATION: one listener on the persistent results container. The .sched-consult-opt
+  // items are rebuilt on every keystroke (innerHTML), so per-element handlers wired at
+  // render time never bind — delegation survives the re-render.
+  if (results) results.addEventListener('click', function(e){
+    var opt = e.target.closest && e.target.closest('.sched-consult-opt');
+    if (!opt) return;
+    var leadId = opt.dataset.leadId;
+    console.log('consult option clicked:', leadId, opt.dataset.name);
+    var L = (LEADS || []).find(function(x){ return String(x.id||'') === String(leadId); });
+    schedArmed = { type: 'consult', name: (L && L.name) || opt.dataset.name || '', clientId: leadId || '' };   // ARM consult
+    if (search) search.value = '';
+    results.style.display = 'none'; results.innerHTML = '';
+    reRender();
+  });
+  var cx = $("sched-armed-x");
+  if (cx) cx.addEventListener('click', function(e){ e.stopPropagation(); schedArmed = null; reRender(); });
+
+  // ---- Drag & drop via EVENT DELEGATION on stable containers ----
+  // Drag sources (client chips live in #sched-body; the consult chip lives in the top bar).
+  function wireDragStart(container){
+    if (!container) return;
+    container.addEventListener('dragstart', function(e){
+      var chip = e.target.closest && e.target.closest('.sched-chip, #sched-armed-chip');
+      if (!chip) return;
+      var payload = chip.dataset.payload || (schedArmed ? JSON.stringify(schedArmed) : '');
+      if (!payload) return;
+      e.dataTransfer.setData('text/plain', payload);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+  }
+  var body = document.getElementById('sched-body');
+  wireDragStart(body);
+  var cchip = $("sched-armed-chip");
+  if (cchip) { cchip.dataset.payload = JSON.stringify(schedArmed || {}); wireDragStart(cchip.parentNode); }
+
+  // Resolve which day column a pointer is over — via the event target, else by scanning
+  // the day columns' bounding rects (robust against blocks/borders/gaps under the cursor).
+  function schedDayAtPoint(e) {
+    var el = (e.target && e.target.closest) ? e.target.closest('.sched-day') : null;
+    if (el) return el;
+    var cols = document.querySelectorAll('#sched-grid .sched-day');
+    for (var i = 0; i < cols.length; i++) {
+      var r = cols[i].getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return cols[i];
+    }
+    return null;
+  }
+
+  // Resolve day+slot from a pointer event: exact slot cell, else day column + pointer Y.
+  function schedResolveDaySlot(e) {
+    var day, slot;
+    var slotEl = (e.target && e.target.closest) ? e.target.closest('.sched-slot') : null;
+    if (slotEl) { day = parseInt(slotEl.dataset.day, 10); slot = parseInt(slotEl.dataset.slot, 10); }
+    else {
+      var dayEl = schedDayAtPoint(e);
+      if (!dayEl) return null;
+      day = parseInt(dayEl.dataset.day, 10);
+      var rect = dayEl.getBoundingClientRect();
+      slot = Math.floor((e.clientY - rect.top) / rowH);
+    }
+    if (isNaN(day) || isNaN(slot)) return null;
+    return { day: day, slot: Math.max(0, Math.min(SCHED_SLOTS - 2, slot)) };
+  }
+  // Book `p` at day/slot — shared by BOTH drop and click-to-place. Does NOT clear armed.
+  function schedPlace(p, day, slot) {
+    if (!p || !p.type) return;
+    var span = 2;   // 60 min default
+    if (schedOverlaps(day, slot, span, null)) { showToast('That time slot is already booked.', 'error'); return; }
+    var whenAt = schedSlotToISO(day, slot);
+    var opts = (p.type === 'consult')
+      ? { name: p.name, clientId: p.clientId || null, lineId: null, serviceType: 'Consultation', whenAt: whenAt, durationMin: 60, paySource: 'consult', chargeAmount: 0 }
+      : { name: p.name, clientId: p.clientId || null, lineId: p.lineId || null, serviceType: p.serviceType || '', whenAt: whenAt, durationMin: 60, paySource: 'package', chargeAmount: p.rate || 0 };
+    bookSession(opts).then(function(row){
+      if (!row) { showToast('Could not book — did you run: ALTER TABLE sessions ADD COLUMN duration_min int DEFAULT 60;', 'error'); return; }
+      if (typeof renderTabCounts === 'function') renderTabCounts();
+      reRender();   // schedArmed unchanged → stays armed for repeat placement
+    });
+  }
+
+  // Drop target: the whole #sched-body. dragenter/dragover MUST preventDefault UNCONDITIONALLY
+  // or the browser cancels the drop.
+  if (body) {
+    body.addEventListener('dragenter', function(e){ e.preventDefault(); });
+    body.addEventListener('dragover', function(e){ e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
+    body.addEventListener('drop', function(e){
+      e.preventDefault();
+      var p; try { p = JSON.parse(e.dataTransfer.getData('text/plain')); } catch(_) { return; }
+      if (!p || !p.type) return;
+      var ds = schedResolveDaySlot(e); if (!ds) return;
+      schedPlace(p, ds.day, ds.slot);   // drag also keeps armed (if it was armed)
+    });
+    // Unified click: existing block → menu; client chip → arm/toggle; armed + empty slot → place;
+    // armed + empty (non-grid) area → clear.
+    body.addEventListener('click', function(e){
+      var b = e.target.closest && e.target.closest('.sched-block');
+      if (b) { e.stopPropagation(); schedOpenMenu(b.dataset.sid, e.clientX, e.clientY); return; }
+      var chip = e.target.closest && e.target.closest('.sched-chip');
+      if (chip) {
+        var cp; try { cp = JSON.parse(chip.dataset.payload); } catch(_) { return; }
+        // toggle off if re-clicking the armed client; else arm this one (un-arms any consult)
+        if (schedArmed && schedArmed.type === 'client' && String(schedArmed.clientId) === String(cp.clientId)) schedArmed = null;
+        else schedArmed = cp;
+        reRender();
+        return;
+      }
+      if (schedArmed) {
+        var ds = schedResolveDaySlot(e);
+        if (ds) schedPlace(schedArmed, ds.day, ds.slot);   // click empty slot → place (stays armed)
+        else { schedArmed = null; reRender(); }             // clicked empty non-grid area → clear
+      }
+    });
+  }
+
+  // Esc clears the armed selection (wired once, globally).
+  if (!window.__schedEscWired) {
+    window.__schedEscWired = true;
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && activeTab === 'schedule' && schedArmed) { schedArmed = null; renderScheduleTab(); }
+    });
+  }
+}
+
+function schedCloseMenu() { var m = document.getElementById('sched-menu'); if (m) m.remove(); document.removeEventListener('click', schedCloseMenu); }
+function schedOpenMenu(sid, x, y) {
+  schedCloseMenu();
+  var s = (window.SESSIONS || []).find(function(z){ return String(z.id) === String(sid); });
+  if (!s) return;
+  var isConsult = s.pay_source === 'consult';
+  var reRender = function(){ if (activeTab === 'schedule') renderScheduleTab(); };
+  var m = document.createElement('div');
+  m.id = 'sched-menu';
+  m.style.cssText = 'position:fixed;z-index:300;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:6px;min-width:200px;left:' + Math.min(x, window.innerWidth - 220) + 'px;top:' + Math.min(y, window.innerHeight - 200) + 'px;';
+  function item(label, color, fn) {
+    var btn = document.createElement('button');
+    btn.textContent = label;
+    btn.style.cssText = 'display:block;width:100%;text-align:left;background:transparent;border:none;color:' + (color || 'var(--text)') + ';font-size:13px;padding:8px 10px;border-radius:6px;cursor:pointer;';
+    btn.addEventListener('mouseover', function(){ btn.style.background = 'var(--panel-2)'; });
+    btn.addEventListener('mouseout', function(){ btn.style.background = 'transparent'; });
+    btn.addEventListener('click', function(ev){ ev.stopPropagation(); schedCloseMenu(); fn(); });
+    m.appendChild(btn);
+  }
+  var nm = escapeHtml((s.client_name || '(client)')) + (isConsult ? ' • consult' : '');
+  var hdr = document.createElement('div');
+  hdr.innerHTML = nm + '<div style="font-size:11px;color:var(--muted);">' + schedTimeLabel(new Date(s.when_at)) + '</div>';
+  hdr.style.cssText = 'font-size:13px;font-weight:700;padding:6px 10px 8px;border-bottom:1px solid var(--border);margin-bottom:4px;';
+  m.appendChild(hdr);
+  if (s.status !== 'completed') {
+    item(isConsult ? '✓ Mark consult done' : '✓ Session Completed (charge)', 'var(--won)', function(){
+      patchSession(sid, { status: 'completed', completed_at: new Date().toISOString() }).then(function(){ if (typeof renderTabCounts === 'function') renderTabCounts(); reRender(); });
+    });
+  }
+  item('Cancel (charge)', 'var(--open)', function(){ patchSession(sid, { status: 'cancelled_charge' }).then(reRender); });
+  item('Cancel (no charge)', 'var(--open)', function(){ patchSession(sid, { status: 'cancelled_no_charge' }).then(reRender); });
+  item('Remove', 'var(--lost)', function(){ deleteSessionRow(sid).then(reRender); });
+  document.body.appendChild(m);
+  setTimeout(function(){ document.addEventListener('click', schedCloseMenu); }, 0);
+}
+
 // Toast with an inline Undo action (~8s), for the just-logged session.
 function showSessionUndoToast(onUndo, msg) {
   var existing = document.querySelector('.toast'); if (existing) existing.remove();
@@ -2613,7 +3093,7 @@ function showSessionUndoToast(onUndo, msg) {
 // ==========================================================
 var sessionsSearchTerm = '';
 function sessionLocalDateStr(s) { var d = new Date(s.when_at || s.completed_at || s.created_at); return isNaN(d.getTime()) ? '' : localDateStr(d); }
-function completedSessionsAll() { return (window.SESSIONS || []).filter(function(s){ return s.status === 'completed'; }); }
+function completedSessionsAll() { return (window.SESSIONS || []).filter(function(s){ return s.status === 'completed' && s.pay_source !== 'consult'; }); }
 // Completed counts + revenue for today / this-week (MONDAY-start, Mon–Sun) / this calendar
 // month, all in LOCAL dates (reuses localDateStr → no evening-Pacific UTC off-by-one).
 function sessionPeriodStats() {
@@ -4368,6 +4848,7 @@ function renderMain() {
 
   if (activeTab === "clients") { renderActiveClientsV2(); return; }
   if (activeTab === "sessions") { renderSessionsTab(); return; }
+  if (activeTab === "schedule") { renderScheduleTab(); return; }
   if (activeTab === "tasks") { renderTasksTab(); return; }
 if (activeTab === "reports" && typeof renderReportsTab === "function") { renderReportsTab(); return; }
 if (activeTab === "calendar") { renderCalendarTab(); return; }
