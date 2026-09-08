@@ -2715,6 +2715,73 @@ function schedOverlaps(dayCol, startSlot, span, ignoreId) {
     return startSlot < e1 && e0 < s1;   // slot-range overlap
   });
 }
+// Week-agnostic overlap: does any LIVE booking (booked/completed — cancelled/voided are free)
+// occupy the same LOCAL day + slot-range as a session starting at `start` for `span` slots?
+// Used by "Repeat → next week" so a copy never double-books an already-filled next-week slot.
+function schedSlotOccupied(start, span) {
+  var tDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  var tStart = (start.getHours() - SCHED_START_HOUR) * 2 + (start.getMinutes() >= 30 ? 1 : 0);
+  var tEnd = tStart + span;
+  return (window.SESSIONS || []).some(function(s){
+    if (!s || !s.when_at) return false;
+    if (s.status === 'voided' || s.status === 'cancelled_charge' || s.status === 'cancelled_no_charge') return false;
+    var d = new Date(s.when_at); if (isNaN(d.getTime())) return false;
+    if (new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() !== tDay) return false;
+    var e0 = (d.getHours() - SCHED_START_HOUR) * 2 + (d.getMinutes() >= 30 ? 1 : 0);
+    var e1 = e0 + Math.max(1, Math.round((s.duration_min || 60) / 30));
+    return tStart < e1 && e0 < tEnd;   // slot-range overlap
+  });
+}
+// Copy every PT session booking in the currently-viewed week into the SAME weekday + time
+// of the FOLLOWING week. Skips consults (never repeat) and voided rows; skips any next-week
+// slot already taken (never double-book). New copies are always fresh status='booked'.
+async function schedRepeatWeek() {
+  schedInitWeek();
+  var wk0 = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate()).getTime();
+  var wk7 = wk0 + 7 * 86400000;
+  var sources = (window.SESSIONS || []).filter(function(s){
+    if (!s || !s.when_at || s.status === 'voided' || s.pay_source === 'consult') return false;
+    var d = new Date(s.when_at); if (isNaN(d.getTime())) return false;
+    var sd = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    return sd >= wk0 && sd < wk7;   // LOCAL week membership (matches render/overlap logic)
+  });
+  if (!sources.length) { showToast('No sessions to copy.'); return; }
+
+  var copied = 0, skipped = 0, failed = 0;
+  for (var i = 0; i < sources.length; i++) {
+    var s = sources[i];
+    var d = new Date(s.when_at);   // LOCAL
+    // +7 days in LOCAL calendar terms, preserving hour/minute → identical weekday + slot,
+    // no UTC drift (same build-from-local-components pattern as schedSlotToISO).
+    var nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7, d.getHours(), d.getMinutes(), 0, 0);
+    var span = Math.max(1, Math.round((s.duration_min || 60) / 30));
+    if (schedSlotOccupied(nd, span)) { skipped++; continue; }   // slot already booked next week → skip
+    var row = await bookSession({
+      name: s.client_name || '',
+      clientId: s.client_id || null,
+      lineId: s.service_line_id || null,
+      serviceType: s.service_type || '',
+      whenAt: nd.toISOString(),
+      durationMin: s.duration_min || 60,
+      paySource: s.pay_source || 'package',   // carried over; bookSession forces status='booked'
+      chargeAmount: s.charge_amount || 0       // rate carried over
+    });
+    if (row) copied++; else failed++;
+  }
+
+  // Next-week date range label (local, same month/day formatting as the week header).
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var nw0 = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() + 7);
+  var nw6 = new Date(nw0.getFullYear(), nw0.getMonth(), nw0.getDate() + 6);
+  var nwLabel = months[nw0.getMonth()] + ' ' + nw0.getDate() + ' – ' + months[nw6.getMonth()] + ' ' + nw6.getDate();
+
+  var msg = 'Copied ' + copied + ' session' + (copied === 1 ? '' : 's') + ' to ' + nwLabel +
+    (skipped ? ', skipped ' + skipped + ' already-booked slot' + (skipped === 1 ? '' : 's') : '') +
+    (failed ? ' (' + failed + ' failed to save)' : '') + '.';
+  showToast(msg, failed ? 'error' : undefined);
+  if (typeof renderTabCounts === 'function') renderTabCounts();
+  if (activeTab === 'schedule') renderScheduleTab();
+}
 
 async function renderScheduleTab() {
   var main = $("main"); if (!main) return;
@@ -2751,6 +2818,7 @@ async function renderScheduleTab() {
       '<button id="sched-today" class="cf-btn cf-g cf-sm" style="padding:6px 12px;">Today</button>' +
       '<button id="sched-next" class="cf-btn cf-g cf-sm" style="padding:6px 12px;">›</button>' +
       '<span style="font-size:15px;font-weight:700;margin-left:6px;">' + escapeHtml(wkLabel) + '</span>' +
+      '<button id="sched-repeat" class="cf-btn cf-g cf-sm" style="padding:6px 12px;margin-left:8px;" title="Copy this week\'s PT sessions into the same slots next week (skips consults + already-booked slots)">Repeat → next week</button>' +
     '</div>' +
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
       '<div style="position:relative;">' +
@@ -2900,6 +2968,8 @@ function wireSchedule(rowH) {
   if (prev) prev.addEventListener('click', function(){ schedWeekStart = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() - 7); reRender(); });
   if (next) next.addEventListener('click', function(){ schedWeekStart = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate() + 7); reRender(); });
   if (today) today.addEventListener('click', function(){ schedWeekStart = schedStartOfWeek(new Date()); reRender(); });
+  var repeat = $("sched-repeat");
+  if (repeat) repeat.addEventListener('click', function(){ repeat.disabled = true; Promise.resolve(schedRepeatWeek()).then(function(){ if (repeat) repeat.disabled = false; }); });
   var ds = $("sched-dens-scroll"), dc = $("sched-dens-compact");
   if (ds) ds.addEventListener('click', function(){ schedDensity = 'scroll'; localStorage.setItem('arcascend_sched_density','scroll'); reRender(); });
   if (dc) dc.addEventListener('click', function(){ schedDensity = 'compact'; localStorage.setItem('arcascend_sched_density','compact'); reRender(); });
