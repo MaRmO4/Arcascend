@@ -2893,12 +2893,46 @@ async function renderScheduleTab() {
   console.log('[schedule] FINAL live blocks in grid:', document.querySelectorAll('#sched-grid .sched-block').length);
 }
 
+// Chronological package-coverage: which BOOKED sessions fall BEYOND the client's paid package.
+// Per client: total = sum of their active PACKAGE lines' .sessions (0 if none). Order their
+// completed+booked (non-voided/non-cancelled/non-consult) sessions by when_at; the first `total`
+// are covered, every one after is "beyond". Returns a Set of beyond session-ids (as strings).
+// Computed ONCE per render (not per block). Consults never appear here (excluded above).
+function schedClientKey(id, name){ return id ? 'id:' + id : 'nm:' + ((name || '').trim().toLowerCase()); }
+function schedBeyondPackageSet() {
+  var beyond = new Set();
+  // Purchased total per client (sum active package lines).
+  var purchased = {};
+  (typeof activeClients === 'function' ? activeClients() : []).forEach(function(L){
+    var tot = 0;
+    activeLines(L).forEach(function(ln){ if ((ln.billingStyle || 'package') === 'package') tot += (ln.sessions || 0); });
+    purchased[schedClientKey(L.id, L.name)] = (purchased[schedClientKey(L.id, L.name)] || 0) + tot;
+  });
+  // Coverage-eligible sessions grouped per client.
+  var byClient = {};
+  (window.SESSIONS || []).forEach(function(s){
+    if (!s || !s.when_at || s.pay_source === 'consult') return;
+    if (s.status !== 'completed' && s.status !== 'booked') return;   // voided/cancelled excluded
+    var t = new Date(s.when_at).getTime(); if (isNaN(t)) return;
+    var key = schedClientKey(s.client_id, s.client_name);
+    (byClient[key] || (byClient[key] = [])).push({ id: s.id, t: t });
+  });
+  Object.keys(byClient).forEach(function(key){
+    var list = byClient[key];
+    list.sort(function(a, b){ return a.t - b.t || String(a.id).localeCompare(String(b.id)); });   // chronological, stable
+    var total = purchased[key] || 0;   // no package / unknown client → 0 → all beyond
+    for (var i = total; i < list.length; i++) beyond.add(String(list[i].id));   // 1-based pos (i+1) > total ⇔ i >= total
+  });
+  return beyond;
+}
+
 // Inject a block for every in-week, on-grid session by locating its exact slot cell.
 // Uses the VERIFIED mapping: local getDay() = column, (getHours-5)*2 + (min>=30?1:0) = slot.
 function schedRenderBlocks(gridEl, rowH) {
   if (!gridEl) { console.log('[schedule] schedRenderBlocks: no live grid element — aborted'); return; }
   var wk0 = new Date(schedWeekStart.getFullYear(), schedWeekStart.getMonth(), schedWeekStart.getDate()).getTime();
   var wk7 = wk0 + 7 * 86400000;
+  var beyondSet = schedBeyondPackageSet();   // precompute coverage ONCE for this render
   var count = 0;
   (window.SESSIONS || []).forEach(function(s){
     if (!s || !s.when_at || s.status === 'voided') return;
@@ -2915,26 +2949,28 @@ function schedRenderBlocks(gridEl, rowH) {
     var cell = gridEl.querySelector('.sched-slot[data-day="' + day + '"][data-slot="' + slot + '"]');
     if (!cell) return;
     var span = Math.max(1, Math.round((s.duration_min || 60) / 30));
-    cell.insertAdjacentHTML('beforeend', schedBlockDiv(s, span, rowH));
+    cell.insertAdjacentHTML('beforeend', schedBlockDiv(s, span, rowH, beyondSet.has(String(s.id))));
     count++;
   });
   console.log('[schedule] rendered', count, 'blocks for this week (cache total ' + ((window.SESSIONS || []).length) + ', grid live:', document.contains(gridEl) + ')');
 }
 // Block HTML anchored to its slot CELL (which is position:relative): top:0, spans `span` slots downward.
-function schedBlockDiv(s, span, rowH) {
+function schedBlockDiv(s, span, rowH, beyond) {
   var isConsult = s.pay_source === 'consult' || s.service_type === 'Consultation';
   var cancelled = (s.status === 'cancelled_charge' || s.status === 'cancelled_no_charge');
-  // Color by status first (completed=green, cancelled=red), else by type: consult=PURPLE, session=blue.
-  var color, bg;
+  // Priority: completed=green → cancelled=struck → consult=purple → booked (covered=blue / beyond-package=light red).
+  // Consults never reach the booked branch, so they're never red. `beyond` is precomputed coverage.
+  var color, bg, beyondBooked = false;
   if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(34,197,94,0.15)'; }
   else if (cancelled) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.12)'; }
   else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(167,139,250,0.22)'; }   // distinct purple
-  else { color = 'var(--accent)'; bg = 'rgba(79,158,255,0.15)'; }                    // blue session
+  else if (beyond) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.15)'; beyondBooked = true; }   // booked BEYOND package → light red
+  else { color = 'var(--accent)'; bg = 'rgba(79,158,255,0.15)'; }                    // booked, covered → blue
   var h = span * rowH - 3;
   var nm = ((s.client_name || '').split(/\s+/)[0]) || s.client_name || '(client)';
   var timeStr = schedTimeLabel(new Date(s.when_at));
-  return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '" style="position:absolute;z-index:2;left:2px;right:2px;top:0;height:' + h + 'px;background:' + bg + ';border:1px solid ' + color + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:pointer;line-height:1.25;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' +
-    '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(nm) + (isConsult ? ' · consult' : '') + '</div>' +
+  return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '"' + (beyondBooked ? ' title="Beyond package — unpaid"' : '') + ' style="position:absolute;z-index:2;left:2px;right:2px;top:0;height:' + h + 'px;background:' + bg + ';border:1px solid ' + color + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:pointer;line-height:1.25;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' +
+    '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(nm) + (isConsult ? ' · consult' : '') + (beyondBooked ? ' · over' : '') + '</div>' +
     '<div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(timeStr) + '</div>' +
   '</div>';
 }
@@ -4865,6 +4901,7 @@ function saveAndCloseLead() {
     if (typeof saveToSupabase === 'function') saveToSupabase();
   } catch(e) { console.warn('saveAndCloseLead error:', e); }
   if (typeof closeLead === 'function') closeLead();
+  if (typeof refreshView === 'function') refreshView();   // reflect billing/rate/session edits on the tab now behind the closed modal
   if (typeof showToast === 'function') showToast('✅ Saved', 'success');
 }
 
@@ -5240,8 +5277,10 @@ function renderServiceLinesEditor(L) {
 
   function persist(rerender){
     saveState();
-    if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
-    if (typeof renderTabCounts === 'function') renderTabCounts();
+    // Recompute the tab BEHIND the modal (Active Clients KPIs/table, tab counts, revenue banner)
+    // from the just-saved lines. Commit-point refresh (fires on change/add/remove, never on
+    // keystroke). The modal is a separate overlay, so this never disturbs the field just edited.
+    if (typeof refreshView === 'function') refreshView();
     // Keep the modal's "Total This Month" + confirm gate in sync with the lines.
     var tot = document.getElementById('b-total');
     if (tot) tot.textContent = fmt$(clientTotal(L));
@@ -6530,8 +6569,7 @@ updateConfirmGate();
       unconfirmMonth(L, mk);
     }
     saveState();            // saveState() already persists to Supabase internally
-    renderRevenueBanner();
-    renderTabCounts();
+    if (typeof refreshView === 'function') refreshView();   // recompute AC KPIs (Confirmed/Outstanding) + counts + banner behind the modal
     // Live-update the confirm row styling + label
     var row = $("b-paid-row");
     var lbl = row.querySelector("label");
@@ -7380,6 +7418,19 @@ renderRevenueBanner();
   renderMain();
 }
 
+// Re-render the CURRENTLY ACTIVE view from the shared in-memory data (LEADS / window.SESSIONS /
+// billing) so every derived number — KPIs, per-client totals, tab counts, statuses — recomputes.
+// Call this at CHANGE-COMMIT points ONLY (blur / change / click / add / remove), NEVER on
+// per-keystroke 'input', so typing is never interrupted. SAFE while a modal is open: the lead
+// and session-detail modals are overlays layered above #main, so re-rendering #main underneath
+// leaves the open modal (and its focused field) untouched.
+function refreshView() {
+  if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
+  if (typeof renderTabCounts === 'function') renderTabCounts();
+  if (typeof currentTab !== 'undefined' && currentTab === 'home') { if (typeof renderHomeTab === 'function') renderHomeTab(); return; }
+  if (typeof renderMain === 'function') renderMain();
+}
+
 // ==========================================================
 // INIT
 // ==========================================================
@@ -7604,7 +7655,12 @@ function initApp() {
       loadFromSupabase().then(function(loaded) {
         if (!loaded) loadState();   // network/auth error only → this verified user's own cache
         prefetchEvents();   // fire-and-forget — warms cachedEvents in background while Home renders
-        loadSessions();     // fire-and-forget — warms the session-tracker cache
+        // fire-and-forget — warms the session cache; when it lands, re-render the active view so a
+        // session-dependent tab (Schedule / Sessions / Active Clients / Reports) the user has open
+        // never stays stuck on a half-loaded first paint. Data-ready refresh — no modal/focus at boot.
+        loadSessions().then(function(){
+          if (typeof activeTab !== 'undefined' && ['schedule','sessions','clients','reports'].indexOf(activeTab) >= 0 && typeof refreshView === 'function') refreshView();
+        });
         loadBuckets();
         loadCampaigns();
         loadGoal();
