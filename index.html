@@ -1372,7 +1372,7 @@ main { flex: 1; padding: 20px 24px; }
 <div class="modal-bg" id="modal"><div class="modal" id="modal-content"></div></div>
 <div class="modal-bg" id="reach-modal"><div class="modal" id="reach-content" style="max-width:520px;"></div></div>
 <div class="modal-bg" id="campaign-modal"><div class="modal" id="campaign-content"></div></div>
-<div class="modal-bg" id="pos-modal"><div class="modal" id="pos-content" style="max-width:460px;"></div></div>
+<div class="modal-bg" id="pos-modal"><div class="modal" id="pos-content" style="max-width:540px;"></div></div>
 
 <div class="modal-bg" id="add-modal">
   <div class="modal">
@@ -3334,9 +3334,11 @@ function renderSessionsTab() {
   }
 
   var rows = packageLinesAcrossClients().map(function(pl){
-    var total = pl.line.sessions || 0;
+    // Ledger-based, same math as the Billing tab: total = sessions actually purchased,
+    // rem unclamped so a negative value renders as "owes N" (train now, pay later).
+    var total = sessionsPurchasedTotal(pl.line);
     var done = countCompletedForLine(pl.line.id);
-    return { L: pl.L, line: pl.line, total: total, done: done, rem: Math.max(0, total - done) };
+    return { L: pl.L, line: pl.line, total: total, done: done, rem: total - done };
   });
 
   // Quick-log list order: the SAME shared sort control the other tabs use (sortBy +
@@ -3355,7 +3357,7 @@ function renderSessionsTab() {
   });
 
   var stats = sessionPeriodStats();
-  var lowFinished = rows.filter(function(r){ return r.total > 0 && r.rem <= 1; });
+  var lowFinished = rows.filter(function(r){ return r.rem < 0 || (r.total > 0 && r.rem <= 1); });
 
   function tile(label, value, sub, color) {
     return '<div class="billing-mini-stat" style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;">' +
@@ -3371,18 +3373,19 @@ function renderSessionsTab() {
     tile('Low / Finished', lowFinished.length, 'packages need attention', lowFinished.length ? 'var(--open)' : 'var(--muted)') +
   '</div>';
 
-  var naItems = rows.filter(function(r){ return r.total > 0 && (r.rem === 1 || r.done >= r.total); })
-    .sort(function(a, b){ return a.rem - b.rem; });   // priority-surfaced: finished (0) first, then 1-left
+  var naItems = rows.filter(function(r){ return r.rem < 0 || (r.total > 0 && r.rem <= 1); })
+    .sort(function(a, b){ return a.rem - b.rem; });   // priority-surfaced: owes first, then finished (0), then 1-left
   var naCards = naItems.length
     ? '<div style="margin-bottom:20px;"><div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);margin-bottom:8px;">Needs Attention</div>' +
       '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;">' +
       naItems.map(function(r){
-        var finished = r.done >= r.total;
-        var situ = finished ? 'Renew / new package' : 'Only 1 left — re-sell';
-        return '<div style="flex:0 0 230px;background:var(--panel);border:1px solid ' + (finished ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)') + ';border-radius:10px;padding:12px;">' +
+        var owes = r.rem < 0;
+        var finished = !owes && r.rem === 0;
+        var situ = owes ? 'Owes ' + (-r.rem) + ' — collect payment' : finished ? 'Renew / new package' : 'Only 1 left — re-sell';
+        return '<div style="flex:0 0 230px;background:var(--panel);border:1px solid ' + ((owes || finished) ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)') + ';border-radius:10px;padding:12px;">' +
           '<div style="font-weight:700;font-size:13px;">' + escapeHtml(r.L.name || '(no name)') + '</div>' +
           '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px;">' + escapeHtml(r.line.type || '') + ' · ' + r.done + '/' + r.total + '</div>' +
-          '<div style="margin-bottom:10px;"><span class="badge ' + (finished ? 'lost' : 'open') + '">' + situ + '</span></div>' +
+          '<div style="margin-bottom:10px;"><span class="badge ' + ((owes || finished) ? 'lost' : 'open') + '">' + situ + '</span></div>' +
           '<button class="na-open" data-name="' + escapeAttr(r.L.name) + '" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;padding:7px;cursor:pointer;">Open client</button>' +
         '</div>';
       }).join('') + '</div></div>'
@@ -3393,8 +3396,11 @@ function renderSessionsTab() {
     var initials = (nm.trim().split(/\s+/).map(function(w){ return w.charAt(0); }).join('').slice(0, 2) || '?').toUpperCase();
     var pct = r.total > 0 ? Math.min(100, Math.round((r.done / r.total) * 100)) : 0;
     var fill = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
-    var low = r.total > 0 && r.rem <= 1;
-    var canLog = r.total > 0 && r.rem > 0;
+    var low = r.total > 0 && r.rem >= 0 && r.rem <= 1;
+    var owes = r.rem < 0;
+    // Logging is ALWAYS allowed — clients often train first and pay later, so the count
+    // goes negative ("owes N") until a purchase is recorded in the Billing tab.
+    var canLog = true;
     var nowH = pad2(new Date().getHours()) + ':' + pad2(new Date().getMinutes());
     return '<div class="sess-row" data-name="' + escapeAttr(nm) + '" title="Open session tracking" style="border-bottom:1px solid var(--border);padding:12px 14px;cursor:pointer;">' +
       '<div style="display:grid;grid-template-columns:34px 1.6fr 1.5fr auto;gap:12px;align-items:center;">' +
@@ -3402,7 +3408,7 @@ function renderSessionsTab() {
         '<div style="min-width:0;"><div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
           '<div style="font-size:11px;color:var(--muted);">' + escapeHtml(r.line.type || '') + ' · ' + fmt$(r.line.rate || 0) + '/session</div></div>' +
         '<div><div class="session-bar" style="margin-bottom:4px;"><div class="session-bar-fill ' + fill + '" style="width:' + pct + '%"></div></div>' +
-          '<div style="font-size:11px;color:' + (low ? 'var(--open)' : 'var(--muted)') + ';">' + r.done + ' of ' + r.total + ' · ' + r.rem + ' left' + (low ? ' ⚠️' : '') + '</div></div>' +
+          '<div style="font-size:11px;color:' + (owes ? 'var(--lost)' : (low ? 'var(--open)' : 'var(--muted)')) + ';">' + r.done + ' of ' + r.total + (owes ? ' · owes ' + (-r.rem) + ' 🔴' : ' · ' + r.rem + ' left' + (low ? ' ⚠️' : '')) + '</div></div>' +
         '<div style="display:flex;gap:6px;align-items:center;white-space:nowrap;">' +
           '<button class="sess-complete" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(r.line.id) + '"' + (canLog ? '' : ' disabled') + ' style="background:' + (canLog ? 'var(--won)' : 'var(--panel-2)') + ';color:' + (canLog ? '#fff' : 'var(--muted)') + ';border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 14px;cursor:' + (canLog ? 'pointer' : 'not-allowed') + ';">' + (canLog ? '✓ Complete' : 'Done') + '</button>' +
           '<button class="sess-backdate-toggle" title="Backdate" style="background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;font-size:12.5px;padding:8px 10px;cursor:pointer;">⤺</button>' +
@@ -3411,7 +3417,7 @@ function renderSessionsTab() {
       '<div class="sess-backdate-panel" style="display:none;margin-top:10px;padding-left:46px;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
         '<div class="billing-field"><label>Date</label><input type="date" class="sess-bd-date" name="sess-date-' + escapeAttr(r.line.id) + '" value="' + todayStr() + '"></div>' +
         '<div class="billing-field"><label>Time</label><input type="time" class="sess-bd-time" name="sess-time-' + escapeAttr(r.line.id) + '" value="' + nowH + '"></div>' +
-        '<button class="sess-backdate-log" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(r.line.id) + '"' + (r.total > 0 ? '' : ' disabled') + ' style="background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer;">Log</button>' +
+        '<button class="sess-backdate-log" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(r.line.id) + '" style="background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer;">Log</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -3566,17 +3572,20 @@ function renderSessionDetail(L) {
   // ---- Aggregate totals across all package lines ----
   var tCompleted = 0, tRemaining = 0, tEarned = 0, tOutstanding = 0;
   var perLine = pkg.map(function(ln){
-    var total = ln.sessions || 0;
+    // Same ledger-based math as the Billing tab: total = purchased sessions, rem
+    // unclamped (negative = "owes N" until a purchase is recorded).
+    var total = sessionsPurchasedTotal(ln);
     var done = countCompletedForLine(ln.id);
-    var rem = Math.max(0, total - done);
-    tCompleted += done; tRemaining += rem; tEarned += done * (ln.rate || 0); tOutstanding += rem * (ln.rate || 0);
+    var rem = total - done;
+    tCompleted += done; tRemaining += Math.max(0, rem); tEarned += done * (ln.rate || 0); tOutstanding += Math.max(0, rem) * (ln.rate || 0);
     return { ln: ln, total: total, done: done, rem: rem };
   });
 
   // ---- Header status pills (per package line; no contact info) ----
   var pills = perLine.map(function(p){
-    var cls = (p.total > 0 && p.rem <= 0) ? 'lost' : (p.rem === 1 ? 'open' : 'won');
-    return '<span class="badge ' + cls + '" style="margin:0 6px 4px 0;display:inline-block;">' + escapeHtml(p.ln.type || 'Package') + ' ' + p.done + '/' + p.total + (p.total > 0 && p.rem <= 0 ? ' ✓' : '') + '</span>';
+    var cls = p.rem < 0 ? 'lost' : (p.total > 0 && p.rem === 0) ? 'lost' : (p.rem === 1 ? 'open' : 'won');
+    var tag = p.rem < 0 ? ' · owes ' + (-p.rem) : (p.total > 0 && p.rem === 0 ? ' ✓' : '');
+    return '<span class="badge ' + cls + '" style="margin:0 6px 4px 0;display:inline-block;">' + escapeHtml(p.ln.type || 'Package') + ' ' + p.done + '/' + p.total + tag + '</span>';
   }).join('');
 
   // ---- Totals summary bar ----
@@ -3597,14 +3606,15 @@ function renderSessionDetail(L) {
     var ln = p.ln, st = sdu(ln.id);
     var pct = p.total > 0 ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
     var fill = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
-    var canLog = p.total > 0 && p.rem > 0;
+    var canLog = true;   // always allowed — negative remaining means "owes N" until paid
     return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--panel-2);">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
         '<div style="font-weight:700;font-size:13px;">' + escapeHtml(ln.type || 'Package') + ' <span style="color:var(--muted);font-weight:400;">· ' + fmt$(ln.rate || 0) + '/session</span></div>' +
-        '<div style="font-size:12px;color:' + (p.rem <= 1 ? 'var(--open)' : 'var(--muted)') + ';">' + p.done + ' of ' + p.total + ' · ' + p.rem + ' left' + (p.rem <= 1 && p.total > 0 ? ' ⚠️' : '') + '</div>' +
+        '<div style="font-size:12px;color:' + (p.rem < 0 ? 'var(--lost)' : p.rem <= 1 ? 'var(--open)' : 'var(--muted)') + ';">' + p.done + ' of ' + p.total + (p.rem < 0 ? ' · owes ' + (-p.rem) + ' 🔴' : ' · ' + p.rem + ' left' + (p.rem <= 1 && p.total > 0 ? ' ⚠️' : '')) + '</div>' +
       '</div>' +
       '<div class="session-bar"><div class="session-bar-fill ' + fill + '" style="width:' + pct + '%"></div></div>' +
-      (p.rem === 1 ? '<div style="margin-top:8px;font-size:11.5px;color:var(--open);background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:6px;padding:7px 9px;">⚠️ Only 1 session left — renew / session-to-session / auto-pay.</div>' : '') +
+      (p.rem < 0 ? '<div style="margin-top:8px;font-size:11.5px;color:var(--lost);background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.35);border-radius:6px;padding:7px 9px;">🔴 Owes for ' + (-p.rem) + ' session' + (p.rem === -1 ? '' : 's') + ' — collect &amp; record the purchase in Billing.</div>'
+        : p.rem === 1 ? '<div style="margin-top:8px;font-size:11.5px;color:var(--open);background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:6px;padding:7px 9px;">⚠️ Only 1 session left — renew / session-to-session / auto-pay.</div>' : '') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
         '<button class="sd-complete" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(ln.id) + '"' + (canLog ? '' : ' disabled') + ' style="background:' + (canLog ? 'var(--won)' : 'var(--panel)') + ';color:' + (canLog ? '#fff' : 'var(--muted)') + ';border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:' + (canLog ? 'pointer' : 'not-allowed') + ';">' + (canLog ? '✓ Complete session' : 'Package complete') + '</button>' +
         '<button class="sd-backdate-toggle" data-lid="' + escapeAttr(ln.id) + '" style="background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;font-size:12.5px;padding:8px 12px;cursor:pointer;">⤺ Backdate</button>' +
@@ -3612,7 +3622,7 @@ function renderSessionDetail(L) {
       (st.backdate ? '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">' +
         '<div class="billing-field"><label>Date</label><input type="date" class="sd-bd-date" name="sd-date-' + escapeAttr(ln.id) + '" value="' + todayStr() + '"></div>' +
         '<div class="billing-field"><label>Time</label><input type="time" class="sd-bd-time" name="sd-time-' + escapeAttr(ln.id) + '" value="' + nowH + '"></div>' +
-        '<button class="sd-backdate-log" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(ln.id) + '"' + (p.total > 0 ? '' : ' disabled') + ' style="background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer;">Log</button>' +
+        '<button class="sd-backdate-log" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(ln.id) + '" style="background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:pointer;">Log</button>' +
       '</div>' : '') +
     '</div>';
   }).join('');
@@ -4639,7 +4649,8 @@ function goToTab(name) {
   var t = document.querySelector('.tab[data-tab="' + name + '"]');
   if (t) t.classList.add("active");
   activeTab = name;
-  renderMain();
+  currentTab = name;   // keep in sync with the nav click handler — renderAll() uses
+  renderAll();         // currentTab to show/hide the Home panel vs #main
 }
 
 // ==========================================================
@@ -4670,6 +4681,11 @@ function billingClientRemaining(L){
   var pkg = activeLines(L).filter(billingIsPkg);
   if (!pkg.length) return null;
   return pkg.reduce(function(s, ln){ return s + sessionsRemaining(ln); }, 0);
+}
+// True when any active line's recurring collect reminder is past due.
+function billingClientOverdue(L){
+  var t = todayStr();
+  return activeLines(L).some(function(ln){ return ln.collect && ln.collect.nextDue && ln.collect.nextDue < t; });
 }
 // The line the panel focuses on: last selection if still valid, else first active package line, else first active line.
 function billingGetSelectedLine(L){
@@ -4713,6 +4729,7 @@ function renderBillingTab(){
     var badge;
     if (rem === null) { badge = '<span style="font-size:11px;color:var(--muted);">—</span>'; }
     else { var col = billingRemColor(rem); badge = '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:' + col.c + ';background:' + col.bg + ';white-space:nowrap;">' + rem + ' left</span>'; }
+    if (billingClientOverdue(L)) badge = '<span title="Recurring collection overdue" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:var(--lost);background:rgba(239,68,68,0.15);white-space:nowrap;margin-right:4px;">$ due</span>' + badge;
     return '<div class="billing-client-row" data-id="' + escapeAttr(L.id) + '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:4px;' + (sel ? 'background:rgba(79,158,255,0.15);border:1px solid var(--accent);' : 'border:1px solid transparent;') + '">' +
         '<div style="width:30px;height:30px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">' + escapeHtml(billingInitials(nm)) + '</div>' +
         '<div style="flex:1;min-width:0;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
@@ -4773,17 +4790,33 @@ function billingPanelHTML(L){
   if (isPkg) {
     var pct = purchased > 0 ? Math.max(0, Math.min(100, Math.round((done / purchased) * 100))) : 0;
     var barColor = rem <= 0 ? 'var(--lost)' : (rem <= 1 ? 'var(--open)' : 'var(--won)');
-    var warn = rem <= 0 ? '<span style="color:var(--lost);font-weight:700;">Package used up — renew</span>'
+    var warn = rem < 0 ? '<span style="color:var(--lost);font-weight:700;">Owes for ' + (-rem) + ' session' + (rem === -1 ? '' : 's') + ' — collect &amp; record purchase</span>'
+      : rem === 0 ? '<span style="color:var(--lost);font-weight:700;">Package used up — renew</span>'
       : (rem === 1 ? '<span style="color:var(--open);font-weight:700;">1 left — renew soon</span>' : '');
     progress = '<div style="margin-top:14px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px;"><span>' + done + ' / ' + purchased + ' completed</span>' + (warn ? '<span>' + warn + '</span>' : '') + '</div>' +
       '<div style="height:8px;background:var(--panel-2);border-radius:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';"></div></div></div>';
   }
 
-  // Primary actions
-  var logDisabled = isPkg && rem <= 0;
+  // Recurring collect reminder (written by the POS when a sale is marked Recurring).
+  var collectChip = '';
+  if (line.collect && line.collect.nextDue) {
+    var cToday = todayStr();
+    var cOverdue = line.collect.nextDue < cToday;   // "YYYY-MM-DD" string compare is safe
+    var cSoon = !cOverdue && line.collect.nextDue <= localDateStr(new Date(Date.now() + 7 * 86400000));
+    var cCol = cOverdue ? 'var(--lost)' : (cSoon ? 'var(--open)' : 'var(--muted)');
+    var cp = line.collect.nextDue.split('-');
+    var cLabel = MONTHS_ABBR[(+cp[1]) - 1] + ' ' + (+cp[2]);
+    collectChip = '<div style="margin-top:14px;display:flex;align-items:center;gap:8px;font-size:12px;padding:9px 12px;border:1px solid ' + cCol + ';border-radius:8px;color:' + cCol + ';background:var(--panel-2);">' +
+      '<b style="white-space:nowrap;">' + (cOverdue ? 'Collection overdue' : 'Next collection') + '</b>' +
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(line.collect.label || '') + ' · ' + fmt$(line.collect.amount || 0) + ' · due ' + cLabel + (line.collect.mode === 'fixed' ? ' (day ' + line.collect.day + ' monthly)' : ' (every 30 days)') + '</span>' +
+      '<button class="billing-clear-collect" title="Clear reminder" style="background:transparent;border:none;color:inherit;font-size:13px;cursor:pointer;flex:0 0 auto;">✕</button></div>';
+  }
+
+  // Primary actions. Log Session is ALWAYS enabled — clients often train first and pay at
+  // week's end, so Remaining simply goes negative ("owes for N") until a purchase is recorded.
   var actions = '<div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">' +
-    '<button class="billing-log-session" ' + (logDisabled ? 'disabled' : '') + ' style="flex:1;min-width:150px;background:' + (logDisabled ? 'var(--panel-2)' : 'var(--won)') + ';color:' + (logDisabled ? 'var(--muted)' : '#fff') + ';border:none;border-radius:8px;font-size:13px;font-weight:700;padding:11px;cursor:' + (logDisabled ? 'not-allowed' : 'pointer') + ';">✓ Log Session</button>' +
+    '<button class="billing-log-session" style="flex:1;min-width:150px;background:var(--won);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:11px;cursor:pointer;">✓ Log Session</button>' +
     '<button class="billing-process-purchase" style="flex:1;min-width:150px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:11px;cursor:pointer;">💳 Process Purchase</button>' +
   '</div>';
 
@@ -4825,6 +4858,7 @@ function billingPanelHTML(L){
     lineSelector +
     kpis +
     progress +
+    collectChip +
     actions +
     sectionTitle('Purchase history') + ledgerBox(ledgerRows) + ledgerMore +
     sectionTitle('Session log') + ledgerBox(sessRows) + sessMore +
@@ -4881,6 +4915,15 @@ function billingWire(){
     var line = billingGetSelectedLine(L); if (!line) return;
     billingOpenPOS(L.id, line.id);
   });
+  var clr = main.querySelector('.billing-clear-collect');
+  if (clr) clr.addEventListener('click', function(){
+    var L = activeClients().filter(function(x){ return String(x.id) === String(billingSelectedId); })[0]; if (!L) return;
+    var line = billingGetSelectedLine(L); if (!line || !line.collect) return;
+    if (!confirm('Clear the collection reminder for this line?')) return;
+    delete line.collect;
+    if (typeof saveState === 'function') saveState();
+    renderBillingTab();
+  });
   main.querySelectorAll('.billing-del-purchase').forEach(function(btn){
     btn.addEventListener('click', function(){
       var L = activeClients().filter(function(x){ return String(x.id) === String(billingSelectedId); })[0]; if (!L) return;
@@ -4892,10 +4935,67 @@ function billingWire(){
   });
 }
 
-// ---- POS checkout modal ----
+// ---- POS checkout modal (ADAPTIVE) ----
+// Item catalog — add a row here to extend the checkout. mode:'sessions' items sell
+// qty × rate and ADD to the line's package count (sessionsPurchasedTotal); mode:'flat'
+// items sell a named flat charge (sessions: 0 — no effect on the package countdown).
+var POS_ITEMS = [
+  { key: 'pt',        label: 'PT Sessions',        mode: 'sessions' },
+  { key: 'online',    label: 'Online Training',    mode: 'flat' },
+  { key: 'nutrition', label: 'Nutrition Coaching', mode: 'flat' },
+  { key: 'group',     label: 'Group Class',        mode: 'sessions' },
+  { key: 'other',     label: 'Other',              mode: 'flat' }
+];
+function posItemByKey(k){ return POS_ITEMS.filter(function(i){ return i.key === k; })[0] || POS_ITEMS[0]; }
+function posDefaultItemKey(line){
+  var t = ((line && line.type) || '').toLowerCase();
+  if (t.indexOf('online') >= 0) return 'online';
+  if (t.indexOf('nutrition') >= 0) return 'nutrition';
+  if (t.indexOf('group') >= 0) return 'group';
+  return 'pt';
+}
+// Next collection date for a recurring sale. rolling = 30 days after the bill date;
+// fixed = next occurrence of day-of-month `day` (1–28) strictly after the bill date.
+// Returns local "YYYY-MM-DD". NO auto-charge — this only drives the collect reminder.
+// STRIPE SEAM: a future subscription just replaces this reminder with a real schedule.
+function posNextDue(billYmd, mode, day){
+  var p = String(billYmd || todayStr()).split('-');
+  var bd = (p.length === 3) ? new Date(+p[0], (+p[1]) - 1, +p[2], 12, 0, 0, 0) : new Date();
+  if (isNaN(bd.getTime())) bd = new Date();
+  if (mode === 'fixed') {
+    var dd = Math.min(28, Math.max(1, parseInt(day, 10) || 1));
+    var m = bd.getMonth() + (bd.getDate() < dd ? 0 : 1);
+    return localDateStr(new Date(bd.getFullYear(), m, dd, 12, 0, 0, 0));
+  }
+  return localDateStr(new Date(bd.getTime() + 30 * 86400000));
+}
+function posTotal(){
+  if (!billingPos) return 0;
+  var it = posItemByKey(billingPos.item);
+  if (it.mode === 'sessions') return Math.max(0, billingPos.qty) * Math.max(0, billingPos.rate);
+  return Math.max(0, billingPos.flatAmount);
+}
+function posValid(){
+  if (!billingPos) return false;
+  var it = posItemByKey(billingPos.item);
+  if (it.mode === 'sessions') return billingPos.qty > 0 && billingPos.rate > 0;
+  return billingPos.flatAmount > 0;
+}
 function billingClosePOS(){ billingPos = null; var m = $("pos-modal"); if (m) m.classList.remove('show'); }
 function billingOpenPOS(clientId, lineId){
-  billingPos = { clientId: clientId, lineId: lineId, key: null, sessions: 0, amount: 0, label: '' };
+  var L = (LEADS || []).filter(function(x){ return String(x.id) === String(clientId); })[0];
+  var line = L ? clientLines(L).filter(function(ln){ return String(ln.id) === String(lineId); })[0] : null;
+  var todayDom = new Date().getDate();
+  billingPos = {
+    clientId: clientId, lineId: lineId,
+    item: posDefaultItemKey(line),
+    qty: 0, rate: line ? billingLineRate(line) : 0,     // sessions-mode builder
+    flatName: '', flatAmount: 0,                        // flat-mode fields
+    billing: 'one-time',                                // 'one-time' | 'recurring'
+    recurMode: 'rolling',                               // 'rolling' (30d) | 'fixed' (day of month)
+    recurDay: Math.min(28, todayDom),
+    date: todayStr()                                    // bill date (drives ledger date + reminder)
+  };
   billingRenderPOS();
   var m = $("pos-modal"); if (m) m.classList.add('show');
 }
@@ -4905,56 +5005,98 @@ function billingRenderPOS(){
   var L = (LEADS || []).filter(function(x){ return String(x.id) === String(billingPos.clientId); })[0];
   var line = L ? clientLines(L).filter(function(ln){ return String(ln.id) === String(billingPos.lineId); })[0] : null;
   if (!L || !line) { billingClosePOS(); return; }
-  var rate = billingLineRate(line);
+  var it = posItemByKey(billingPos.item);
+  var lineRate = billingLineRate(line);
   var purchased = sessionsPurchasedTotal(line);
 
-  var presets = [
-    { key: 'single', label: 'Single', sessions: 1, amount: rate * 1 },
-    { key: '4pack',  label: '4-Pack', sessions: 4, amount: rate * 4 },
-    { key: '8pack',  label: '8-Pack', sessions: 8, amount: rate * 8 }
-  ];
-  var presetBtns = presets.map(function(p){
-    var on = billingPos.key === p.key;
-    return '<button class="pos-preset" data-key="' + p.key + '" data-sessions="' + p.sessions + '" data-amount="' + p.amount + '" data-label="' + escapeAttr(p.label) + '" style="flex:1;min-width:90px;padding:12px;border-radius:8px;cursor:pointer;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border)') + ';background:' + (on ? 'rgba(79,158,255,0.15)' : 'var(--panel-2)') + ';color:var(--text);">' +
-      '<div style="font-size:13px;font-weight:700;">' + p.label + '</div>' +
-      '<div style="font-size:11px;color:var(--muted);margin-top:2px;">' + p.sessions + ' session' + (p.sessions === 1 ? '' : 's') + ' · ' + fmt$(p.amount) + '</div></button>';
-  }).join('');
-  var customOn = billingPos.key === 'custom';
-  var customBtn = '<button class="pos-preset" data-key="custom" style="flex:1;min-width:90px;padding:12px;border-radius:8px;cursor:pointer;border:1px solid ' + (customOn ? 'var(--accent)' : 'var(--border)') + ';background:' + (customOn ? 'rgba(79,158,255,0.15)' : 'var(--panel-2)') + ';color:var(--text);"><div style="font-size:13px;font-weight:700;">Custom</div><div style="font-size:11px;color:var(--muted);margin-top:2px;">enter #/$</div></button>';
+  function secTitle(t, mt){ return '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;margin:' + (mt || 14) + 'px 0 8px;">' + t + '</div>'; }
 
-  var customFields = customOn ? '<div class="billing-grid" style="margin-top:12px;">' +
-      '<div class="billing-field"><label>Sessions</label><input type="number" id="pos-custom-sessions" autocomplete="off" min="1" value="' + (billingPos.sessions || '') + '"></div>' +
-      '<div class="billing-field"><label>Amount ($)</label><input type="number" id="pos-custom-amount" autocomplete="off" min="0" value="' + (billingPos.amount || '') + '"></div>' +
-    '</div>' : '';
+  // 1) Item dropdown (extensible via POS_ITEMS).
+  var itemSel = '<select id="pos-item" style="width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 10px;font-size:13px;">' +
+    POS_ITEMS.map(function(i){ return '<option value="' + i.key + '"' + (i.key === billingPos.item ? ' selected' : '') + '>' + escapeHtml(i.label) + '</option>'; }).join('') + '</select>';
 
-  var hasSel = billingPos.key && billingPos.sessions > 0 && billingPos.amount >= 0 && (billingPos.key !== 'custom' || (billingPos.sessions > 0 && billingPos.amount > 0));
-  var cart = hasSel
-    ? '<div style="margin-top:14px;padding:12px;border:1px solid var(--accent);border-radius:8px;background:rgba(79,158,255,0.08);">' +
-        '<div style="font-size:13px;font-weight:600;">' + escapeHtml(billingPos.label || 'Custom') + ' · ' + billingPos.sessions + ' session' + (billingPos.sessions === 1 ? '' : 's') + '</div>' +
-        '<div style="font-size:12px;color:var(--muted);margin-top:2px;">Remaining after purchase: <b style="color:var(--text);">' + (purchased + billingPos.sessions - countCompletedForLine(line.id)) + '</b> · package total → ' + (purchased + billingPos.sessions) + ' purchased</div>' +
-        '<div style="font-size:20px;font-weight:800;color:var(--won);margin-top:6px;" id="pos-cart-total">' + fmt$(billingPos.amount) + '</div>' +
-      '</div>'
-    : '<div style="margin-top:14px;font-size:12px;color:var(--muted);">Select a package to build the order.</div>';
+  // 2) Item body — sessions builder (qty × rate) or flat charge (name + $).
+  var body;
+  if (it.mode === 'sessions') {
+    var quick = [1, 4, 8].map(function(n){
+      var on = billingPos.qty === n;
+      return '<button class="pos-quick" data-qty="' + n + '" style="flex:1;min-width:70px;padding:9px;border-radius:8px;cursor:pointer;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border)') + ';background:' + (on ? 'rgba(79,158,255,0.15)' : 'var(--panel-2)') + ';color:var(--text);font-size:12px;font-weight:700;">' + n + (n === 1 ? ' session' : ' sessions') + '</button>';
+    }).join('');
+    body = '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + quick + '</div>' +
+      '<div class="billing-grid" style="grid-template-columns:1fr 1fr;margin-top:10px;">' +
+        '<div class="billing-field"><label>Sessions (qty)</label><input type="number" id="pos-qty" autocomplete="off" min="1" value="' + (billingPos.qty || '') + '"></div>' +
+        '<div class="billing-field"><label>Price / session ($)</label><input type="number" id="pos-rate" autocomplete="off" min="0" value="' + (billingPos.rate || '') + '"></div>' +
+      '</div>';
+  } else {
+    body = '<div class="billing-grid" style="grid-template-columns:1.4fr 1fr;">' +
+      '<div class="billing-field"><label>Item name</label><input type="text" id="pos-flat-name" autocomplete="off" placeholder="' + escapeAttr(it.label) + '" value="' + escapeAttr(billingPos.flatName || '') + '"></div>' +
+      '<div class="billing-field"><label>Amount ($)</label><input type="number" id="pos-flat-amount" autocomplete="off" min="0" value="' + (billingPos.flatAmount || '') + '"></div>' +
+    '</div>';
+  }
+
+  // 3) One-time vs Recurring (recurring = collect reminder only — NO auto-charge yet).
+  var recur = billingPos.billing === 'recurring';
+  var billToggle = '<div style="display:inline-flex;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;">' +
+    '<button class="pos-billmode" data-mode="one-time" style="padding:8px 16px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:' + (!recur ? 'var(--accent)' : 'transparent') + ';color:' + (!recur ? '#fff' : 'var(--text)') + ';">One-time</button>' +
+    '<button class="pos-billmode" data-mode="recurring" style="padding:8px 16px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:' + (recur ? 'var(--accent)' : 'transparent') + ';color:' + (recur ? '#fff' : 'var(--text)') + ';">Recurring</button>' +
+  '</div>';
+  var recurBlock = '';
+  if (recur) {
+    var daysOpts = ''; for (var d = 1; d <= 28; d++) daysOpts += '<option value="' + d + '"' + (billingPos.recurDay === d ? ' selected' : '') + '>' + d + '</option>';
+    recurBlock = '<div style="margin-top:10px;padding:10px 12px;border:1px dashed var(--border);border-radius:8px;">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;"><input type="radio" name="pos-recur" value="rolling"' + (billingPos.recurMode === 'rolling' ? ' checked' : '') + '> Collect again 30 days after the bill date</label>' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-top:6px;"><input type="radio" name="pos-recur" value="fixed"' + (billingPos.recurMode === 'fixed' ? ' checked' : '') + '> Fixed day each month:' +
+        ' <select id="pos-recur-day" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;"' + (billingPos.recurMode === 'fixed' ? '' : ' disabled') + '>' + daysOpts + '</select></label>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:8px;">Next collection: <b id="pos-next-due" style="color:var(--text);">' + posNextDue(billingPos.date, billingPos.recurMode, billingPos.recurDay) + '</b> · reminder only, no auto-charge</div>' +
+    '</div>';
+  }
+
+  // 4) Bill date.
+  var dateRow = '<div class="billing-field" style="max-width:180px;"><label>Bill date</label><input type="date" id="pos-date" value="' + escapeAttr(billingPos.date || todayStr()) + '"></div>';
+
+  // 5) Cart summary (spans updated live by posSyncCart — no re-render, keeps focus).
+  var ok = posValid();
+  var cart = '<div id="pos-cart" style="margin-top:14px;padding:12px;border:1px solid ' + (ok ? 'var(--accent)' : 'var(--border)') + ';border-radius:8px;background:' + (ok ? 'rgba(79,158,255,0.08)' : 'var(--panel-2)') + ';">' +
+      '<div style="font-size:13px;font-weight:600;" id="pos-cart-line">' + posCartLine(it, line) + '</div>' +
+      (it.mode === 'sessions' ? '<div style="font-size:12px;color:var(--muted);margin-top:2px;" id="pos-cart-rem">' + posCartRemaining(line, purchased) + '</div>' : '') +
+      '<div style="font-size:20px;font-weight:800;color:var(--won);margin-top:6px;" id="pos-cart-total">' + fmt$(posTotal()) + '</div>' +
+    '</div>';
 
   content.innerHTML =
     '<div class="modal-head"><div><div class="modal-title">Process Purchase</div>' +
-      '<div style="color:var(--muted);font-size:12px;margin-top:4px;">' + escapeHtml(L.name || '') + ' · ' + escapeHtml(line.type || 'Line') + ' · ' + fmt$(rate) + '/session</div></div>' +
+      '<div style="color:var(--muted);font-size:12px;margin-top:4px;">' + escapeHtml(L.name || '') + ' · ' + escapeHtml(line.type || 'Line') + (it.mode === 'sessions' ? ' · ' + fmt$(lineRate) + '/session' : '') + '</div></div>' +
       '<button class="modal-close" id="pos-close">✕</button></div>' +
     '<div class="modal-body">' +
-      '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;margin-bottom:8px;">Choose a package</div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + presetBtns + customBtn + '</div>' +
-      customFields +
+      secTitle('Item', 0) + itemSel +
+      secTitle('Order') + body +
+      secTitle('Billing') + billToggle + recurBlock +
+      secTitle('Date') + dateRow +
       cart +
       '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">' +
         '<button id="pos-cancel" style="background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:9px 16px;cursor:pointer;">Cancel</button>' +
-        '<button id="pos-charge" ' + (hasSel ? '' : 'disabled') + ' style="background:' + (hasSel ? 'var(--won)' : 'var(--panel-2)') + ';color:' + (hasSel ? '#fff' : 'var(--muted)') + ';border:none;border-radius:8px;font-size:13px;font-weight:700;padding:9px 18px;cursor:' + (hasSel ? 'pointer' : 'not-allowed') + ';">Charge &amp; Record</button>' +
+        '<button id="pos-charge" ' + (ok ? '' : 'disabled') + ' style="background:' + (ok ? 'var(--won)' : 'var(--panel-2)') + ';color:' + (ok ? '#fff' : 'var(--muted)') + ';border:none;border-radius:8px;font-size:13px;font-weight:700;padding:9px 18px;cursor:' + (ok ? 'pointer' : 'not-allowed') + ';">Charge &amp; Record</button>' +
       '</div>' +
     '</div>';
 
   billingWirePOS(L, line);
 }
+// Cart copy helpers (shared by first paint + live sync).
+function posCartLine(it, line){
+  if (it.mode === 'sessions') {
+    if (!(billingPos.qty > 0)) return 'Build the order above.';
+    return escapeHtml(it.label) + ' · ' + billingPos.qty + ' × ' + fmt$(billingPos.rate) + (billingPos.billing === 'recurring' ? ' · recurring' : '');
+  }
+  if (!(billingPos.flatAmount > 0)) return 'Enter an amount above.';
+  return escapeHtml((billingPos.flatName || '').trim() || it.label) + (billingPos.billing === 'recurring' ? ' · recurring' : '');
+}
+function posCartRemaining(line, purchased){
+  if (!(billingPos.qty > 0)) return '';
+  return 'Remaining after purchase: ' + (purchased + billingPos.qty - countCompletedForLine(line.id)) + ' · package total → ' + (purchased + billingPos.qty) + ' purchased';
+}
 function billingWirePOS(L, line){
   var content = $("pos-content"); if (!content) return;
+  var it = posItemByKey(billingPos.item);
+  var purchased = sessionsPurchasedTotal(line);
   var close = function(){ billingClosePOS(); };
   var cx = content.querySelector('#pos-close'); if (cx) cx.addEventListener('click', close);
   var cc = content.querySelector('#pos-cancel'); if (cc) cc.addEventListener('click', close);
@@ -4962,21 +5104,9 @@ function billingWirePOS(L, line){
   var bg = $("pos-modal");
   if (bg && !bg.__wired) { bg.__wired = true; bg.addEventListener('click', function(e){ if (e.target === bg) billingClosePOS(); }); }
 
-  content.querySelectorAll('.pos-preset').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var k = btn.dataset.key;
-      if (k === 'custom') { billingPos.key = 'custom'; billingPos.sessions = billingPos.sessions || 0; billingPos.amount = billingPos.amount || 0; billingPos.label = 'Custom'; }
-      else { billingPos.key = k; billingPos.sessions = parseInt(btn.dataset.sessions, 10) || 0; billingPos.amount = Number(btn.dataset.amount) || 0; billingPos.label = btn.dataset.label; }
-      billingRenderPOS();   // re-render to reflect selection + cart (no text input focused yet)
-    });
-  });
-  // Custom inputs: update cart total + Charge enablement live WITHOUT re-render (preserve focus).
-  var cs = content.querySelector('#pos-custom-sessions');
-  var ca = content.querySelector('#pos-custom-amount');
-  function syncCustom(){
-    billingPos.sessions = Math.max(0, parseInt(cs && cs.value, 10) || 0);
-    billingPos.amount = Math.max(0, Number(ca && ca.value) || 0);
-    var ok = billingPos.sessions > 0 && billingPos.amount > 0;
+  // Live sync: update cart + Charge button WITHOUT re-render (preserves input focus).
+  function posSyncCart(){
+    var ok = posValid();
     var chargeBtn = content.querySelector('#pos-charge');
     if (chargeBtn) {
       chargeBtn.disabled = !ok;
@@ -4984,29 +5114,78 @@ function billingWirePOS(L, line){
       chargeBtn.style.color = ok ? '#fff' : 'var(--muted)';
       chargeBtn.style.cursor = ok ? 'pointer' : 'not-allowed';
     }
-    var totalEl = content.querySelector('#pos-cart-total');
-    if (totalEl) totalEl.textContent = fmt$(billingPos.amount);
+    var cartBox = content.querySelector('#pos-cart');
+    if (cartBox) { cartBox.style.border = '1px solid ' + (ok ? 'var(--accent)' : 'var(--border)'); cartBox.style.background = ok ? 'rgba(79,158,255,0.08)' : 'var(--panel-2)'; }
+    var lineEl = content.querySelector('#pos-cart-line'); if (lineEl) lineEl.innerHTML = posCartLine(it, line);
+    var remEl = content.querySelector('#pos-cart-rem'); if (remEl) remEl.textContent = posCartRemaining(line, purchased);
+    var totalEl = content.querySelector('#pos-cart-total'); if (totalEl) totalEl.textContent = fmt$(posTotal());
+    var dueEl = content.querySelector('#pos-next-due'); if (dueEl) dueEl.textContent = posNextDue(billingPos.date, billingPos.recurMode, billingPos.recurDay);
   }
-  if (cs) cs.addEventListener('input', syncCustom);
-  if (ca) ca.addEventListener('input', syncCustom);
+
+  // Item change / billing-mode change / recur-mode change → structural re-render.
+  var itemEl = content.querySelector('#pos-item');
+  if (itemEl) itemEl.addEventListener('change', function(){
+    billingPos.item = itemEl.value;
+    var ni = posItemByKey(billingPos.item);
+    if (ni.mode === 'sessions' && !(billingPos.rate > 0)) billingPos.rate = billingLineRate(line);
+    billingRenderPOS();
+  });
+  content.querySelectorAll('.pos-billmode').forEach(function(btn){
+    btn.addEventListener('click', function(){ billingPos.billing = btn.dataset.mode; billingRenderPOS(); });
+  });
+  content.querySelectorAll('input[name="pos-recur"]').forEach(function(r){
+    r.addEventListener('change', function(){ billingPos.recurMode = r.value; billingRenderPOS(); });
+  });
+  var dayEl = content.querySelector('#pos-recur-day');
+  if (dayEl) dayEl.addEventListener('change', function(){ billingPos.recurDay = parseInt(dayEl.value, 10) || 1; posSyncCart(); });
+
+  // Quick-fill qty chips (sessions mode).
+  content.querySelectorAll('.pos-quick').forEach(function(btn){
+    btn.addEventListener('click', function(){ billingPos.qty = parseInt(btn.dataset.qty, 10) || 0; billingRenderPOS(); });
+  });
+  // Inputs → state + live cart (no re-render).
+  var qtyEl = content.querySelector('#pos-qty');
+  if (qtyEl) qtyEl.addEventListener('input', function(){ billingPos.qty = Math.max(0, parseInt(qtyEl.value, 10) || 0); posSyncCart(); });
+  var rateEl = content.querySelector('#pos-rate');
+  if (rateEl) rateEl.addEventListener('input', function(){ billingPos.rate = Math.max(0, Number(rateEl.value) || 0); posSyncCart(); });
+  var fnEl = content.querySelector('#pos-flat-name');
+  if (fnEl) fnEl.addEventListener('input', function(){ billingPos.flatName = fnEl.value; posSyncCart(); });
+  var faEl = content.querySelector('#pos-flat-amount');
+  if (faEl) faEl.addEventListener('input', function(){ billingPos.flatAmount = Math.max(0, Number(faEl.value) || 0); posSyncCart(); });
+  var dateEl = content.querySelector('#pos-date');
+  if (dateEl) dateEl.addEventListener('change', function(){ billingPos.date = dateEl.value || todayStr(); posSyncCart(); });
 
   var charge = content.querySelector('#pos-charge');
   if (charge) charge.addEventListener('click', function(){
-    if (charge.disabled) return;
-    // Read latest custom values just in case.
-    if (billingPos.key === 'custom') { if (cs) billingPos.sessions = Math.max(0, parseInt(cs.value, 10) || 0); if (ca) billingPos.amount = Math.max(0, Number(ca.value) || 0); }
-    if (!(billingPos.sessions > 0 && billingPos.amount >= 0)) return;
+    if (charge.disabled || !posValid()) return;
     charge.disabled = true;
+    var sessions = it.mode === 'sessions' ? billingPos.qty : 0;
+    var amount = posTotal();
+    var label = it.mode === 'flat' ? ((billingPos.flatName || '').trim() || it.label) : it.label;
+    // Recurring = store the collect reminder on the line BEFORE logPurchase (its saveState
+    // persists both in one write). Reminder only — no auto-charge.
+    // STRIPE SEAM: a subscription later replaces line.collect with the real Stripe schedule.
+    if (billingPos.billing === 'recurring') {
+      line.collect = {
+        mode: billingPos.recurMode,
+        day: billingPos.recurMode === 'fixed' ? (parseInt(billingPos.recurDay, 10) || 1) : null,
+        nextDue: posNextDue(billingPos.date, billingPos.recurMode, billingPos.recurDay),
+        amount: amount,
+        label: label
+      };
+    }
     // THE SEAM: manual now; a future Stripe charge calls logPurchase() the same way with
     // method:'stripe' + a chargeId after the charge succeeds.
     logPurchase(L, line, {
-      sessions: billingPos.sessions,
-      amount: billingPos.amount,
-      service_type: line.type || '',
+      date: purchaseDateToISO(billingPos.date),
+      sessions: sessions,
+      amount: amount,
+      service_type: it.label,
       paid: true,
-      method: 'manual'
+      method: 'manual',
+      note: it.mode === 'flat' ? label : ''
     });
-    showToast('💳 Recorded ' + billingPos.sessions + ' session' + (billingPos.sessions === 1 ? '' : 's') + ' · ' + fmt$(billingPos.amount) + ' for ' + (L.name || 'client'));
+    showToast('💳 Recorded ' + (sessions > 0 ? sessions + ' session' + (sessions === 1 ? '' : 's') : label) + ' · ' + fmt$(amount) + ' for ' + (L.name || 'client') + (billingPos.billing === 'recurring' ? ' · next due ' + (line.collect && line.collect.nextDue) : ''));
     billingClosePOS();
     if (typeof refreshView === 'function') refreshView(); else renderBillingTab();
   });
@@ -5525,8 +5704,8 @@ function renderActiveClientsV2() {
   var header = '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
     '<div><div class="page-title">💼 Active Clients</div>' +
       '<div class="page-subtitle">' + (acView === 'current'
-        ? 'Revenue + sessions per client. Confirm inline; click a row to open the lead.'
-        : 'Plan projected revenue per client for the months ahead. Future cells auto-carry from current sessions × rate.') + '</div></div>' +
+        ? 'Your FORWARD PLAN per client — packages, rates & projected revenue. Money actually collected is recorded in the Billing tab.'
+        : 'Your authored forward plan (the goal) for the months ahead — independent of paid revenue. Future cells auto-carry from current sessions × rate.') + '</div></div>' +
     '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' + rightControls + '</div>' +
   '</div>';
 
@@ -5648,10 +5827,15 @@ function renderActiveClientsV2() {
     });
   });
 
-  // Per-line "Log Purchase" → open the lead where the purchase-ledger editor lives (single
-  // canonical form). Logging there writes to the ledger and refreshes this view's KPIs.
+  // Per-line "Log Purchase" → jump to the Billing tab (the single POS workstation for
+  // recording purchases) with this client preselected.
   main.querySelectorAll('.acv2-log-purchase').forEach(function(btn){
-    btn.addEventListener('click', function(e){ e.stopPropagation(); openLead(btn.dataset.name); });
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var L = LEADS.find(function(x){ return x.name === btn.dataset.name; });
+      if (L) { billingSelectedId = L.id; billingSelectedLineId = null; }
+      goToTab('billing');
+    });
   });
 
   main.querySelectorAll('[data-setup]').forEach(function(btn){
@@ -5681,42 +5865,20 @@ var SVC_PRESETS = [
 var SVC_PRESET_VALUES = SVC_PRESETS.map(function(p){ return p.v; });
 // Auto-suggested billing style per preset type (overridable by the user afterward).
 var SVC_STYLE_BY_TYPE = { 'In-Person': 'package', 'Online': 'recurring', 'Group Training': 'package', 'Nutrition Coaching': 'recurring' };
-// Transient per-line ledger UI state (survives the editor's re-render on each commit):
-//   svcLineForm[lineId] = { open:bool, editId:string|null }  · svcLedgerShowAll[lineId] = bool
-var svcLineForm = {};
-var svcLedgerShowAll = {};
-var SVC_LEDGER_PREVIEW = 4;   // rows shown before "Show all"
+// (svcLineForm / svcLedgerShowAll / SVC_LEDGER_PREVIEW retired — the inline purchase
+// form + ledger moved to the Billing tab; the profile shows a read-only summary strip.)
 var MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function purchaseRowLabel(p) {
   var d = purchaseDateObj(p);
   var dateStr = d ? (MONTHS_ABBR[d.getMonth()] + ' ' + d.getDate()) : '—';
   var sess = (parseInt(p.sessions, 10) || 0);
-  return dateStr + ' · ' + sess + ' session' + (sess === 1 ? '' : 's') + ' · ' + fmt$(Number(p.amount) || 0) + (p.service_type ? ' · ' + p.service_type : '');
+  // Flat (non-session) items show their name/type instead of "0 sessions".
+  var what = sess > 0 ? sess + ' session' + (sess === 1 ? '' : 's') : ((p.note || p.service_type || 'purchase'));
+  var tail = (p.service_type && p.service_type !== what) ? ' · ' + p.service_type : '';
+  return dateStr + ' · ' + what + ' · ' + fmt$(Number(p.amount) || 0) + tail;
 }
-// Inline Log-Purchase form for one line (add mode, or edit mode when editId is set).
-function svcPurchaseFormHTML(ln, i, editId) {
-  var editing = null;
-  if (editId) editing = ensureLinePurchases(ln).find(function(p){ return String(p.id) === String(editId); });
-  var vSessions = editing ? (parseInt(editing.sessions, 10) || 0) : (ln.sessions || 0);
-  var vAmount = editing ? (Number(editing.amount) || 0) : ((ln.sessions || 0) * (ln.rate || 0));
-  var vType = editing ? (editing.service_type || ln.type || '') : (ln.type || '');
-  var vDate = editing ? localDateStr(purchaseDateObj(editing) || new Date()) : todayStr();
-  var rate = ln.rate || 0;
-  return '<div class="svc-pur-form" data-i="' + i + '" data-lineid="' + escapeAttr(ln.id) + '" style="margin-top:10px;padding:12px;border:1px solid var(--accent);border-radius:8px;background:var(--panel);">' +
-      '<div style="font-size:12px;font-weight:700;margin-bottom:8px;">' + (editing ? 'Edit purchase' : 'Log Purchase') + '</div>' +
-      '<div class="billing-grid">' +
-        '<div class="billing-field"><label>Sessions</label><input type="number" class="pf-sessions" data-rate="' + rate + '" name="pf-sess-' + i + '" autocomplete="off" value="' + vSessions + '" min="0"></div>' +
-        '<div class="billing-field"><label>Amount ($)</label><input type="number" class="pf-amount" name="pf-amt-' + i + '" autocomplete="off" value="' + vAmount + '" min="0"></div>' +
-        '<div class="billing-field"><label>Service type</label><input type="text" class="pf-type" name="pf-type-' + i + '" autocomplete="off" value="' + escapeAttr(vType) + '"></div>' +
-        '<div class="billing-field"><label>Date</label><input type="date" class="pf-date" name="pf-date-' + i + '" autocomplete="off" value="' + vDate + '"></div>' +
-      '</div>' +
-      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">' +
-        '<button class="pf-cancel" data-lineid="' + escapeAttr(ln.id) + '" style="background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:6px 12px;cursor:pointer;">Cancel</button>' +
-        '<button class="pf-save" data-i="' + i + '" data-lineid="' + escapeAttr(ln.id) + '" data-editid="' + escapeAttr(editId || '') + '" style="background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer;">' + (editing ? 'Save changes' : 'Save purchase') + '</button>' +
-      '</div>' +
-    '</div>';
-}
-// Summary strip + "Log Purchase" button + purchase-history ledger for one line.
+// Compact read-only ledger summary per line. Purchases are RECORDED in the Billing tab
+// (single POS workstation) — the profile just reflects them and links over.
 function svcLineLedgerBlock(ln, i) {
   ensureLinePurchases(ln);
   var isPkg = (ln.billingStyle || 'package') === 'package';
@@ -5725,48 +5887,12 @@ function svcLineLedgerBlock(ln, i) {
   var rem = spt - done;
   var paid = revenuePaid(ln);
   var summary = isPkg
-    ? 'Sessions remaining: <b style="color:' + (rem < 0 ? 'var(--lost)' : 'var(--text)') + ';">' + rem + '</b> of ' + spt + ' purchased · <b style="color:var(--won);">' + fmt$(paid) + '</b> paid'
+    ? '<b style="color:' + (rem < 0 ? 'var(--lost)' : 'var(--text)') + ';">' + rem + '</b> left of ' + spt + ' purchased · <b style="color:var(--won);">' + fmt$(paid) + '</b> paid'
     : '<b style="color:var(--won);">' + fmt$(paid) + '</b> paid';
 
-  // Ledger: cumulative "remaining after" computed chronologically (ascending), displayed newest-first.
-  var asc = ln.purchases.slice().sort(function(a, b){
-    var ta = purchaseDateObj(a) ? purchaseDateObj(a).getTime() : 0;
-    var tb = purchaseDateObj(b) ? purchaseDateObj(b).getTime() : 0;
-    return ta - tb || String(a.id).localeCompare(String(b.id));
-  });
-  var cum = 0;
-  var enriched = asc.map(function(p){ cum += (parseInt(p.sessions, 10) || 0); return { p: p, remAfter: cum - done }; });
-  var rows = enriched.reverse();   // newest first for display
-  var showAll = !!svcLedgerShowAll[ln.id];
-  var shown = showAll ? rows : rows.slice(0, SVC_LEDGER_PREVIEW);
-
-  var ledgerRows = rows.length ? shown.map(function(r){
-    var p = r.p;
-    var dot = '<span title="' + (p.paid !== false ? 'Paid' : 'Unpaid') + '" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + (p.paid !== false ? 'var(--won)' : 'var(--muted)') + ';flex:0 0 auto;"></span>';
-    return '<div class="svc-pur-row" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px dashed var(--border);font-size:12px;">' +
-        dot +
-        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(purchaseRowLabel(p)) + (isPkg ? ' <span style="color:var(--muted);">· ' + r.remAfter + ' left after</span>' : '') + (p.method === 'stripe' ? ' <span style="color:var(--purple);">· stripe</span>' : '') + '</span>' +
-        '<button class="pur-edit" data-i="' + i + '" data-pid="' + escapeAttr(p.id) + '" title="Edit" style="background:transparent;border:none;color:var(--muted);font-size:12px;cursor:pointer;">✎</button>' +
-        '<button class="pur-del" data-i="' + i + '" data-pid="' + escapeAttr(p.id) + '" title="Delete" style="background:transparent;border:none;color:var(--lost);font-size:13px;cursor:pointer;">✕</button>' +
-      '</div>';
-  }).join('') : '<div style="padding:6px 8px;font-size:12px;color:var(--muted);">No purchases logged yet.</div>';
-
-  var moreToggle = rows.length > SVC_LEDGER_PREVIEW
-    ? '<button class="svc-ledger-more" data-lineid="' + escapeAttr(ln.id) + '" style="background:transparent;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:6px 8px;">' + (showAll ? 'Show fewer' : 'Show all (' + rows.length + ')') + '</button>'
-    : '';
-
-  var fs = svcLineForm[ln.id] || { open: false, editId: null };
-  var formHTML = fs.open ? svcPurchaseFormHTML(ln, i, fs.editId) : '';
-
-  return '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
-        '<span style="font-size:12px;color:var(--muted);">' + summary + '</span>' +
-        '<button class="svc-log-purchase" data-i="' + i + '" data-lineid="' + escapeAttr(ln.id) + '" title="Add more sessions to THIS line (client re-purchased the same package)" style="background:var(--won);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer;">＋ Add sessions · Log Purchase</button>' +
-      '</div>' +
-      formHTML +
-      '<div style="margin-top:8px;font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;">Purchase history</div>' +
-      '<div class="svc-ledger" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;">' + ledgerRows + '</div>' +
-      moreToggle +
+  return '<div style="margin-top:12px;padding:8px 10px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">' +
+      '<span style="font-size:12px;color:var(--muted);">' + summary + '</span>' +
+      '<button class="svc-manage-billing" data-lineid="' + escapeAttr(ln.id) + '" title="Log purchases, edit the ledger & set collect reminders in the Billing tab" style="background:transparent;border:1px solid var(--accent);border-radius:7px;color:var(--accent);font-size:12px;font-weight:600;padding:5px 12px;cursor:pointer;">Manage in Billing →</button>' +
     '</div>';
 }
 function renderServiceLinesEditor(L) {
@@ -5790,8 +5916,7 @@ function renderServiceLinesEditor(L) {
       ? '<div class="billing-field"><label>Monthly Fee ($)</label><input type="number" class="svc-f" data-i="' + i + '" data-k="monthlyFee" name="svc-fee-' + i + '" value="' + (ln.monthlyFee || 0) + '" min="0"></div>'
       : style === 'one-time'
         ? '<div class="billing-field"><label>Amount ($) <span style="color:var(--muted);font-weight:400;">(charged once)</span></label><input type="number" class="svc-f" data-i="' + i + '" data-k="amount" name="svc-amt-' + i + '" value="' + (ln.amount || 0) + '" min="0"></div>'
-        : '<div class="billing-field"><label>Sessions</label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessions" name="svc-sess-' + i + '" value="' + (ln.sessions || 0) + '" min="0"></div>' +
-          '<div class="billing-field"><label>Used</label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessionsUsed" name="svc-used-' + i + '" value="' + (ln.sessionsUsed || 0) + '" min="0"></div>' +
+        : '<div class="billing-field"><label>Sessions / month <span style="color:var(--muted);font-weight:400;">(plan)</span></label><input type="number" class="svc-f" data-i="' + i + '" data-k="sessions" name="svc-sess-' + i + '" value="' + (ln.sessions || 0) + '" min="0"></div>' +
           '<div class="billing-field"><label>Rate ($)</label><input type="number" class="svc-f" data-i="' + i + '" data-k="rate" name="svc-rate-' + i + '" value="' + (ln.rate || 0) + '" min="0"></div>';
 
     var isPreset = SVC_PRESET_VALUES.indexOf(ln.type) >= 0;
@@ -5825,11 +5950,11 @@ function renderServiceLinesEditor(L) {
 
   mount.innerHTML =
     '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">' +
-      '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">Service Lines <span style="color:var(--muted);font-weight:400;">(new multi-line model)</span></div>' +
-      '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Combined total: <b style="color:var(--accent);">' + fmt$(clientTotal(L)) + '</b> · powers the new Active Clients view.</div>' +
+      '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">Service Lines <span style="color:var(--muted);font-weight:400;">(your plan per service — type, sessions &amp; rate)</span></div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Planned total: <b style="color:var(--accent);">' + fmt$(clientTotal(L)) + '</b> / month · powers Active Clients &amp; Projections. Purchases are logged in the <b>Billing</b> tab.</div>' +
       (cards || '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">No service lines yet.</div>') +
-      '<button class="svc-add" title="Only for a genuinely NEW service type (e.g. add Online to an In-Person client). To add more sessions to an existing package, use “Add sessions · Log Purchase” on that line." style="background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer;">+ Add different service type</button>' +
-      '<div style="font-size:10px;color:var(--muted);margin-top:6px;">Re-purchasing the same package? Use <b>“＋ Add sessions · Log Purchase”</b> on the existing line above — don’t add a new line.</div>' +
+      '<button class="svc-add" title="Only for a genuinely NEW service type (e.g. add Online to an In-Person client). Re-purchases of the same package are logged in the Billing tab." style="background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer;">+ Add different service type</button>' +
+      '<div style="font-size:10px;color:var(--muted);margin-top:6px;">Client re-purchased the same package? Log it in the <b>Billing</b> tab (“Manage in Billing →”) — don’t add a new line.</div>' +
     '</div>';
 
   function persist(rerender){
@@ -5916,70 +6041,84 @@ function renderServiceLinesEditor(L) {
     persist(true);
   });
 
-  // ---- Purchase ledger wiring (Log Purchase / edit / delete / show-all) ----
-  mount.querySelectorAll('.svc-log-purchase').forEach(function(btn){
+  // ---- "Manage in Billing →" — purchases live in the Billing POS workstation now.
+  // Preselect this client + line there, close the modal, and jump over.
+  mount.querySelectorAll('.svc-manage-billing').forEach(function(btn){
     btn.addEventListener('click', function(){
-      svcLineForm[btn.dataset.lineid] = { open: true, editId: null };
-      renderServiceLinesEditor(L);
-    });
-  });
-  mount.querySelectorAll('.pf-cancel').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      svcLineForm[btn.dataset.lineid] = { open: false, editId: null };
-      renderServiceLinesEditor(L);
-    });
-  });
-  // Convenience: default the amount to sessions × rate as the user types sessions. Updates a
-  // sibling field only (never re-renders), so focus/cursor in the sessions field is preserved.
-  mount.querySelectorAll('.pf-sessions').forEach(function(inp){
-    inp.addEventListener('input', function(){
-      var form = inp.closest('.svc-pur-form'); if (!form) return;
-      var amt = form.querySelector('.pf-amount'); if (!amt) return;
-      var rate = Number(inp.dataset.rate) || 0;
-      amt.value = Math.max(0, (parseInt(inp.value, 10) || 0) * rate);
-    });
-  });
-  mount.querySelectorAll('.pf-save').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var ln = lines[+btn.dataset.i]; if (!ln) return;
-      var form = btn.closest('.svc-pur-form'); if (!form) return;
-      var sessions = form.querySelector('.pf-sessions').value;
-      var amount = form.querySelector('.pf-amount').value;
-      var type = form.querySelector('.pf-type').value;
-      var dateISO = purchaseDateToISO(form.querySelector('.pf-date').value);
-      var editId = btn.dataset.editid;
-      if (editId) {
-        updatePurchase(ln, editId, { sessions: sessions, amount: amount, service_type: type, date: dateISO });
-      } else {
-        // Manual entry today; a future Stripe flow calls logPurchase() with method:'stripe' + chargeId.
-        logPurchase(L, ln, { sessions: sessions, amount: amount, service_type: type, date: dateISO, paid: true, method: 'manual' });
-      }
-      svcLineForm[ln.id] = { open: false, editId: null };
-      persist(true);   // saveState + refreshView (Active Clients "Paid so far") + re-render editor
-    });
-  });
-  mount.querySelectorAll('.pur-edit').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var ln = lines[+btn.dataset.i]; if (!ln) return;
-      svcLineForm[ln.id] = { open: true, editId: btn.dataset.pid };
-      renderServiceLinesEditor(L);
-    });
-  });
-  mount.querySelectorAll('.pur-del').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var ln = lines[+btn.dataset.i]; if (!ln) return;
-      if (!confirm('Delete this purchase transaction? This cannot be undone.')) return;
-      deletePurchase(ln, btn.dataset.pid);
-      persist(true);
-    });
-  });
-  mount.querySelectorAll('.svc-ledger-more').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      svcLedgerShowAll[btn.dataset.lineid] = !svcLedgerShowAll[btn.dataset.lineid];
-      renderServiceLinesEditor(L);
+      billingSelectedId = L.id;
+      billingSelectedLineId = btn.dataset.lineid || null;
+      closeLead();
+      goToTab('billing');
     });
   });
   // Session-completion tracking lives on the dedicated Sessions tab now — no tracker here.
+}
+
+// ---- Profile mini-planner: this client's projections for the current + next 3 months ----
+// Same writer pattern as the Projections tab (wireProjectionsSection): an authored amount
+// ALWAYS wins; unset months auto-carry the package pace (carryTotal). Never touches the ledger.
+function renderProjMiniPlanner(L) {
+  var mount = document.getElementById('proj-mini-mount');
+  if (!mount) return;
+  var b = ensureBilling(L);
+  var months = projectionMonths(3);   // current month + next 3
+  var carry = carryTotal(L);
+
+  var cells = months.map(function(m){
+    var p = b.projections && b.projections[m.mk];
+    var active = isProjectedActive(L, m.mk);
+    var authored = !!(p && p.active !== false && p.amount != null && p.amount !== '' && !isNaN(Number(p.amount)));
+    var val = projectedForClientMonth(L, m.mk);
+    var isCur = m.i === 0;
+    var tag = authored
+      ? '<button class="proj-mini-reset" data-mk="' + m.mk + '" title="Clear the authored amount — month falls back to the package pace (' + fmt$(carry) + ')" style="background:transparent;border:none;color:var(--accent);font-size:10px;cursor:pointer;padding:0;">set ↺</button>'
+      : '<span style="font-size:10px;color:var(--muted);">auto</span>';
+    var toggle = isCur
+      ? '<span style="font-size:10px;color:var(--muted);" title="Current month follows the Active Client checkbox above.">' + (active ? 'active' : 'off') + '</span>'
+      : '<button class="proj-mini-toggle" data-mk="' + m.mk + '" style="background:transparent;border:none;color:' + (active ? 'var(--lost)' : 'var(--won)') + ';font-size:10px;cursor:pointer;padding:0;">' + (active ? 'drop' : 'add back') + '</button>';
+    return '<div class="billing-field" style="opacity:' + (active ? '1' : '0.45') + ';">' +
+        '<label style="display:flex;justify-content:space-between;align-items:center;gap:6px;">' + m.label + ' ' + tag + '</label>' +
+        '<input type="number" class="proj-mini-amt" data-mk="' + m.mk + '" name="proj-mini-' + m.mk + '" autocomplete="off" value="' + val + '" min="0"' + (active ? '' : ' disabled') + '>' +
+        '<div style="margin-top:3px;text-align:right;">' + toggle + '</div>' +
+      '</div>';
+  }).join('');
+
+  mount.innerHTML =
+    '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">' +
+      '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">📈 Projections <span style="color:var(--muted);font-weight:400;">(your forward plan for this client)</span></div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Type an amount to author a month; <b>auto</b> months follow the package pace (' + fmt$(carry) + '). Full grid lives in Active Clients → Projections.</div>' +
+      '<div class="billing-grid">' + cells + '</div>' +
+    '</div>';
+
+  function persistProj(){
+    saveState();
+    if (typeof refreshView === 'function') refreshView();
+    renderProjMiniPlanner(L);
+  }
+  mount.querySelectorAll('.proj-mini-amt').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var p = ensureProjection(L, inp.dataset.mk);
+      p.active = true;
+      p.amount = Math.max(0, Number(inp.value) || 0);
+      delete p.sessions; delete p.rate;   // authored dollars win; retire legacy shape
+      persistProj();
+    });
+  });
+  mount.querySelectorAll('.proj-mini-reset').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var p = ensureProjection(L, btn.dataset.mk);
+      delete p.amount; delete p.sessions; delete p.rate;
+      p.active = true;   // back to auto-carry
+      persistProj();
+    });
+  });
+  mount.querySelectorAll('.proj-mini-toggle').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var p = ensureProjection(L, btn.dataset.mk);
+      p.active = (p.active === false);   // flip drop/add-back
+      persistProj();
+    });
+  });
 }
 
 // ---- Projections planner: editable per-client, per-month forecast grid ----
@@ -7015,40 +7154,31 @@ function openLead(name) {
 
       (L.priority ? '<div class="section-title">📌 Priority Note</div><textarea class="notes-edit" id="m-pnote">' + (L.priorityNote||"") + '</textarea>' : '') +
 
-      leadSecOpen('billing','💰 Billing &amp; Sessions') +
+      leadSecOpen('billing','📈 Forward Plan') +
       '<div class="billing-box">' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;">This section is your <b>plan</b> for the client — services, rates &amp; projected months. Money actually collected is recorded in the <b>Billing</b> tab.</div>' +
         '<div class="billing-toggle">' +
           '<input type="checkbox" id="b-active" ' + (b.active?"checked":"") + '>' +
           '<label for="b-active" style="font-weight:600;cursor:pointer;">Mark as Active Client (counts toward monthly revenue)</label>' +
         '</div>' +
-        '<div class="billing-grid">' +
-          '<div class="billing-field"><label>Package</label>' +
-            '<select id="b-package">' +
-              '<option value="" ' + (!b.package?"selected":"") + '>—</option>' +
-              '<option ' + (b.package==="1x/week"?"selected":"") + '>1x/week</option>' +
-              '<option ' + (b.package==="2x/week"?"selected":"") + '>2x/week</option>' +
-              '<option ' + (b.package==="3x/week"?"selected":"") + '>3x/week</option>' +
-              '<option ' + (b.package==="Drop-in"?"selected":"") + '>Drop-in</option>' +
-              '<option ' + (b.package==="Online Only"?"selected":"") + '>Online Only</option>' +
-              '<option ' + (b.package==="In-person + Online"?"selected":"") + '>In-person + Online</option>' +
-            '</select></div>' +
-        '</div>' +
         '<div class="billing-total">' +
-          '<div class="billing-total-label">Total This Month</div>' +
+          '<div class="billing-total-label">Projected / Month</div>' +
           '<div class="billing-total-value" id="b-total">' + fmt$(clientTotal(L)) + '</div>' +
         '</div>' +
         (function(){
-          // "Confirm for the month" is retired — logged purchases ARE the confirmed revenue.
-          // Read-only figure summed from the ledger for the current month (log purchases per
-          // service line below to record revenue).
+          // Read-only ledger figure for the current month (purchases are logged in the Billing tab).
           var mk = currentMonthKey();
           var paid = confirmedAmount(L, mk);   // = clientPaidForMonth(L, mk)
-          return '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (paid>0?"rgba(34,197,94,0.12)":"var(--panel)") + ';border:1px solid ' + (paid>0?"rgba(34,197,94,0.4)":"var(--border)") + ';display:flex;align-items:center;justify-content:space-between;">' +
-            '<span style="font-weight:600;color:' + (paid>0?"var(--won)":"var(--text-muted)") + ';">Paid ' + currentMonthLabel() + ' <span style="font-weight:400;font-size:11px;color:var(--muted);">(from logged purchases)</span></span>' +
-            '<span id="b-paid-amount" style="font-weight:700;color:' + (paid>0?"var(--won)":"var(--text-muted)") + ';">' + fmt$(paid) + '</span>' +
+          return '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (paid>0?"rgba(34,197,94,0.12)":"var(--panel)") + ';border:1px solid ' + (paid>0?"rgba(34,197,94,0.4)":"var(--border)") + ';display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+            '<span style="font-weight:600;color:' + (paid>0?"var(--won)":"var(--text-muted)") + ';">Paid ' + currentMonthLabel() + ' <span style="font-weight:400;font-size:11px;color:var(--muted);">(from the Billing ledger)</span></span>' +
+            '<span style="display:inline-flex;align-items:center;gap:10px;">' +
+              '<span id="b-paid-amount" style="font-weight:700;color:' + (paid>0?"var(--won)":"var(--text-muted)") + ';">' + fmt$(paid) + '</span>' +
+              '<button id="b-goto-billing" style="background:transparent;border:1px solid var(--accent);border-radius:7px;color:var(--accent);font-size:12px;font-weight:600;padding:5px 12px;cursor:pointer;">Manage in Billing →</button>' +
+            '</span>' +
           '</div>';
         })() +
         '<div id="svc-lines-mount"></div>' +
+        '<div id="proj-mini-mount"></div>' +
       '</div>' +
       leadSecClose() +
       leadSecOpen('status','Deal Status') +
@@ -7176,15 +7306,20 @@ if (b.active) logEvent('active_client_marked', L.name, {});
 saveState(); renderAll();
 updateTotal();
 updatePaidFigure();
+    renderProjMiniPlanner(L);   // current month mirrors Active state — keep the planner in sync
   });
-  $("b-package").addEventListener("change", function(e){
-    b.package = e.target.value;
-    saveState(); renderAll();
+  // (Legacy #b-package dropdown retired from the UI — service lines carry the plan now;
+  // b.package data is untouched. The old "Confirm for the month" checkbox is retired too.)
+  var gotoBilling = $("b-goto-billing");
+  if (gotoBilling) gotoBilling.addEventListener("click", function(){
+    billingSelectedId = L.id;
+    billingSelectedLineId = null;   // default to the client's first line
+    closeLead();
+    goToTab('billing');
   });
-  // (The old "Confirm for the month" checkbox + handler are retired — the purchase ledger
-  // per service line records revenue now; "Paid this month" above reflects it read-only.)
 
-  renderServiceLinesEditor(L);   // service-lines editor (new multi-line billing model)
+  renderServiceLinesEditor(L);   // service-lines editor (plan per service)
+  renderProjMiniPlanner(L);      // per-client projections mini-planner (current + next 3 months)
 
   document.querySelectorAll("[data-r]").forEach(function(btn){
     btn.addEventListener("click", function(){
