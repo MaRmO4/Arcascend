@@ -2629,7 +2629,12 @@ async function loadSessions() {
     var res = await fetch(SUPABASE_URL + '/rest/v1/sessions?user_id=eq.' + uid + '&select=*&order=when_at.desc&limit=5000', {
       headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY }
     });
-    if (res.ok) window.SESSIONS = await res.json();
+    if (res.ok) {
+      window.SESSIONS = await res.json();
+      // One-time data repair: heal clients whose purchases + sessions got split across
+      // duplicate lines of the same package (fire-and-forget; re-renders when done).
+      if (typeof mergeDuplicateServiceLines === 'function') mergeDuplicateServiceLines();
+    }
     else if (!window.SESSIONS) window.SESSIONS = [];
   } catch(e) { if (!window.SESSIONS) window.SESSIONS = []; }
 }
@@ -2747,6 +2752,82 @@ async function deleteSessionRow(id) {
     }
   } catch(e) {}
   return false;
+}
+
+// ==========================================================
+// DUPLICATE SERVICE-LINE MERGE (one-time data repair, safe to keep forever)
+// The old re-purchase flow could create a SECOND line of the same type, splitting a
+// client's data: purchases on one line, logged sessions on the other ("0 of 6" +
+// "3 of 0 · owes 3" instead of "3 of 6"). This merges package lines with the SAME
+// type + rate on a client: purchases are combined, session rows are repointed to
+// the surviving line (bulk PATCH in Supabase), and the duplicate is removed.
+// Idempotent — once no duplicates exist it does nothing, so it runs automatically
+// after every sessions load at zero cost.
+// ==========================================================
+async function repointSessionLine(fromId, toId) {
+  var token = localStorage.getItem('arcascend_token');
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/sessions?user_id=eq.' + uid + '&service_line_id=eq.' + encodeURIComponent(fromId), {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ service_line_id: toId })
+    });
+    if (res.ok || res.status === 204) {
+      (window.SESSIONS || []).forEach(function(s){ if (s.service_line_id === fromId) s.service_line_id = toId; });
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+async function mergeDuplicateServiceLines() {
+  if (window.__dupeMergeRan) return;               // once per app load is plenty
+  if (!Array.isArray(window.LEADS || LEADS) || !Array.isArray(window.SESSIONS)) return;
+  window.__dupeMergeRan = true;
+  var changed = false;
+  for (var li = 0; li < LEADS.length; li++) {
+    var L = LEADS[li];
+    var lines = clientLines(L);
+    if (lines.length < 2) continue;
+    // Group package-style lines by type + rate (conservative: different rates never merge).
+    var groups = {};
+    lines.forEach(function(ln){
+      if (!ln || (ln.billingStyle || 'package') !== 'package') return;
+      var key = (ln.type || '').trim().toLowerCase() + '|' + (ln.rate || 0);
+      (groups[key] = groups[key] || []).push(ln);
+    });
+    for (var key in groups) {
+      var g = groups[key];
+      if (g.length < 2) continue;
+      // Keeper = the line with the most purchase records (tie → first/oldest).
+      var keeper = g.slice().sort(function(a, b){ return ensureLinePurchases(b).length - ensureLinePurchases(a).length; })[0];
+      for (var i = 0; i < g.length; i++) {
+        var dupe = g[i];
+        if (dupe === keeper) continue;
+        // Repoint the dupe's session rows FIRST — never orphan sessions if the PATCH fails.
+        var nSess = (window.SESSIONS || []).filter(function(s){ return s.service_line_id === dupe.id; }).length;
+        if (nSess > 0) {
+          var ok = await repointSessionLine(dupe.id, keeper.id);
+          if (!ok) { console.warn('[ArcAscend] dupe merge: could not repoint sessions for', L.name, '- skipped'); continue; }
+        }
+        // Combine ledgers; plan fields take the larger value (summing would double projections).
+        ensureLinePurchases(keeper);
+        ensureLinePurchases(dupe).forEach(function(p){ keeper.purchases.push(p); });
+        keeper.sessions = Math.max(keeper.sessions || 0, dupe.sessions || 0);
+        if (dupe.active) keeper.active = true;
+        var arr = ensureBilling(L).serviceLines;
+        var idx = arr.indexOf(dupe);
+        if (idx >= 0) arr.splice(idx, 1);
+        changed = true;
+        console.log('[ArcAscend] merged duplicate "' + (keeper.type || 'Package') + '" line for ' + (L.name || '(no name)'));
+      }
+      keeper.purchases.sort(function(a, b){ return new Date(a.date) - new Date(b.date); });
+    }
+  }
+  if (changed) {
+    saveState();
+    if (typeof refreshView === 'function') refreshView();
+  }
 }
 
 // ---- Schedule state + geometry ----
