@@ -2469,7 +2469,71 @@ async function verifySession() {
   // Confirmed owner — keep id/email aligned with the token (no-op when already equal).
   localStorage.setItem('arcascend_user_id', u.id);
   if (u.email) localStorage.setItem('arcascend_user_email', u.email);
+  // Stash account creation time — the one-time update notice uses it to tell
+  // existing accounts (show once) apart from brand-new signups (never show).
+  if (u.created_at) localStorage.setItem('arcascend_account_created', u.created_at);
   return 'ok';
+}
+
+// ==========================================================
+// ONE-TIME UPDATE NOTICE (Sept 2026 billing overhaul).
+// Paid revenue now derives from the purchase LEDGER, so months "confirmed" under
+// the old system show as unconfirmed until re-logged in Billing. Shown ONCE per
+// EXISTING account (created before the update ship date) on their next sign-in.
+// New accounts never see it — they're auto-acked on first load.
+// ==========================================================
+var BILLING_NOTICE_CUTOFF = '2026-09-16T00:00:00Z';   // the update's ship date
+function maybeShowBillingResetNotice() {
+  try {
+    if (!currentUser || !currentUser.id) return;
+    var ackKey = 'arcascend_billing_reset_ack_' + currentUser.id;
+    if (localStorage.getItem(ackKey)) return;                        // already acknowledged
+    var created = localStorage.getItem('arcascend_account_created');
+    var isNewUser = created
+      ? (new Date(created).getTime() >= new Date(BILLING_NOTICE_CUTOFF).getTime())
+      : !(window.LEADS && LEADS.length);                             // fallback: empty account = new signup
+    if (isNewUser) { localStorage.setItem(ackKey, 'skipped-new-user'); return; }
+    if (document.getElementById('billing-reset-notice')) return;     // never double-mount
+
+    var wrap = document.createElement('div');
+    wrap.id = 'billing-reset-notice';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    wrap.innerHTML =
+      '<div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;max-width:480px;width:100%;padding:24px;" role="dialog" aria-modal="true" aria-label="Billing update notice">' +
+        '<div style="font-size:17px;font-weight:700;margin-bottom:10px;">⚠️ Heads up — billing update</div>' +
+        '<div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:14px;">' +
+          'With the most recent update, ArcAscend now tracks paid revenue from real, dated payment records. ' +
+          'Because of this change, your previously <b style="color:var(--text);">confirmed billings were reset</b> and this month may show clients as unpaid.' +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px;">' +
+          'Please go to the <b style="color:var(--text);">Billing tab</b> and reconfirm each client\'s payment there for the most accurate totals. You only need to do this once.' +
+        '</div>' +
+        '<label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--text);cursor:pointer;margin-bottom:16px;">' +
+          '<input type="checkbox" id="brn-check" style="margin-top:2px;width:16px;height:16px;cursor:pointer;flex-shrink:0;" />' +
+          '<span>I understand — I\'ll reconfirm my clients\' payments in the Billing tab.</span>' +
+        '</label>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
+          '<button id="brn-later" disabled style="padding:9px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:13px;cursor:pointer;opacity:0.5;">Close</button>' +
+          '<button id="brn-go" disabled style="padding:9px 16px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;opacity:0.5;">Take me to Billing</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+
+    var check = document.getElementById('brn-check');
+    var goBtn = document.getElementById('brn-go');
+    var laterBtn = document.getElementById('brn-later');
+    check.addEventListener('change', function(){
+      var on = check.checked;
+      [goBtn, laterBtn].forEach(function(b){ b.disabled = !on; b.style.opacity = on ? '1' : '0.5'; });
+    });
+    function ackAndClose() {
+      localStorage.setItem(ackKey, new Date().toISOString());
+      wrap.remove();
+    }
+    laterBtn.addEventListener('click', function(){ if (check.checked) ackAndClose(); });
+    goBtn.addEventListener('click', function(){ if (check.checked) { ackAndClose(); goToTab('billing'); } });
+    // No backdrop-close on purpose: the user must check the box and confirm.
+  } catch(e) {}
 }
 
 function clearSessionAndLogin() {
@@ -8520,6 +8584,8 @@ if (homeTab) homeTab.classList.add('active');
 setTimeout(function(){ renderHomeTab(); setTimeout(refreshReminders, 400); }, 100);
         initProfileMenu();
         initBulkSelect();
+        // One-time billing-overhaul notice for existing accounts (data now loaded, home rendered)
+        setTimeout(maybeShowBillingResetNotice, 700);
       });
     }
   });
