@@ -906,6 +906,11 @@ main { flex: 1; padding: 20px 24px; }
 .hm-btn{font-size:11.5px;font-weight:600;color:var(--accent);border:1px solid var(--border);border-radius:7px;padding:4px 10px;background:var(--panel-2);margin-left:auto;cursor:pointer;white-space:nowrap;font-family:inherit;}
 .hm-btn:hover{border-color:var(--accent);}
 .hm-btn:disabled{opacity:.5;cursor:default;}
+/* See-all collapse (global) */
+.see-all-btn{display:block;width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--accent);font-size:12px;font-weight:600;padding:8px;border-radius:8px;cursor:pointer;font-family:inherit;margin-top:8px;grid-column:1/-1;}
+.see-all-btn:hover{border-color:var(--accent);}
+.sa-rest{display:none;}
+.sa-rest.open{display:contents;}
 .hm-bar{height:7px;background:var(--panel-2);border-radius:999px;overflow:hidden;margin-top:7px;}
 .hm-bar>div{height:7px;background:var(--won);border-radius:999px;transition:width .5s;}
 /* QUICK ACTION BAR */
@@ -1744,6 +1749,32 @@ function dueBucket(d) {
   if (d <= addDays(t,7)) return "thisweek";
   return "upcoming";
 }
+// ===== See-all collapse (global helper) =====
+// Takes an ARRAY of item HTML strings. Renders the first `n` visible, wraps the rest in
+// a hidden display:contents container (so opened items rejoin the parent grid/flex/block
+// layout seamlessly), and appends a toggle button. Toggle is pure DOM — no re-render, so
+// scroll position and any wired listeners on the hidden items are preserved.
+function seeAllWrap(htmlItems, n, key, noun) {
+  if (!htmlItems || !htmlItems.length) return '';
+  if (htmlItems.length <= n) return htmlItems.join('');
+  var k = String(key).replace(/[^a-zA-Z0-9_-]/g, '');
+  var moreLbl = 'See all ' + htmlItems.length + ' ' + noun + ' ▾';
+  return htmlItems.slice(0, n).join('') +
+    '<div class="sa-rest" id="sar-' + k + '">' + htmlItems.slice(n).join('') + '</div>' +
+    '<button type="button" class="see-all-btn" data-seeall="' + k + '" data-more="' + escapeAttr(moreLbl) + '" data-less="Show less ▴">' + moreLbl + '</button>';
+}
+// One delegated listener handles every see-all button in the app.
+document.addEventListener('click', function(e){
+  var btn = e.target.closest('.see-all-btn');
+  if (!btn || !btn.dataset.seeall) return;
+  e.stopPropagation();
+  var box = document.getElementById('sar-' + btn.dataset.seeall);
+  if (!box) return;
+  var open = box.classList.toggle('open');
+  btn.textContent = open ? btn.dataset.less : btn.dataset.more;
+  if (!open) { try { btn.scrollIntoView({ block: 'nearest' }); } catch(_){} }
+});
+
 function timeAgo(iso) {
   var d = new Date(iso), diff = (Date.now()-d.getTime())/1000;
   if (diff < 60) return "just now";
@@ -3662,7 +3693,7 @@ function renderSessionsTab() {
   }).join('');
 
   var listSection = rows.length
-    ? '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;">' + listRows + '</div>'
+    ? '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;"><div style="max-height:560px;overflow-y:auto;">' + listRows + '</div></div>'
     : '<div class="empty"><div class="empty-icon">📆</div><div style="font-size:16px;color:var(--text);margin-bottom:8px;">No active package clients</div>Add a <b>package</b>-style service line to an active client (In-Person, Group, etc.) to start logging sessions here.</div>';
 
   main.innerHTML =
@@ -5450,10 +5481,11 @@ function renderKanban() {
         'onclick="openLead(\'' + l.name.replace(/'/g, "\\'") + '\')">' +
         '<div class="kanban-card-name">' + l.name + '</div>' +
         '<div class="kanban-card-meta">' + goal + '</div></div>';
-    }).join('');
+    });
     return '<div class="kanban-col" data-status="' + c.key + '">' +
       '<div class="kanban-col-head"><span class="kanban-col-title">' + c.key + '</span>' +
-      '<span class="kanban-col-count">' + inCol.length + '</span></div>' + cards + '</div>';
+      '<span class="kanban-col-count">' + inCol.length + '</span></div>' +
+      seeAllWrap(cards, 6, 'kb-' + c.key, 'leads') + '</div>';
   }).join('');
 
   main.innerHTML =
@@ -5829,7 +5861,7 @@ function renderMain() {
     if (!b) { activeTab = "all"; return renderMain(); }
     var leads = sortLeads(filterLeads(leadsInBucket(b)));
     main.innerHTML =
-      (leads.length ? '<div class="lead-grid">' + leads.map(leadCard).join("") + '</div>' : emptyState("📋", "No leads match."));
+      (leads.length ? '<div class="lead-grid">' + seeAllWrap(leads.map(leadCard), 18, 'cb-' + bid, 'leads') + '</div>' : emptyState("📋", "No leads match."));
     wireCards();
     return;
   }
@@ -5869,7 +5901,7 @@ if (activeTab === "calendar") { renderCalendarTab(); return; }
 }
 function viewToggleWrap(leads) {
   return '<div class="page-header"><div></div>' + viewToggleHTML() + '</div>' +
-    '<div class="lead-grid">' + leads.map(leadCard).join("") + '</div>';
+    '<div class="lead-grid">' + seeAllWrap(leads.map(leadCard), 18, 'grid-' + activeTab, 'leads') + '</div>';
 }
 
 // ==========================================================
@@ -6034,7 +6066,7 @@ function renderActiveClientsV2() {
 
   // ---- Closed Won · Ready to Set Up (keeps the promote workflow accessible) ----
   var promote = notSetUp.length ? '<div style="font-size:14px;font-weight:600;margin:26px 0 12px;">Closed Won · Ready to Set Up (' + notSetUp.length + ')</div><div class="lead-grid">' +
-    notSetUp.slice(0, 20).map(function(L){
+    seeAllWrap(notSetUp.map(function(L){
       var safeName = escapeAttr(L.name);
       return '<div class="lead-card open" data-name="' + safeName + '">' +
         '<div class="lead-header"><div><div class="lead-name">' + escapeHtml(L.name) + '</div>' +
@@ -6043,7 +6075,7 @@ function renderActiveClientsV2() {
         '<div style="color:var(--muted);font-size:12px;margin-top:10px;">Add session count and rate to start tracking.</div>' +
         '<button class="btn" style="width:100%;margin-top:10px;font-size:12px;padding:8px;" data-setup="' + safeName + '">💼 Set Up as Client</button>' +
       '</div>';
-    }).join('') + '</div>' : '';
+    }), 8, 'acv2-promote', 'clients') + '</div>' : '';
 
   main.innerHTML = header + kpis + tableSection + promote;
 
@@ -6625,7 +6657,7 @@ function renderTasksTab() {
   }
   function sec(label, icon, arr) {
     if (!arr.length) return "";
-    return '<div class="task-group-title">' + icon + ' ' + label + '<span class="task-group-count">' + arr.length + '</span></div>' + arr.map(tr).join("");
+    return '<div class="task-group-title">' + icon + ' ' + label + '<span class="task-group-count">' + arr.length + '</span></div>' + seeAllWrap(arr.map(tr), 10, 'tg-' + label, 'tasks');
   }
   main.innerHTML =
     sec("Overdue", "🔴", groups.overdue) +
@@ -6633,7 +6665,7 @@ function renderTasksTab() {
     sec("Tomorrow", "🟢", groups.tomorrow) +
     sec("This Week", "📅", groups.thisweek) +
     sec("Upcoming", "📆", groups.upcoming) +
-    (groups.done.length ? '<div class="task-group-title" style="margin-top:30px;color:var(--muted);">✓ Completed<span class="task-group-count">' + groups.done.length + '</span></div>' + groups.done.map(tr).join("") : "");
+    (groups.done.length ? '<div class="task-group-title" style="margin-top:30px;color:var(--muted);">✓ Completed<span class="task-group-count">' + groups.done.length + '</span></div>' + seeAllWrap(groups.done.map(tr), 5, 'tg-done', 'completed tasks') : "");
 
   main.querySelectorAll(".task-row").forEach(function(el){
     el.addEventListener("click", function(){ openLead(el.dataset.taskLead); });
@@ -6775,7 +6807,7 @@ async function renderBucketsTab() {
         '<button class="btn btn-ghost" data-bk-del="' + escapeAttr(b.id) + '" data-bk-name="' + escapeAttr(b.name) + '" style="margin-left:auto;padding:5px 12px;font-size:12px">Delete</button>' +
       '</div>';
     var inner = matched.length
-      ? '<div class="lead-grid">' + matched.map(leadCard).join("") + '</div>'
+      ? '<div class="lead-grid">' + seeAllWrap(matched.map(leadCard), 12, 'bk-' + b.id, 'leads') + '</div>'
       : '<div style="padding:16px;color:var(--text-muted);font-size:13px;border:1px dashed var(--border);border-radius:10px">No leads yet — submissions to this form’s link will appear here.</div>';
     return '<div class="lead-sec collapsed" data-bucket="' + escapeAttr(b.name) + '">' + head + '<div class="lead-sec-body">' + inner + '</div></div>';
   }).join("");
@@ -7308,7 +7340,7 @@ function renderTasksForLead(L) {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
     return (a.dueDate||"") < (b.dueDate||"") ? -1 : 1;
   });
-  return sorted.map(function(t){
+  function row(t){
     var bb = dueBucket(t.dueDate);
     var cls = t.completed ? "done" : bb;
     return '<div class="task-row ' + cls + '">' +
@@ -7317,7 +7349,11 @@ function renderTasksForLead(L) {
       '<div class="task-meta"><span class="task-due ' + bb + '">' + (t.dueDate?formatTaskDate(t.dueDate):"No date") + '</span></div></div>' +
       '<button data-md="' + t.id + '" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;">✕</button>' +
     '</div>';
-  }).join("");
+  }
+  var openT = sorted.filter(function(t){ return !t.completed; });
+  var doneT = sorted.filter(function(t){ return t.completed; });
+  return seeAllWrap(openT.map(row), 5, 'lt-open', 'tasks') +
+    (doneT.length ? seeAllWrap(doneT.map(row), 0, 'lt-done', 'completed') : '');
 }
 
 // Collapse state for the open-lead profile sections is a GLOBAL display preference
