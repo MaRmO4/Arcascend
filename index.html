@@ -3501,7 +3501,9 @@ function wireSchedule(rowH) {
   // or the browser cancels the drop.
   if (body) {
     body.addEventListener('dragenter', function(e){ e.preventDefault(); });
-    body.addEventListener('dragover', function(e){ e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
+    // dropEffect MUST match the source's effectAllowed ('move' for existing blocks,
+    // 'copy' for chips) or the browser cancels the drop with a 🚫 cursor.
+    body.addEventListener('dragover', function(e){ e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = (e.dataTransfer.effectAllowed === 'move') ? 'move' : 'copy'; });
     body.addEventListener('drop', function(e){
       e.preventDefault();
       var p; try { p = JSON.parse(e.dataTransfer.getData('text/plain')); } catch(_) { return; }
