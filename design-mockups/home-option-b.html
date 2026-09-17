@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArcAscend — Home redesign · Option B (Today first)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#0f1419; --panel:#1a2129; --panel-2:#232c36; --border:#2d3742;
+  --text:#e6e9ed; --muted:#8b95a1; --accent:#4f9eff; --won:#22c55e;
+  --lost:#ef4444; --open:#f59e0b; --purple:#a78bfa;
+}
+*{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);margin:0;padding:24px;}
+.wrap{max-width:1060px;margin:0 auto;}
+h1{font-size:20px;font-weight:700;margin:0 0 2px;}
+.sub{font-size:13px;color:var(--muted);margin-bottom:18px;}
+.proto{font-size:11px;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px 10px;display:inline-block;margin-bottom:18px;}
+.pnl{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.hdr{font-size:12px;font-weight:600;color:var(--muted);padding:10px 12px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);}
+.row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);transition:opacity .35s,transform .35s;}
+.row:last-child{border-bottom:none;}
+.row.gone{opacity:0;transform:translateX(14px);}
+.nm{font-size:13px;font-weight:600;}
+.mut{font-size:11.5px;color:var(--muted);}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 9px;border-radius:999px;line-height:1.7;white-space:nowrap;}
+.p-red{background:rgba(239,68,68,.15);color:var(--lost);}
+.p-amb{background:rgba(245,158,11,.15);color:var(--open);}
+.p-pur{background:rgba(167,139,250,.15);color:var(--purple);}
+.p-grn{background:rgba(34,197,94,.15);color:var(--won);}
+.btn{font-size:11.5px;font-weight:600;color:var(--accent);border:1px solid var(--border);border-radius:7px;padding:4px 10px;background:var(--panel-2);margin-left:auto;cursor:pointer;white-space:nowrap;font-family:inherit;}
+.btn:hover{border-color:var(--accent);}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:999px;margin:0 6px 6px 0;cursor:pointer;border:1px solid transparent;}
+.chip:hover{border-color:var(--accent);}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--panel-2);border:1px solid var(--border);color:var(--text);font-size:12.5px;padding:9px 16px;border-radius:9px;transition:transform .3s;z-index:50;}
+#toast.show{transform:translateX(-50%) translateY(0);}
+.bar{height:7px;background:var(--panel-2);border-radius:999px;overflow:hidden;margin-top:7px;}
+.bar>div{height:7px;background:var(--won);border-radius:999px;transition:width .5s;}
+.tstrip{display:flex;align-items:center;gap:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.45);border-radius:10px;padding:9px 12px;margin-bottom:14px;transition:opacity .35s;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Home</h1>
+  <div class="sub">Wednesday, September 16 · Welcome back, Mario</div>
+  <div class="proto"><i class="ti ti-flask"></i> Prototype · Option B "Today first" · sample data — buttons simulate the real actions</div>
+
+  <!-- INTAKE STRIP -->
+  <div id="intake-wrap"></div>
+
+  <!-- HERO: TODAY + RIGHT RAIL -->
+  <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px;">
+    <div class="pnl">
+      <div class="hdr"><i class="ti ti-calendar-time"></i> Today · Wednesday, Sep 16 <span class="mut" style="margin-left:auto;font-weight:400;" id="today-count"></span></div>
+      <div id="today"></div>
+      <div class="row" style="background:var(--panel-2);border-top:1px solid var(--border);border-bottom:none;">
+        <span class="mut">Tomorrow: 8:00a Munib Abid · 6:00p Brittany Wheeler</span>
+        <button class="btn" onclick="toast('Real build: jumps to the Schedule tab')">Full schedule →</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="pnl" style="padding:12px;">
+        <div class="mut" style="margin-bottom:4px;">September</div>
+        <div style="font-size:17px;font-weight:700;"><span id="paid-amt" style="color:var(--won);"></span> <span class="mut" style="font-weight:400;">paid</span>
+          · <span id="out-amt" style="color:var(--open);"></span> <span class="mut" style="font-weight:400;">to collect</span></div>
+        <div class="bar"><div id="paid-bar" style="width:0%;"></div></div>
+        <div class="mut" style="margin-top:7px;" id="pulse-line"></div>
+      </div>
+      <div class="pnl" style="padding:12px;">
+        <div class="mut" style="margin-bottom:8px;"><i class="ti ti-battery-2"></i> Low on sessions <span style="font-weight:400;">· tap to renew</span></div>
+        <div id="low-chips"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM ROW -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px;">
+    <div class="pnl">
+      <div class="hdr"><i class="ti ti-refresh"></i> Renewals</div>
+      <div id="renewals"></div>
+    </div>
+    <div class="pnl">
+      <div class="hdr"><i class="ti ti-cash"></i> To collect</div>
+      <div id="collect"></div>
+    </div>
+    <div class="pnl">
+      <div class="hdr"><i class="ti ti-checkbox"></i> Tasks</div>
+      <div id="tasks"></div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+// ---- Sample data (mirrors real app shapes) ----
+var intakes = [
+  { id:'i1', name:'Jordan Reyes',  when:'2h ago' },
+  { id:'i2', name:'Sam Whitfield', when:'yesterday' }
+];
+var today = [
+  { t:'7:00a', name:'Alex Ilerandi', left:7, done:true  },
+  { t:'9:30a', name:'Dave Catton',   left:3, done:false },
+  { t:'5:00p', name:'Jordan Reyes',  consult:true, done:false }
+];
+var low = [
+  { id:'l1', name:'Kirk Taylor',     left:0, amount:420 },
+  { id:'l2', name:'Jasmine LeFlore', left:1, amount:960 },
+  { id:'l3', name:'Dave Catton',     left:2, amount:520 }
+];
+var collect = [
+  { id:'c1', name:'Ben Crowder', proj:1440, paid:0 }
+];
+var tasks = [
+  { id:'t1', name:'Check in — Paige',        meta:'overdue 2d', late:true },
+  { id:'t2', name:'Send program — Sam W.',   meta:'due Fri',    late:false }
+];
+var PAID = 11570, PROJ = 12450;
+
+function fmt(n){ return '$' + n.toLocaleString(); }
+function toast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+
+// ---- Intake strip ----
+function renderIntakes(){
+  var w = document.getElementById('intake-wrap');
+  if (!intakes.length) {
+    w.innerHTML = '<div class="tstrip" style="background:rgba(34,197,94,.07);border-color:rgba(34,197,94,.4);">' +
+      '<i class="ti ti-circle-check" style="color:var(--won);font-size:16px;"></i>' +
+      '<span class="nm" style="color:var(--won);">All intake forms handled</span>' +
+      '<span class="mut">new submissions appear here instantly</span></div>';
+    return;
+  }
+  w.innerHTML = '<div class="tstrip"><i class="ti ti-forms" style="color:var(--open);font-size:16px;"></i>' +
+    '<span class="nm">' + intakes.length + ' intake form' + (intakes.length>1?'s':'') + ' awaiting action</span>' +
+    intakes.map(function(it){
+      return '<span class="chip" style="background:var(--panel-2);color:var(--text);margin:0;" onclick="reviewIntake(\''+it.id+'\')">' +
+        it.name + ' <span class="mut">' + it.when + '</span> <i class="ti ti-arrow-right" style="color:var(--accent);"></i></span>';
+    }).join('') + '</div>';
+}
+function reviewIntake(id){
+  intakes = intakes.filter(function(x){ return x.id !== id; });
+  renderIntakes();
+  toast('Real build: opens the lead profile — setting consult/status clears it from this strip');
+}
+
+// ---- Today hero ----
+function renderToday(){
+  var open = today.filter(function(s){ return !s.done; }).length;
+  document.getElementById('today-count').textContent = open ? open + ' remaining' : 'day complete';
+  document.getElementById('today').innerHTML = today.map(function(s,i){
+    var meta = s.consult ? '' : '<span class="mut">In-person · ' + (s.done ? s.left : s.left) + ' left after today</span>';
+    return '<div class="row"><span class="mut" style="width:46px;">'+s.t+'</span>' +
+      '<span class="nm">'+s.name+'</span>' +
+      (s.consult ? '<span class="pill p-pur">consult</span>' : meta) +
+      (s.done
+        ? '<span class="pill p-grn" style="margin-left:auto;">✓ ' + (s.consult ? 'won' : 'done') + '</span>'
+        : '<button class="btn" onclick="completeToday('+i+')">'+(s.consult?'Outcome':'Complete')+'</button>') +
+      '</div>';
+  }).join('');
+}
+function completeToday(i){
+  var s = today[i];
+  s.done = true;
+  if (!s.consult) {
+    s.left = Math.max(0, s.left - 1);
+    toast('Session completed — charges the package, updates sessions left everywhere');
+  } else {
+    toast('Consult marked won — real build asks won / lost / follow-up and updates the lead');
+  }
+  renderToday();
+}
+
+// ---- Low sessions chips ----
+function renderLow(){
+  var el = document.getElementById('low-chips');
+  el.innerHTML = low.length ? low.map(function(c){
+    var cls = c.left <= 0 ? 'p-red' : 'p-amb';
+    return '<span class="chip '+cls+'" onclick="renewLow(\''+c.id+'\')">'+c.name+' · '+c.left+' left</span>';
+  }).join('') : '<span class="mut">Everyone has 4+ sessions banked</span>';
+}
+function renewLow(id){
+  var c = low.filter(function(x){ return x.id === id; })[0];
+  low = low.filter(function(x){ return x.id !== id; });
+  PAID += c.amount;
+  renderLow(); renderRenewals(); renderPulse();
+  toast(fmt(c.amount) + ' renewal logged for ' + c.name + ' — ledger + month bar updated');
+}
+
+// ---- Renewals card (same records as chips) ----
+function renderRenewals(){
+  var el = document.getElementById('renewals');
+  el.innerHTML = low.length ? low.map(function(c){
+    var cls = c.left <= 0 ? 'p-red' : 'p-amb';
+    return '<div class="row"><span class="nm">'+c.name+'</span>' +
+      '<span class="pill '+cls+'" style="margin-left:auto;">'+c.left+' left</span>' +
+      '<button class="btn" onclick="renewLow(\''+c.id+'\')">Log</button></div>';
+  }).join('') : '<div class="row" style="border:none;"><span class="mut">No renewals due</span></div>';
+}
+
+// ---- To collect ----
+function renderCollect(){
+  var el = document.getElementById('collect');
+  el.innerHTML = collect.length ? collect.map(function(c){
+    return '<div class="row" id="row-'+c.id+'"><span class="nm">'+c.name+'</span>' +
+      '<span class="mut">'+fmt(c.paid)+' of '+fmt(c.proj)+'</span>' +
+      '<button class="btn" onclick="collectPay(\''+c.id+'\')">Collect</button></div>';
+  }).join('') : '<div class="row" style="border:none;"><span class="mut" style="color:var(--won);">Everyone is paid up</span></div>';
+}
+function collectPay(id){
+  var c = collect.filter(function(x){ return x.id === id; })[0];
+  collect = collect.filter(function(x){ return x.id !== id; });
+  PAID += c.proj;
+  renderCollect(); renderPulse();
+  toast(fmt(c.proj) + ' collected from ' + c.name + ' — month bar updated');
+}
+
+// ---- Tasks ----
+function renderTasks(){
+  var el = document.getElementById('tasks');
+  el.innerHTML = tasks.length ? tasks.map(function(t){
+    return '<div class="row" id="row-'+t.id+'">' +
+      '<i class="ti ti-square" style="color:var(--muted);cursor:pointer;font-size:15px;" onclick="doneTask(\''+t.id+'\')"></i>' +
+      '<span class="nm" style="font-size:12.5px;">'+t.name+'</span>' +
+      '<span class="pill '+(t.late?'p-red':'p-pur')+'" style="margin-left:auto;">'+t.meta+'</span></div>';
+  }).join('') : '<div class="row" style="border:none;"><span class="mut" style="color:var(--won);">No open tasks</span></div>';
+}
+function doneTask(id){
+  var el = document.getElementById('row-'+id); el.classList.add('gone');
+  setTimeout(function(){
+    tasks = tasks.filter(function(t){ return t.id !== id; });
+    renderTasks();
+  }, 350);
+  toast('Task completed');
+}
+
+// ---- Month pulse ----
+function renderPulse(){
+  var out = Math.max(0, PROJ - PAID);
+  document.getElementById('paid-amt').textContent = fmt(PAID);
+  document.getElementById('out-amt').textContent = fmt(out);
+  var pct = Math.min(100, Math.round(PAID / PROJ * 100));
+  document.getElementById('paid-bar').style.width = pct + '%';
+  document.getElementById('pulse-line').innerHTML = out > 0
+    ? pct + '% of ' + fmt(PROJ) + ' projection'
+    : '<span style="color:var(--won);font-weight:600;">Projection hit — ' + pct + '%</span>';
+}
+
+renderIntakes(); renderToday(); renderLow(); renderRenewals(); renderCollect(); renderTasks(); renderPulse();
+</script>
+</body>
+</html>

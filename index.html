@@ -891,6 +891,23 @@ main { flex: 1; padding: 20px 24px; }
   text-align: center;
   padding: 20px 0;
 }
+/* HOME v2 — Option A action stack */
+.hm-panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.hm-hdr{font-size:12px;font-weight:700;color:var(--muted);padding:10px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);letter-spacing:0.4px;text-transform:uppercase;}
+.hm-row{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);}
+.hm-row:last-child{border-bottom:none;}
+.hm-nm{font-size:13px;font-weight:600;color:var(--text);}
+.hm-mut{font-size:11.5px;color:var(--muted);}
+.hm-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 9px;border-radius:999px;line-height:1.7;white-space:nowrap;}
+.hm-red{background:rgba(239,68,68,.15);color:var(--lost);}
+.hm-amb{background:rgba(245,158,11,.15);color:var(--open);}
+.hm-pur{background:rgba(167,139,250,.15);color:var(--purple);}
+.hm-grn{background:rgba(34,197,94,.15);color:var(--won);}
+.hm-btn{font-size:11.5px;font-weight:600;color:var(--accent);border:1px solid var(--border);border-radius:7px;padding:4px 10px;background:var(--panel-2);margin-left:auto;cursor:pointer;white-space:nowrap;font-family:inherit;}
+.hm-btn:hover{border-color:var(--accent);}
+.hm-btn:disabled{opacity:.5;cursor:default;}
+.hm-bar{height:7px;background:var(--panel-2);border-radius:999px;overflow:hidden;margin-top:7px;}
+.hm-bar>div{height:7px;background:var(--won);border-radius:999px;transition:width .5s;}
 /* QUICK ACTION BAR */
 .quick-actions {
   display: flex;
@@ -8217,182 +8234,217 @@ function refreshReminders() {
 function renderHomeTab() {
   var panel = document.getElementById('home-panel');
   if (!panel) return;
-
-  // Show/hide panel
   var isHome = (typeof currentTab !== 'undefined') && currentTab === 'home';
   panel.style.display = isHome ? 'block' : 'none';
   if (!isHome) return;
-document.getElementById('main').style.display = 'none';
-  document.getElementById('home-panel').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+  if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
+  if (typeof renderTabCounts === 'function') renderTabCounts();
 
-  // STAT CARDS
- var activeClients = LEADS.filter(function(l) {
-  var b = l.billing || {};
-  return b.active === true;
-});
-  var totalProjection = LEADS.reduce(function(sum, l) {
-  return sum + (l.billing && l.billing.active ? leadTotal(l) : 0);
-}, 0);
-var totalPaid = LEADS.reduce(function(sum, l) {
-  return sum + confirmedAmount(l, currentMonthKey());
-}, 0);
-  var outstanding = Math.max(0, totalProjection - totalPaid);
+  var curMk = currentMonthKey();
+  var tStr = todayStr();
+
+  // ---------- 1. INTAKE QUEUE (always first) ----------
+  // "Awaiting action" = status still New AND no consult status set — i.e. the intake
+  // form came in and nobody has touched the lead yet. Setting either clears it.
+  var intakes = LEADS.filter(function(L){
+    return (L.status || 'New') === 'New' && !L.consultStatus;
+  }).sort(function(a, b){ return new Date(b.date || 0) - new Date(a.date || 0); });
+
+  // ---------- 2. NEEDS-ATTENTION FEED (ranked by severity) ----------
+  var feed = [];
+  activeClients().forEach(function(L){
+    var nm = L.name || '(no name)';
+    // Only flag low sessions for clients actually using session tracking —
+    // i.e. they've bought at least one session-counted package. Clients whose
+    // ledger only holds restored revenue (sessions:0) are skipped even if
+    // they log completed sessions.
+    var pkgLines = activeLines(L).filter(billingIsPkg);
+    var totalPurch = pkgLines.reduce(function(s, ln){ return s + sessionsPurchasedTotal(ln); }, 0);
+    var doneCt = pkgLines.reduce(function(s, ln){ return s + countCompletedForLine(ln.id); }, 0);
+    if (pkgLines.length && totalPurch > 0) {
+      var rem = totalPurch - doneCt;
+      if (rem <= 3) {
+        feed.push({
+          sev: rem <= 0 ? 0 : 1,
+          pill: rem < 0 ? 'owes ' + (-rem) : rem + ' left',
+          cls: rem <= 0 ? 'hm-red' : 'hm-amb',
+          name: nm, lead: nm,
+          meta: rem <= 0 ? 'package used up — log a renewal' : 'renewal coming up',
+          act: rem <= 0 ? 'Log purchase' : 'Renew'
+        });
+      }
+    }
+    var projAmt = isProjectedActive(L, curMk) ? projectedForClientMonth(L, curMk) : 0;
+    if (projAmt > 0 && clientPaidForMonth(L, curMk) <= 0) {
+      feed.push({
+        sev: 2, pill: 'unpaid', cls: 'hm-amb', name: nm, lead: nm,
+        meta: '$' + projAmt.toLocaleString() + ' projected · $0 paid this month',
+        act: 'Collect'
+      });
+    }
+  });
+  var soonCut = addDays(null, 3);
+  LEADS.forEach(function(L){
+    leadTasks(L).forEach(function(t){
+      if (t.completed || !t.dueDate || t.dueDate > soonCut) return;
+      var overdue = t.dueDate < tStr;
+      feed.push({
+        sev: 3, pill: 'task', cls: overdue ? 'hm-red' : 'hm-pur',
+        name: t.note || t.text || t.title || 'Task', lead: L.name,
+        meta: (L.name || '') + ' · ' + (overdue ? 'overdue — was due ' + formatTaskDate(t.dueDate) : 'due ' + formatTaskDate(t.dueDate)),
+        act: 'Open'
+      });
+    });
+  });
+  (window.SESSIONS || []).forEach(function(s){
+    if (!s || s.pay_source !== 'consult' || !s.when_at) return;
+    if (s.status === 'completed' || s.status === 'voided' || String(s.status || '').indexOf('cancelled') === 0) return;
+    if (localDateStr(new Date(s.when_at)) !== tStr) return;
+    feed.push({
+      sev: 4, pill: 'consult', cls: 'hm-pur',
+      name: s.client_name || '(lead)', lead: s.client_name || '',
+      meta: 'consult today at ' + schedTimeLabel(new Date(s.when_at)) + ' — prep notes',
+      act: 'Open'
+    });
+  });
+  feed.sort(function(a, b){ return a.sev - b.sev; });
+
+  // ---------- 3. TODAY (live schedule) ----------
+  var todaySessions = (window.SESSIONS || []).filter(function(s){
+    if (!s || !s.when_at || s.status === 'voided') return false;
+    if (String(s.status || '').indexOf('cancelled') === 0) return false;
+    return localDateStr(new Date(s.when_at)) === tStr;
+  }).sort(function(a, b){ return new Date(a.when_at) - new Date(b.when_at); });
+
+  // ---------- 4. MONTH PULSE (ledger + projections, same math as the dashboards) ----------
+  var paid = paidRevenueForMonth(curMk);
+  var projTotal = activeClients().reduce(function(sum, L){
+    return sum + (isProjectedActive(L, curMk) ? projectedForClientMonth(L, curMk) : 0);
+  }, 0);
+  var pct = projTotal > 0 ? Math.min(100, Math.round(paid / projTotal * 100)) : 0;
+  var outstanding = Math.max(0, projTotal - paid);
+
+  // ---------- RENDER ----------
+  var dateLine = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  var intakeHtml;
+  if (!intakes.length) {
+    intakeHtml = '<div class="hm-panel" style="border-color:rgba(34,197,94,.4);margin-bottom:14px;">' +
+      '<div class="hm-row"><span style="color:var(--won);font-size:16px;">✓</span>' +
+      '<span class="hm-nm" style="color:var(--won);">All intake forms handled</span>' +
+      '<span class="hm-mut">new submissions appear here the moment they arrive</span></div></div>';
+  } else {
+    intakeHtml = '<div class="hm-panel" style="border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.05);margin-bottom:14px;">' +
+      '<div class="hm-hdr" style="color:var(--open);border-color:rgba(245,158,11,.25);">📝 ' + intakes.length +
+      ' new intake form' + (intakes.length > 1 ? 's' : '') + ' — no consult or status set yet</div>' +
+      intakes.slice(0, 6).map(function(L){
+        var ago = L.date ? timeAgo(L.date) : '';
+        return '<div class="hm-row" style="border-color:rgba(245,158,11,.15);">' +
+          '<span class="hm-nm">' + escapeHtml(L.name || '(no name)') + '</span>' +
+          '<span class="hm-mut">' + escapeHtml([ago, L.goal || 'no goal listed'].filter(Boolean).join(' · ')) + '</span>' +
+          '<button class="hm-btn" data-hm="open" data-name="' + escapeAttr(L.name || '') + '">Review →</button></div>';
+      }).join('') +
+      (intakes.length > 6 ? '<div class="hm-row"><span class="hm-mut">+ ' + (intakes.length - 6) + ' more in the Leads tab</span></div>' : '') +
+      '</div>';
+  }
+
+  var feedHtml = feed.length
+    ? feed.slice(0, 14).map(function(x){
+        return '<div class="hm-row">' +
+          '<span class="hm-pill ' + x.cls + '">' + escapeHtml(x.pill) + '</span>' +
+          '<span class="hm-nm">' + escapeHtml(x.name) + '</span>' +
+          '<span class="hm-mut">' + escapeHtml(x.meta) + '</span>' +
+          '<button class="hm-btn" data-hm="open" data-name="' + escapeAttr(x.lead || x.name) + '">' + x.act + '</button></div>';
+      }).join('') + (feed.length > 14 ? '<div class="hm-row"><span class="hm-mut">+ ' + (feed.length - 14) + ' more</span></div>' : '')
+    : '<div class="hm-row" style="justify-content:center;"><span class="hm-mut" style="color:var(--won);font-weight:600;">You’re all caught up 🎉</span></div>';
+
+  var todayHtml;
+  if (todaySessions.length) {
+    todayHtml = todaySessions.map(function(s){
+      var isConsult = s.pay_source === 'consult' || s.service_type === 'Consultation';
+      var done = s.status === 'completed';
+      var nm = s.client_name || '(client)';
+      var meta = '';
+      if (!isConsult) {
+        var L = LEADS.filter(function(x){ return (x.name || '') === nm; })[0];
+        var tracked = false, rem = null;
+        if (L) {
+          var pl = activeLines(L).filter(billingIsPkg);
+          var tp = pl.reduce(function(s2, ln){ return s2 + sessionsPurchasedTotal(ln); }, 0);
+          var dc = pl.reduce(function(s2, ln){ return s2 + countCompletedForLine(ln.id); }, 0);
+          if (pl.length && tp > 0) { tracked = true; rem = tp - dc; }
+        }
+        meta = tracked ? (rem + ' left' + (rem <= 1 ? ' — renew soon' : '')) : (s.service_type || '');
+      }
+      return '<div class="hm-row">' +
+        '<span class="hm-mut" style="width:56px;flex-shrink:0;">' + schedTimeLabel(new Date(s.when_at)) + '</span>' +
+        '<span class="hm-nm">' + escapeHtml(nm) + '</span>' +
+        (isConsult ? '<span class="hm-pill hm-pur">consult</span>' : (meta ? '<span class="hm-mut">' + escapeHtml(meta) + '</span>' : '')) +
+        (done
+          ? '<span class="hm-pill hm-grn" style="margin-left:auto;">✓ done</span>'
+          : '<button class="hm-btn" data-hm="complete" data-sid="' + escapeAttr(String(s.id)) + '">' + (isConsult ? 'Done' : 'Complete') + '</button>') +
+        '</div>';
+    }).join('');
+  } else {
+    todayHtml = '<div class="hm-row" style="justify-content:center;"><span class="hm-mut">No sessions booked today</span></div>';
+  }
 
   panel.innerHTML =
-    '<div style="margin-bottom:8px;">' +
-      '<h2 style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px;">🏠 Home</h2>' +
-      '<div style="font-size:13px;color:var(--muted);">Welcome back! Here\'s your overview.</div>' +
+    '<div style="margin-bottom:14px;">' +
+      '<h2 style="font-size:20px;font-weight:700;color:var(--text);margin:0 0 2px;">Home</h2>' +
+      '<div style="font-size:13px;color:var(--muted);">' + dateLine + ' · Welcome back</div>' +
     '</div>' +
-
-    // STAT CARDS ROW
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;margin-top:20px;">' +
-      '<div class="home-stat-card">' +
-        '<div class="home-stat-label">' + currentMonthLabel() + ' Projection</div>' +
-        '<div class="home-stat-value">$' + totalProjection.toLocaleString() + '</div>' +
+    intakeHtml +
+    '<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:14px;align-items:start;">' +
+      '<div class="hm-panel">' +
+        '<div class="hm-hdr">⚡ Needs attention <span class="hm-mut" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;">ranked by urgency</span></div>' +
+        feedHtml +
       '</div>' +
-      '<div class="home-stat-card" style="border-color:#22c55e;">' +
-        '<div class="home-stat-label">' + currentMonthLabel() + ' Paid</div>' +
-        '<div class="home-stat-value" style="color:#22c55e;">$' + totalPaid.toLocaleString() + '</div>' +
-      '</div>' +
-      '<div class="home-stat-card" style="border-color:#f59e0b;">' +
-        '<div class="home-stat-label">Outstanding</div>' +
-        '<div class="home-stat-value" style="color:#f59e0b;">$' + outstanding.toLocaleString() + '</div>' +
-      '</div>' +
-      '<div class="home-stat-card">' +
-        '<div class="home-stat-label">Active Clients</div>' +
-        '<div class="home-stat-value">' + activeClients.length + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:14px;">' +
+        '<div class="hm-panel">' +
+          '<div class="hm-hdr">📅 Today <span class="hm-mut" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;">' +
+            (todaySessions.length ? (todaySessions.filter(function(s){ return s.status !== 'completed'; }).length || 'all') + (todaySessions.some(function(s){ return s.status !== 'completed'; }) ? ' remaining' : ' done') : '') + '</span></div>' +
+          todayHtml +
+          '<div class="hm-row" style="background:var(--panel-2);">' +
+            '<span class="hm-mut">Plan the week ahead</span>' +
+            '<button class="hm-btn" data-hm="sched">Full schedule →</button></div>' +
+        '</div>' +
+        '<div class="hm-panel" style="padding:14px;">' +
+          '<div class="hm-mut" style="margin-bottom:4px;">' + currentMonthLabel() + ' collected</div>' +
+          '<div style="font-size:20px;font-weight:700;color:var(--won);">$' + paid.toLocaleString() +
+            ' <span class="hm-mut" style="font-weight:400;">of $' + projTotal.toLocaleString() + ' projected</span></div>' +
+          '<div class="hm-bar"><div style="width:' + pct + '%;"></div></div>' +
+          '<div class="hm-mut" style="margin-top:7px;">' +
+            (outstanding > 0
+              ? '$' + outstanding.toLocaleString() + ' still to collect · ' + pct + '% of projection'
+              : '<span style="color:var(--won);font-weight:600;">Projection hit — ' + pct + '%</span>') +
+          '</div>' +
+        '</div>' +
       '</div>' +
     '</div>' +
+    '<div id="reminders-container" style="margin-top:14px;"></div>';
 
-    // 3 COLUMN GRID
-    '<div id="reminders-container"></div>' +
-'<div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:16px;">' +
-
-      // LEFT COL: Tasks + Calendar
-      '<div style="display:flex;flex-direction:column;gap:16px;">' +
-        '<div class="home-card">' +
-          '<div class="home-card-title">📋 Tasks Due Soon</div>' +
-          '<div class="home-card-body" id="home-tasks-list"></div>' +
-        '</div>' +
-        '<div class="home-card">' +
-          '<div class="home-card-title">📅 Upcoming Appointments</div>' +
-          '<div class="home-card-body" id="home-calendar-list"></div>' +
-        '</div>' +
-      '</div>' +
-
-      // MIDDLE COL: Recent Leads
-      '<div class="home-card">' +
-        '<div class="home-card-title">🔥 New & Recent Leads</div>' +
-        '<div class="home-card-body" id="home-recent-leads"></div>' +
-      '</div>' +
-
-      // RIGHT COL: Favorites + Revenue
-      '<div style="display:flex;flex-direction:column;gap:16px;">' +
-        '<div class="home-card">' +
-          '<div class="home-card-title">⭐ Favorites</div>' +
-          '<div class="home-card-body" id="home-favorites-list"></div>' +
-        '</div>' +
-        '<div class="home-card">' +
-          '<div class="home-card-title">💰 Revenue Breakdown</div>' +
-          '<div class="home-card-body" id="home-revenue-breakdown"></div>' +
-        '</div>' +
-      '</div>' +
-
-    '</div>';
-
-  // RECENT LEADS
-  var recentEl = document.getElementById('home-recent-leads');
-  if (recentEl) {
-    var sorted = LEADS.slice().sort(function(a, b) {
-      return new Date(b.date || 0) - new Date(a.date || 0);
-    }).slice(0, 12);
-    recentEl.innerHTML = sorted.length === 0 ? '<div class="home-empty">No leads yet</div>' :
-      sorted.map(function(l) {
-        var s = (l.status || 'New');
-        var sc = s.toLowerCase().includes('active') ? '#22c55e' : s.toLowerCase().includes('won') ? '#a78bfa' : '#60a5fa';
-        return '<div class="home-lead-row" onclick="openLead(\'' + (l.name||'').replace(/'/g,"\\'") + '\')">' +
-          '<div><div class="home-lead-name">' + (l.name || 'Unnamed') + '</div>' +
-          '<div class="home-lead-meta">' + (l.goal || 'No goal listed') + '</div></div>' +
-          '<span style="font-size:11px;color:' + sc + ';font-weight:600;">' + s + '</span>' +
-        '</div>';
-      }).join('');
-  }
-
-  // FAVORITES
-  var favEl = document.getElementById('home-favorites-list');
-  if (favEl) {
-    var favs = LEADS.filter(function(l) { return l.priority; }).slice(0, 8);
-    favEl.innerHTML = favs.length === 0 ? '<div class="home-empty">Star a lead to see them here</div>' :
-      favs.map(function(l) {
-        return '<div class="home-lead-row" onclick="openLead(\'' + (l.name||'').replace(/'/g,"\\'") + '\')">' +
-          '<div><div class="home-lead-name">⭐ ' + (l.name || 'Unnamed') + '</div>' +
-          '<div class="home-lead-meta">' + (l.status || 'New') + '</div></div>' +
-        '</div>';
-      }).join('');
-  }
-
-  // TASKS DUE SOON
-  var tasksEl = document.getElementById('home-tasks-list');
-  if (tasksEl) {
-    var today = new Date(); today.setHours(0,0,0,0);
-    var dueTasks = [];
-    LEADS.forEach(function(l) {
-      if (l.tasks && l.tasks.length) {
-        l.tasks.forEach(function(t) {
-    if (!t.completed && t.dueDate) dueTasks.push({ lead: l.name, task: t.note || t.text || t.title || 'Task', due: t.dueDate });    });
-      }
-    });
-    dueTasks.sort(function(a, b) { return new Date(a.due) - new Date(b.due); });
-    tasksEl.innerHTML = dueTasks.length === 0 ? '<div class="home-empty">No tasks due soon</div>' :
-      dueTasks.slice(0, 8).map(function(t) {
-        var d = new Date(t.due + 'T00:00:00');
-        var isOverdue = d < today;
-        var isToday = d.getTime() === today.getTime();
-        var cls = isOverdue ? 'overdue' : isToday ? 'today' : '';
-        var ds = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        return '<div class="home-task-row" onclick="openLead(\'' + t.lead.replace(/'/g, "\\'") + '\')" style="cursor:pointer;"><div class="home-task-dot ' + cls + '"></div>' +
-          '<div><div class="home-lead-name" style="font-size:12px;">' + t.task + '</div>' +
-          '<div class="home-lead-meta">' + t.lead + ' · ' + ds + '</div></div></div>';
-      }).join('');
-  }
-
-  // UPCOMING APPOINTMENTS
-  var calEl = document.getElementById('home-calendar-list');
-  if (calEl) {
-    var upcoming = LEADS.filter(function(l) { return l.appointmentDate || l.appointment; })
-      .sort(function(a,b) { return new Date(a.appointmentDate||a.appointment) - new Date(b.appointmentDate||b.appointment); })
-      .slice(0, 6);
-    calEl.innerHTML = upcoming.length === 0 ? '<div class="home-empty">No upcoming appointments</div>' :
-      upcoming.map(function(l) {
-        var d = new Date((l.appointmentDate||l.appointment) + 'T00:00:00');
-        var ds = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        return '<div class="home-lead-row"><div>' +
-          '<div class="home-lead-name">' + (l.name||'Unnamed') + '</div>' +
-          '<div class="home-lead-meta">' + ds + '</div></div></div>';
-      }).join('');
-  }
-
-  // REVENUE BREAKDOWN
-  var revEl = document.getElementById('home-revenue-breakdown');
-  if (revEl) {
-    var won = LEADS.filter(function(l) { return (l.status||'').toLowerCase().includes('won'); });
-    var pipeline = LEADS.filter(function(l) {
-      var s = (l.status||'').toLowerCase();
-      return !s.includes('won') && !s.includes('lost');
-    });
-    var wonVal = won.reduce(function(s,l){ return s + leadTotal(l); }, 0);
-    var pipeVal = pipeline.reduce(function(s,l){ return s + leadTotal(l); }, 0);
-    revEl.innerHTML =
-      '<div class="home-task-row"><div class="home-task-dot" style="background:#22c55e;"></div>' +
-        '<div><div class="home-lead-name" style="font-size:12px;">Closed Won</div>' +
-        '<div class="home-lead-meta">$' + wonVal.toLocaleString() + ' · ' + won.length + ' clients</div></div></div>' +
-      '<div class="home-task-row"><div class="home-task-dot" style="background:#60a5fa;"></div>' +
-        '<div><div class="home-lead-name" style="font-size:12px;">In Pipeline</div>' +
-        '<div class="home-lead-meta">$' + pipeVal.toLocaleString() + ' · ' + pipeline.length + ' leads</div></div></div>' +
-      '<div class="home-task-row"><div class="home-task-dot" style="background:#22c55e;"></div>' +
-        '<div><div class="home-lead-name" style="font-size:12px;">Active Clients</div>' +
-        '<div class="home-lead-meta">' + activeClients.length + ' training now</div></div></div>';
-  }
+  // ---------- WIRE (one delegated listener; innerHTML wipes make this idempotent) ----------
+  panel.onclick = function(e){
+    var el = e.target && e.target.closest ? e.target.closest('[data-hm]') : null;
+    if (!el) return;
+    var kind = el.getAttribute('data-hm');
+    if (kind === 'open') {
+      var nm = el.getAttribute('data-name');
+      if (nm && typeof openLead === 'function') openLead(nm);
+    } else if (kind === 'sched') {
+      if (typeof goToTab === 'function') goToTab('schedule');
+    } else if (kind === 'complete') {
+      var sid = el.getAttribute('data-sid');
+      el.disabled = true; el.textContent = '…';
+      patchSession(sid, { status: 'completed', completed_at: new Date().toISOString() }).then(function(){
+        if (typeof renderTabCounts === 'function') renderTabCounts();
+        renderHomeTab();
+        if (typeof refreshReminders === 'function') refreshReminders();
+      });
+    }
+  };
 }
 // ==========================================================
 // RENDER ALL

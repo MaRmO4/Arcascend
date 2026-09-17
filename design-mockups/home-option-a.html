@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArcAscend — Home redesign · Option A (Action stack)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#0f1419; --panel:#1a2129; --panel-2:#232c36; --border:#2d3742;
+  --text:#e6e9ed; --muted:#8b95a1; --accent:#4f9eff; --won:#22c55e;
+  --lost:#ef4444; --open:#f59e0b; --purple:#a78bfa;
+}
+*{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);margin:0;padding:24px;}
+.wrap{max-width:1060px;margin:0 auto;}
+h1{font-size:20px;font-weight:700;margin:0 0 2px;}
+.sub{font-size:13px;color:var(--muted);margin-bottom:18px;}
+.proto{font-size:11px;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px 10px;display:inline-block;margin-bottom:18px;}
+.pnl{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.hdr{font-size:12px;font-weight:600;color:var(--muted);padding:10px 12px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);}
+.row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);transition:opacity .35s,transform .35s;}
+.row:last-child{border-bottom:none;}
+.row.gone{opacity:0;transform:translateX(14px);}
+.nm{font-size:13px;font-weight:600;}
+.mut{font-size:11.5px;color:var(--muted);}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 9px;border-radius:999px;line-height:1.7;white-space:nowrap;}
+.p-red{background:rgba(239,68,68,.15);color:var(--lost);}
+.p-amb{background:rgba(245,158,11,.15);color:var(--open);}
+.p-pur{background:rgba(167,139,250,.15);color:var(--purple);}
+.p-grn{background:rgba(34,197,94,.15);color:var(--won);}
+.btn{font-size:11.5px;font-weight:600;color:var(--accent);border:1px solid var(--border);border-radius:7px;padding:4px 10px;background:var(--panel-2);margin-left:auto;cursor:pointer;white-space:nowrap;font-family:inherit;}
+.btn:hover{border-color:var(--accent);}
+.empty{padding:16px 12px;font-size:12.5px;color:var(--muted);text-align:center;}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--panel-2);border:1px solid var(--border);color:var(--text);font-size:12.5px;padding:9px 16px;border-radius:9px;transition:transform .3s;z-index:50;}
+#toast.show{transform:translateX(-50%) translateY(0);}
+.bar{height:7px;background:var(--panel-2);border-radius:999px;overflow:hidden;margin-top:7px;}
+.bar>div{height:7px;background:var(--won);border-radius:999px;transition:width .5s;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Home</h1>
+  <div class="sub">Wednesday, September 16 · Welcome back, Mario</div>
+  <div class="proto"><i class="ti ti-flask"></i> Prototype · Option A "Action stack" · sample data — buttons simulate the real actions</div>
+
+  <!-- INTAKE QUEUE (always on top) -->
+  <div id="intake-wrap"></div>
+
+  <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:14px;">
+    <!-- NEEDS ATTENTION FEED -->
+    <div class="pnl">
+      <div class="hdr"><i class="ti ti-alert-circle"></i> Needs attention <span class="mut" style="margin-left:auto;font-weight:400;">ranked by urgency</span></div>
+      <div id="feed"></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <!-- TODAY -->
+      <div class="pnl">
+        <div class="hdr"><i class="ti ti-calendar-time"></i> Today · Wed 16 <span class="mut" style="margin-left:auto;font-weight:400;" id="today-count"></span></div>
+        <div id="today"></div>
+      </div>
+      <!-- MONTH PULSE -->
+      <div class="pnl" style="padding:12px;">
+        <div class="mut" style="margin-bottom:4px;">September collected</div>
+        <div style="font-size:19px;font-weight:700;color:var(--won);"><span id="paid-amt"></span> <span class="mut" style="font-weight:400;">of <span id="proj-amt"></span> projected</span></div>
+        <div class="bar"><div id="paid-bar" style="width:0%;"></div></div>
+        <div class="mut" style="margin-top:7px;" id="outstanding-line"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+// ---- Sample data (mirrors real app shapes) ----
+var intakes = [
+  { id:'i1', name:'Jordan Reyes',  when:'2h ago',      goal:'Weight loss · found you on Instagram' },
+  { id:'i2', name:'Sam Whitfield', when:'yesterday',   goal:'Strength · referred by Kirk T.' }
+];
+var feed = [
+  { id:'f1', sev:0, pill:'0 left',  cls:'p-red', name:'Kirk Taylor',      meta:'package used up — renew or he trains unpaid', act:'Log purchase', kind:'renew', amount:420 },
+  { id:'f2', sev:1, pill:'1 left',  cls:'p-amb', name:'Jasmine LeFlore',  meta:'last covered session is Fri',                  act:'Renew',        kind:'renew', amount:960 },
+  { id:'f3', sev:1, pill:'2 left',  cls:'p-amb', name:'Dave Catton',      meta:'renewal likely next week',                     act:'Renew',        kind:'renew', amount:520 },
+  { id:'f4', sev:2, pill:'unpaid',  cls:'p-amb', name:'Ben Crowder',      meta:'$1,440 projected · $0 paid this month',        act:'Collect',      kind:'collect', amount:1440 },
+  { id:'f5', sev:3, pill:'task',    cls:'p-pur', name:'Check in — Paige', meta:'overdue by 2 days',                            act:'Done',         kind:'task' },
+  { id:'f6', sev:4, pill:'consult', cls:'p-pur', name:'Jordan Reyes',     meta:'consult booked today 5:00p — prep notes',      act:'Open',         kind:'task' }
+];
+var today = [
+  { t:'7:00a', name:'Alex Ilerandi', done:true  },
+  { t:'9:30a', name:'Dave Catton',   done:false },
+  { t:'5:00p', name:'Jordan Reyes',  done:false, consult:true }
+];
+var PAID = 11570, PROJ = 12450;
+
+function fmt(n){ return '$' + n.toLocaleString(); }
+function toast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+
+// ---- Intake queue ----
+function renderIntakes(){
+  var w = document.getElementById('intake-wrap');
+  if (!intakes.length) {
+    w.innerHTML = '<div class="pnl" style="border-color:rgba(34,197,94,.4);margin-bottom:14px;">' +
+      '<div class="row" style="border:none;"><i class="ti ti-circle-check" style="color:var(--won);font-size:17px;"></i>' +
+      '<span class="nm" style="color:var(--won);">All intake forms handled</span>' +
+      '<span class="mut">new submissions will appear here the moment they arrive</span></div></div>';
+    return;
+  }
+  w.innerHTML = '<div class="pnl" style="border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.06);margin-bottom:14px;">' +
+    '<div class="hdr" style="color:var(--open);border-color:rgba(245,158,11,.25);"><i class="ti ti-forms"></i> ' +
+    intakes.length + ' new intake form' + (intakes.length>1?'s':'') + ' — no consult or status set yet</div>' +
+    intakes.map(function(it){
+      return '<div class="row" id="row-'+it.id+'" style="border-color:rgba(245,158,11,.18);">' +
+        '<span class="nm">'+it.name+'</span><span class="mut">'+it.when+' · '+it.goal+'</span>' +
+        '<button class="btn" onclick="reviewIntake(\''+it.id+'\')">Review →</button></div>';
+    }).join('') + '</div>';
+}
+function reviewIntake(id){
+  var el = document.getElementById('row-'+id); el.classList.add('gone');
+  setTimeout(function(){
+    intakes = intakes.filter(function(x){ return x.id !== id; });
+    renderIntakes();
+  }, 350);
+  toast('In the real build this opens the lead profile — setting a status or consult clears it from the queue');
+}
+
+// ---- Attention feed ----
+function renderFeed(){
+  var f = document.getElementById('feed');
+  if (!feed.length) { f.innerHTML = '<div class="empty"><i class="ti ti-confetti"></i>  You’re all caught up</div>'; return; }
+  f.innerHTML = feed.slice().sort(function(a,b){ return a.sev - b.sev; }).map(function(x){
+    return '<div class="row" id="row-'+x.id+'">' +
+      '<span class="pill '+x.cls+'">'+x.pill+'</span>' +
+      '<span class="nm">'+x.name+'</span><span class="mut">'+x.meta+'</span>' +
+      '<button class="btn" onclick="resolveFeed(\''+x.id+'\')">'+x.act+'</button></div>';
+  }).join('');
+}
+function resolveFeed(id){
+  var x = feed.filter(function(i){ return i.id === id; })[0];
+  var el = document.getElementById('row-'+id); el.classList.add('gone');
+  setTimeout(function(){
+    feed = feed.filter(function(i){ return i.id !== id; });
+    renderFeed();
+  }, 350);
+  if (x.kind === 'collect' || x.kind === 'renew') {
+    PAID += (x.amount || 0);
+    renderPulse();
+    toast(fmt(x.amount) + ' logged for ' + x.name.replace('Check in — ','') + ' — ledger + month bar updated');
+  } else {
+    toast('Done — in the real build this completes the task / opens the lead');
+  }
+}
+
+// ---- Today ----
+function renderToday(){
+  document.getElementById('today-count').textContent = today.length + ' booked';
+  document.getElementById('today').innerHTML = today.map(function(s,i){
+    return '<div class="row"><span class="mut" style="width:46px;">'+s.t+'</span>' +
+      '<span class="nm">'+s.name+'</span>' +
+      (s.consult ? '<span class="pill p-pur">consult</span>' : '') +
+      (s.done ? '<span class="pill p-grn" style="margin-left:auto;">✓ done</span>'
+              : '<button class="btn" onclick="completeToday('+i+')">'+(s.consult?'Outcome':'Complete')+'</button>') +
+      '</div>';
+  }).join('');
+}
+function completeToday(i){
+  today[i].done = true; renderToday();
+  toast(today[i].consult ? 'Consult marked — real build asks won / lost / follow-up' : 'Session completed — charges the package like the Schedule tab');
+}
+
+// ---- Month pulse ----
+function renderPulse(){
+  document.getElementById('paid-amt').textContent = fmt(PAID);
+  document.getElementById('proj-amt').textContent = fmt(PROJ);
+  var pct = Math.min(100, Math.round(PAID / PROJ * 100));
+  document.getElementById('paid-bar').style.width = pct + '%';
+  var out = Math.max(0, PROJ - PAID);
+  document.getElementById('outstanding-line').innerHTML = out > 0
+    ? fmt(out) + ' still to collect · ' + pct + '% of projection'
+    : '<span style="color:var(--won);font-weight:600;">Projection hit — ' + pct + '%</span>';
+}
+
+renderIntakes(); renderFeed(); renderToday(); renderPulse();
+</script>
+</body>
+</html>
