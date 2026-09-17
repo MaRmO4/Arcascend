@@ -3169,10 +3169,11 @@ async function renderScheduleTab() {
   // Armed banner (client=accent, consult=purple/dashed). Draggable AND click-to-place.
   var consultChip = '';
   if (schedArmed) {
-    var isC = schedArmed.type === 'consult';
-    var aClr = isC ? 'var(--purple)' : 'var(--accent)';
-    var aBg = isC ? 'rgba(167,139,250,0.15)' : 'rgba(79,158,255,0.15)';
-    consultChip = '<span id="sched-armed-chip" draggable="true" style="display:inline-flex;align-items:center;gap:6px;background:' + aBg + ';border:1px ' + (isC ? 'dashed' : 'solid') + ' ' + aClr + ';color:' + aClr + ';border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:grab;">▶ ' + escapeHtml(schedArmed.name) + (isC ? ' — consult' : '') + ' <span style="color:var(--muted);font-weight:400;">click a slot to place</span><button id="sched-armed-x" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;margin-left:2px;">✕</button></span>';
+    var isC = schedArmed.type === 'consult', isM = schedArmed.type === 'move';
+    var aClr = isC ? 'var(--purple)' : (isM ? 'var(--open)' : 'var(--accent)');
+    var aBg = isC ? 'rgba(167,139,250,0.15)' : (isM ? 'rgba(245,158,11,0.15)' : 'rgba(79,158,255,0.15)');
+    var aHint = isM ? 'click a new slot to re-place' : 'click a slot to place';
+    consultChip = '<span id="sched-armed-chip" draggable="true" style="display:inline-flex;align-items:center;gap:6px;background:' + aBg + ';border:1px ' + ((isC || isM) ? 'dashed' : 'solid') + ' ' + aClr + ';color:' + aClr + ';border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:grab;">▶ ' + escapeHtml(schedArmed.name) + (isC ? ' — consult' : (isM ? ' — moving' : '')) + ' <span style="color:var(--muted);font-weight:400;">' + aHint + '</span><button id="sched-armed-x" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;margin-left:2px;">✕</button></span>';
   }
   var topBar = '<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
     '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
@@ -3333,8 +3334,14 @@ function schedBlockDiv(s, span, rowH, beyond) {
   var h = span * rowH - 3;
   var nm = ((s.client_name || '').split(/\s+/)[0]) || s.client_name || '(client)';
   var timeStr = schedTimeLabel(new Date(s.when_at));
-  return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '"' + (beyondBooked ? ' title="Beyond package — unpaid"' : '') + ' style="position:absolute;z-index:2;left:2px;right:2px;top:0;height:' + h + 'px;background:' + bg + ';border:1px solid ' + color + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:pointer;line-height:1.25;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' +
-    '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(nm) + (isConsult ? ' · consult' : '') + (beyondBooked ? ' · over' : '') + '</div>' +
+  // Booked (incl. consult/beyond) blocks are movable: draggable to a new slot, or the ↔
+  // corner button arms a click-to-re-place move. Completed/cancelled stay put.
+  var movable = s.status === 'booked';
+  var moving = movable && schedArmed && schedArmed.type === 'move' && String(schedArmed.sid) === String(s.id);
+  var border = moving ? '2px dashed var(--open)' : '1px solid ' + color;
+  var moveBtn = movable ? '<span class="sched-move-btn" title="Move — click, then click a new slot" style="position:absolute;top:0;right:0;z-index:3;font-size:11px;line-height:1;padding:2px 4px 3px;color:' + color + ';opacity:0.65;cursor:pointer;">↔</span>' : '';
+  return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '"' + (movable ? ' draggable="true"' : '') + (beyondBooked ? ' title="Beyond package — unpaid"' : '') + ' style="position:absolute;z-index:2;left:2px;right:2px;top:0;height:' + h + 'px;background:' + (moving ? 'rgba(245,158,11,0.15)' : bg) + ';border:' + border + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:' + (movable ? 'grab' : 'pointer') + ';line-height:1.25;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' + moveBtn +
+    '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' + (movable ? 'padding-right:12px;' : '') + '">' + escapeHtml(nm) + (isConsult ? ' · consult' : '') + (beyondBooked ? ' · over' : '') + '</div>' +
     '<div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(timeStr) + '</div>' +
   '</div>';
 }
@@ -3405,6 +3412,15 @@ function wireSchedule(rowH) {
   function wireDragStart(container){
     if (!container) return;
     container.addEventListener('dragstart', function(e){
+      // Existing session block → MOVE payload (reschedule). Chips → book payload.
+      var blk = e.target.closest && e.target.closest('.sched-block');
+      if (blk) {
+        var bs = (window.SESSIONS || []).find(function(x){ return String(x.id) === String(blk.dataset.sid); });
+        if (!bs || bs.status !== 'booked') { e.preventDefault(); return; }
+        e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'move', sid: bs.id, name: bs.client_name || '(client)' }));
+        e.dataTransfer.effectAllowed = 'move';
+        return;
+      }
       var chip = e.target.closest && e.target.closest('.sched-chip, #sched-armed-chip');
       if (!chip) return;
       var payload = chip.dataset.payload || (schedArmed ? JSON.stringify(schedArmed) : '');
@@ -3449,6 +3465,25 @@ function wireSchedule(rowH) {
   // Book `p` at day/slot — shared by BOTH drop and click-to-place. Does NOT clear armed.
   function schedPlace(p, day, slot) {
     if (!p || !p.type) return;
+    // MOVE: reschedule an existing session (drag a block, or armed via ↔ / menu).
+    // Uses the session's own span, excludes itself from the overlap check, and is
+    // one-shot (clears armed after a successful move — unlike repeat client placement).
+    if (p.type === 'move') {
+      var ms = (window.SESSIONS || []).find(function(x){ return String(x.id) === String(p.sid); });
+      if (!ms) { showToast('Session not found.', 'error'); return; }
+      var mspan = Math.max(1, Math.round((ms.duration_min || 60) / 30));
+      if (schedOverlaps(day, slot, mspan, p.sid)) { showToast('That time slot is already booked.', 'error'); return; }
+      var mWhen = schedSlotToISO(day, slot);
+      var clearMoveArm = function(){ if (schedArmed && schedArmed.type === 'move' && String(schedArmed.sid) === String(p.sid)) schedArmed = null; };
+      if (new Date(ms.when_at).getTime() === new Date(mWhen).getTime()) { clearMoveArm(); reRender(); return; }   // dropped on its own slot → no-op
+      patchSession(p.sid, { when_at: mWhen }).then(function(ok){
+        if (!ok) { showToast('Could not move session.', 'error'); return; }
+        clearMoveArm();
+        showToast('Moved ' + ((ms.client_name || '').split(/\s+/)[0] || 'session') + ' → ' + schedTimeLabel(new Date(mWhen)), 'success');
+        reRender();
+      });
+      return;
+    }
     var span = 2;   // 60 min default
     if (schedOverlaps(day, slot, span, null)) { showToast('That time slot is already booked.', 'error'); return; }
     var whenAt = schedSlotToISO(day, slot);
@@ -3477,6 +3512,20 @@ function wireSchedule(rowH) {
     // Unified click: existing block → menu; client chip → arm/toggle; armed + empty slot → place;
     // armed + empty (non-grid) area → clear.
     body.addEventListener('click', function(e){
+      // ↔ corner button (inside .sched-block, so check FIRST): arm click-to-re-place move.
+      var mv = e.target.closest && e.target.closest('.sched-move-btn');
+      if (mv) {
+        e.stopPropagation();
+        var mblk = mv.closest('.sched-block');
+        var msess = mblk && (window.SESSIONS || []).find(function(x){ return String(x.id) === String(mblk.dataset.sid); });
+        if (msess) {
+          // toggle off if re-clicking the same armed move
+          if (schedArmed && schedArmed.type === 'move' && String(schedArmed.sid) === String(msess.id)) schedArmed = null;
+          else schedArmed = { type: 'move', sid: msess.id, name: msess.client_name || '(client)' };
+          reRender();
+        }
+        return;
+      }
       var b = e.target.closest && e.target.closest('.sched-block');
       if (b) { e.stopPropagation(); schedOpenMenu(b.dataset.sid, e.clientX, e.clientY); return; }
       var chip = e.target.closest && e.target.closest('.sched-chip');
@@ -3532,6 +3581,12 @@ function schedOpenMenu(sid, x, y) {
   if (s.status !== 'completed') {
     item(isConsult ? '✓ Mark consult done' : '✓ Session Completed (charge)', 'var(--won)', function(){
       patchSession(sid, { status: 'completed', completed_at: new Date().toISOString() }).then(function(){ if (typeof renderTabCounts === 'function') renderTabCounts(); reRender(); });
+    });
+  }
+  if (s.status === 'booked') {
+    item('↔ Move to another slot', 'var(--accent)', function(){
+      schedArmed = { type: 'move', sid: s.id, name: s.client_name || '(client)' };
+      reRender();
     });
   }
   item('Cancel (charge)', 'var(--open)', function(){ patchSession(sid, { status: 'cancelled_charge' }).then(reRender); });
