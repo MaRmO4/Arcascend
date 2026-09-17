@@ -8238,6 +8238,15 @@ function renderHomeTab() {
   panel.style.display = isHome ? 'block' : 'none';
   if (!isHome) return;
   document.getElementById('main').style.display = 'none';
+  // Lazy-load the shared sessions cache on first paint (same pattern as the Sessions /
+  // Billing tabs), then re-render so Today, session stats and renewals are accurate.
+  if (window.SESSIONS === null && !window.__sessionsLoading) {
+    window.__sessionsLoading = true;
+    loadSessions().then(function(){
+      window.__sessionsLoading = false;
+      if (currentTab === 'home') renderHomeTab();
+    });
+  }
   if (typeof renderRevenueBanner === 'function') renderRevenueBanner();
   if (typeof renderTabCounts === 'function') renderTabCounts();
 
@@ -8324,6 +8333,21 @@ function renderHomeTab() {
   }, 0);
   var pct = projTotal > 0 ? Math.min(100, Math.round(paid / projTotal * 100)) : 0;
   var outstanding = Math.max(0, projTotal - paid);
+  var sessMonth = (typeof sessionPeriodStats === 'function') ? sessionPeriodStats().month : { n: 0, rev: 0 };
+
+  // ---------- 5. OPEN TASKS (replaces the old follow-up reminders block) ----------
+  var openTasks = [];
+  LEADS.forEach(function(L){
+    leadTasks(L).forEach(function(t){
+      if (t.completed) return;
+      openTasks.push({ L: L, t: t, bucket: dueBucket(t.dueDate) });
+    });
+  });
+  openTasks.sort(function(a, b){
+    var ord = { overdue: 0, today: 1, tomorrow: 2, thisweek: 3, upcoming: 4 };
+    if (ord[a.bucket] !== ord[b.bucket]) return ord[a.bucket] - ord[b.bucket];
+    return (a.t.dueDate || '9999') < (b.t.dueDate || '9999') ? -1 : 1;
+  });
 
   // ---------- RENDER ----------
   var dateLine = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -8420,10 +8444,35 @@ function renderHomeTab() {
               ? '$' + outstanding.toLocaleString() + ' still to collect · ' + pct + '% of projection'
               : '<span style="color:var(--won);font-weight:600;">Projection hit — ' + pct + '%</span>') +
           '</div>' +
+          '<div style="border-top:1px solid var(--border);margin-top:11px;padding-top:11px;">' +
+            '<div class="hm-mut" style="margin-bottom:4px;">Sessions completed</div>' +
+            '<div style="font-size:20px;font-weight:700;color:var(--text);">' + sessMonth.n +
+              ' <span class="hm-mut" style="font-weight:400;">this month</span></div>' +
+            '<div class="hm-mut" style="margin-top:4px;color:var(--won);font-weight:600;">$' +
+              sessMonth.rev.toLocaleString() + ' earned from completed sessions</div>' +
+          '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
-    '<div id="reminders-container" style="margin-top:14px;"></div>';
+    '<div class="hm-panel" style="margin-top:14px;">' +
+      '<div class="hm-hdr">✅ Tasks <span class="hm-mut" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;">' +
+        (openTasks.length ? openTasks.length + ' open' : '') + '</span></div>' +
+      (openTasks.length
+        ? openTasks.slice(0, 8).map(function(it){
+            var lbl = [it.t.type, it.t.note].filter(Boolean).join(' — ') || it.t.text || it.t.title || 'Task';
+            var pill = it.bucket === 'overdue' ? 'overdue' : (it.bucket === 'today' ? 'today' : (it.t.dueDate ? formatTaskDate(it.t.dueDate) : 'no date'));
+            var pcls = it.bucket === 'overdue' ? 'hm-red' : (it.bucket === 'today' ? 'hm-amb' : 'hm-pur');
+            return '<div class="hm-row">' +
+              '<span class="hm-pill ' + pcls + '">' + escapeHtml(pill) + '</span>' +
+              '<span class="hm-nm">' + escapeHtml(lbl) + '</span>' +
+              '<span class="hm-mut">' + escapeHtml((it.L.name || '') + (it.t.dueDate && it.bucket !== 'overdue' && it.bucket !== 'today' ? '' : (it.t.dueDate ? ' · due ' + formatTaskDate(it.t.dueDate) : ''))) + '</span>' +
+              '<button class="hm-btn" style="margin-left:auto;" data-hm="taskdone" data-name="' + escapeAttr(it.L.name || '') + '" data-tid="' + escapeAttr(String(it.t.id)) + '">✓ Done</button>' +
+              '<button class="hm-btn" style="margin-left:0;" data-hm="open" data-name="' + escapeAttr(it.L.name || '') + '">Open</button>' +
+            '</div>';
+          }).join('') +
+          (openTasks.length > 8 ? '<div class="hm-row"><span class="hm-mut">+ ' + (openTasks.length - 8) + ' more in the Tasks tab</span><button class="hm-btn" data-hm="tasks">Tasks tab →</button></div>' : '')
+        : '<div class="hm-row" style="justify-content:center;"><span class="hm-mut" style="color:var(--won);font-weight:600;">No open tasks 🎉</span></div>') +
+    '</div>';
 
   // ---------- WIRE (one delegated listener; innerHTML wipes make this idempotent) ----------
   panel.onclick = function(e){
@@ -8435,6 +8484,17 @@ function renderHomeTab() {
       if (nm && typeof openLead === 'function') openLead(nm);
     } else if (kind === 'sched') {
       if (typeof goToTab === 'function') goToTab('schedule');
+    } else if (kind === 'tasks') {
+      if (typeof goToTab === 'function') goToTab('tasks');
+    } else if (kind === 'taskdone') {
+      var tLead = LEADS.filter(function(x){ return (x.name || '') === el.getAttribute('data-name'); })[0];
+      if (!tLead) return;
+      var tk = leadTasks(tLead).filter(function(x){ return String(x.id) === el.getAttribute('data-tid'); })[0];
+      if (!tk) return;
+      tk.completed = true;
+      if (typeof saveState === 'function') saveState();
+      if (typeof renderTabCounts === 'function') renderTabCounts();
+      renderHomeTab();
     } else if (kind === 'complete') {
       var sid = el.getAttribute('data-sid');
       el.disabled = true; el.textContent = '…';
