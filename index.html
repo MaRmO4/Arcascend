@@ -2697,7 +2697,7 @@ async function loadSessions() {
       window.SESSIONS = await res.json();
       // One-time data repair: heal clients whose purchases + sessions got split across
       // duplicate lines of the same package (fire-and-forget; re-renders when done).
-      if (typeof mergeDuplicateServiceLines === 'function') mergeDuplicateServiceLines();
+      Promise.resolve(typeof mergeDuplicateServiceLines === 'function' ? mergeDuplicateServiceLines() : null).then(function(){ if (typeof restoreLegacyConfirmations === 'function') restoreLegacyConfirmations(); });
     }
     else if (!window.SESSIONS) window.SESSIONS = [];
   } catch(e) { if (!window.SESSIONS) window.SESSIONS = []; }
@@ -2891,6 +2891,83 @@ async function mergeDuplicateServiceLines() {
   if (changed) {
     saveState();
     if (typeof refreshView === 'function') refreshView();
+  }
+}
+
+// ==========================================================
+// ONE-TIME LEDGER RESTORE — imports the old month "confirmations" (pre-ledger paid
+// revenue) into the purchase ledger as dated, paid records so historical months
+// report correctly again. Conservative + double-count-proof:
+//   • PAST months only — the current month is handled by live reconfirmation
+//   • a month is skipped if the client already has ANY paid ledger amount in it
+//   • each processed lead is stamped billing.legacyConfRestored, so the import
+//     runs exactly once per account (even across devices), and never re-imports
+//     after a user deliberately deletes a restored purchase.
+// Restored records carry sessions:0 (revenue-only) so session counts stay untouched.
+// ==========================================================
+function restoreLegacyConfirmations() {
+  if (window.__confRestoreRan) return;
+  if (!Array.isArray(window.LEADS || LEADS) || !LEADS.length) return;
+  window.__confRestoreRan = true;
+  var curMk = currentMonthKey();
+  var changed = false, restoredTotal = 0, restoredCount = 0;
+  LEADS.forEach(function(L){
+    var b = L.billing;
+    if (!b || b.legacyConfRestored) return;
+    var conf = b.confirmations;
+    var lines = clientLines(L);
+    if (conf && Object.keys(conf).length) {
+      if (!lines.length) {
+        // Legacy confirmed revenue but no service line (never migrated) — create a
+        // placeholder line so the restored records have somewhere to live.
+        var nb = ensureBilling(L);
+        if (!Array.isArray(nb.serviceLines)) nb.serviceLines = [];
+        nb.serviceLines.push({
+          id: (typeof uuid === 'function' ? uuid() : 'sl_' + Math.random().toString(36).slice(2)),
+          type: 'In-Person', billingStyle: 'package',
+          sessions: 0, sessionsUsed: 0, rate: 0, monthlyFee: 0, amount: 0, active: true, purchases: []
+        });
+        lines = clientLines(L);
+      }
+      // Attach to the client's primary line: active package first, then any active, then first.
+      var target = lines.filter(function(ln){ return ln && ln.active && (ln.billingStyle || 'package') === 'package'; })[0]
+                || lines.filter(function(ln){ return ln && ln.active; })[0]
+                || lines[0];
+      Object.keys(conf).sort().forEach(function(mk){
+        if (!/^\d{4}-\d{2}$/.test(mk)) return;
+        if (mk >= curMk) return;                          // past months only
+        var amt = Number(conf[mk] && conf[mk].amount) || 0;
+        if (amt <= 0) return;
+        if (clientPaidForMonth(L, mk) > 0) return;        // ledger already has money in this month
+        // Date: original confirmation timestamp when it falls inside mk, else local noon mid-month.
+        var d = null;
+        if (conf[mk].at) {
+          var t = new Date(conf[mk].at);
+          if (!isNaN(t) && (t.getFullYear() + '-' + pad2(t.getMonth() + 1)) === mk) d = t;
+        }
+        if (!d) { var pp = mk.split('-'); d = new Date(+pp[0], (+pp[1]) - 1, 15, 12, 0, 0, 0); }
+        ensureLinePurchases(target).push({
+          id: (typeof uuid === 'function' ? uuid() : 'pur_' + Math.random().toString(36).slice(2)),
+          date: d.toISOString(),
+          sessions: 0,
+          amount: amt,
+          service_type: target.type || '',
+          paid: true,
+          method: 'manual',
+          note: 'Restored from pre-ledger monthly confirmation (' + mk + ')'
+        });
+        restoredTotal += amt; restoredCount++;
+        console.log('[ArcAscend] restored ' + mk + ' · $' + amt.toLocaleString() + ' for ' + (L.name || '(no name)'));
+      });
+      if (target.purchases) target.purchases.sort(function(a, c){ return new Date(a.date) - new Date(c.date); });
+    }
+    b.legacyConfRestored = true;   // stamp: exactly-once per account, across devices
+    changed = true;
+  });
+  if (changed) {
+    saveState();
+    if (typeof refreshView === 'function') refreshView();
+    console.log('[ArcAscend] legacy revenue restore: ' + restoredCount + ' month-record(s), $' + restoredTotal.toLocaleString() + ' total');
   }
 }
 
