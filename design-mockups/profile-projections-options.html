@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArcAscend — Profile Projections mini-planner: redesign options (saved 2026-09-16)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<style>
+:root{
+  --color-background-primary:#ffffff;
+  --color-background-secondary:#f5f5f7;
+  --color-text-primary:#1a1a1f;
+  --color-text-secondary:#6b6b76;
+  --color-border:rgba(128,128,128,.18);
+  --border-radius-md:8px;
+  --border-radius-lg:12px;
+  --c-purple-50:#f3effc; --c-purple-800:#4a2fa3;
+  --c-teal-50:#e6f7f5; --c-teal-300:#7fd4cb; --c-teal-800:#0b5e56;
+  --c-gray-100:rgba(128,128,128,.12);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:var(--color-text-primary);margin:0;padding:32px 16px;}
+.page{max-width:680px;margin:0 auto;}
+.page h1{font-size:18px;font-weight:500;}
+.page .note{font-size:13px;color:var(--color-text-secondary);margin-bottom:24px;line-height:1.5;}
+.pm-wrap{background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:20px;margin-bottom:20px;}
+.pm-label{font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.pm-card{background:var(--color-background-primary);border:1px solid var(--color-border);border-radius:var(--border-radius-md);}
+.pm-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;line-height:1.6;}
+.pm-pill-auto{background:var(--c-gray-100);color:var(--color-text-secondary);}
+.pm-pill-custom{background:var(--c-purple-50);color:var(--c-purple-800);}
+.pm-pill-active{background:var(--c-teal-50);color:var(--c-teal-800);}
+.pm-amt{font-size:20px;font-weight:500;letter-spacing:-.01em;}
+.pm-sub{font-size:11px;color:var(--color-text-secondary);}
+.pm-ghost{background:none;border:none;padding:0;font-size:11px;color:var(--color-text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-family:inherit;}
+.pm-h{font-size:14px;font-weight:500;margin:0 0 2px;}
+.pm-d{font-size:12.5px;color:var(--color-text-secondary);margin:0 0 14px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="page">
+<h1>Profile Projections mini-planner — redesign options</h1>
+<p class="note">Saved for later. Same functionality as the current mini-planner in the client profile modal: 4 months (current + 3), editable authored amounts, auto months follow package pace ($840 example), custom months get reset-to-auto, future months can be dropped/added back, current month's active state is read-only, link to the full grid. Sample data: Kazeem Omidiji.</p>
+
+<!-- ============ OPTION A — Month cards ============ -->
+<div class="pm-wrap">
+  <p class="pm-h">Option A — Month cards</p>
+  <p class="pm-d">One clean row of four cards. The amount is the hero; auto vs. custom is a small pill; drop lives as a quiet icon in the corner instead of a red text link. No explainer paragraph — a single caption line under the row.</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <span class="pm-label"><i class="ti ti-trending-up"></i> Projections</span>
+    <span class="pm-sub">Pace $840/mo · <span style="color:var(--c-purple-800);">Full grid →</span></span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+    <div class="pm-card" style="padding:10px 12px;border-color:var(--c-teal-300);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span class="pm-sub" style="font-weight:500;">Sep</span>
+        <span class="pm-pill pm-pill-active">active</span>
+      </div>
+      <div class="pm-amt">$840</div>
+      <div class="pm-sub" style="margin-top:4px;">auto</div>
+    </div>
+    <div class="pm-card" style="padding:10px 12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span class="pm-sub" style="font-weight:500;">Oct</span>
+        <button class="pm-ghost" title="Drop month"><i class="ti ti-eye-off"></i></button>
+      </div>
+      <div class="pm-amt">$840</div>
+      <div class="pm-sub" style="margin-top:4px;">auto</div>
+    </div>
+    <div class="pm-card" style="padding:10px 12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span class="pm-sub" style="font-weight:500;">Nov</span>
+        <button class="pm-ghost" title="Drop month"><i class="ti ti-eye-off"></i></button>
+      </div>
+      <div class="pm-amt">$1,200</div>
+      <div style="margin-top:4px;"><span class="pm-pill pm-pill-custom">custom <i class="ti ti-rotate" style="font-size:11px;"></i></span></div>
+    </div>
+    <div class="pm-card" style="padding:10px 12px;opacity:.5;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span class="pm-sub" style="font-weight:500;">Dec</span>
+        <button class="pm-ghost" title="Add back" style="color:var(--c-teal-800);"><i class="ti ti-eye"></i></button>
+      </div>
+      <div class="pm-amt" style="text-decoration:line-through;color:var(--color-text-secondary);">$840</div>
+      <div class="pm-sub" style="margin-top:4px;">dropped</div>
+    </div>
+  </div>
+  <div class="pm-sub" style="margin-top:8px;">Tap an amount to set your own · custom months show a reset</div>
+</div>
+
+<!-- ============ OPTION B — Ledger rows ============ -->
+<div class="pm-wrap">
+  <p class="pm-h">Option B — Ledger rows</p>
+  <p class="pm-d">Matches the billing-ledger feel already in the profile. Each month is one aligned row: month, status pill, amount at the right edge, controls at the row end. Scans fastest top-to-bottom and never wraps awkwardly. Bonus: a 4-month total row.</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <span class="pm-label"><i class="ti ti-trending-up"></i> Projections <span class="pm-sub" style="font-weight:400;">· pace $840/mo</span></span>
+    <span class="pm-sub" style="color:var(--c-purple-800);">Full grid →</span>
+  </div>
+  <div class="pm-card" style="overflow:hidden;">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--color-border);">
+      <span style="font-size:13px;font-weight:500;width:64px;">Sep '26</span>
+      <span class="pm-pill pm-pill-active">active</span>
+      <span class="pm-pill pm-pill-auto">auto</span>
+      <span style="margin-left:auto;font-size:15px;font-weight:500;">$840</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--color-border);">
+      <span style="font-size:13px;font-weight:500;width:64px;">Oct '26</span>
+      <span class="pm-pill pm-pill-auto">auto</span>
+      <span style="margin-left:auto;font-size:15px;font-weight:500;">$840</span>
+      <button class="pm-ghost" title="Drop"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--color-border);">
+      <span style="font-size:13px;font-weight:500;width:64px;">Nov '26</span>
+      <span class="pm-pill pm-pill-custom">custom</span>
+      <button class="pm-ghost" title="Reset to auto"><i class="ti ti-rotate"></i></button>
+      <span style="margin-left:auto;font-size:15px;font-weight:500;">$1,200</span>
+      <button class="pm-ghost" title="Drop"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;opacity:.55;">
+      <span style="font-size:13px;font-weight:500;width:64px;">Dec '26</span>
+      <span class="pm-pill pm-pill-auto">dropped</span>
+      <span style="margin-left:auto;font-size:15px;font-weight:500;text-decoration:line-through;">$840</span>
+      <button class="pm-ghost" title="Add back" style="color:var(--c-teal-800);"><i class="ti ti-plus"></i></button>
+    </div>
+    <div style="display:flex;align-items:center;padding:10px 14px;background:var(--color-background-secondary);border-top:1px solid var(--color-border);">
+      <span class="pm-sub" style="font-weight:500;">Next 4 months</span>
+      <span style="margin-left:auto;font-size:15px;font-weight:500;">$2,880</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ OPTION C — One-line strip ============ -->
+<div class="pm-wrap">
+  <p class="pm-h">Option C — One-line strip</p>
+  <p class="pm-d">The most compact: a single pill strip with each month's amount inline, plus a running total. Tap a pill to edit; dropped months collapse to just the month name. Great if you want the profile modal shorter overall.</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <span class="pm-label"><i class="ti ti-trending-up"></i> Projections</span>
+    <span class="pm-sub" style="color:var(--c-purple-800);">Full grid →</span>
+  </div>
+  <div class="pm-card" style="padding:12px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span class="pm-pill" style="background:var(--c-teal-50);color:var(--c-teal-800);padding:6px 12px;font-size:13px;">Sep · $840</span>
+    <span class="pm-pill pm-pill-auto" style="padding:6px 12px;font-size:13px;">Oct · $840</span>
+    <span class="pm-pill pm-pill-custom" style="padding:6px 12px;font-size:13px;">Nov · $1,200 <i class="ti ti-pencil" style="font-size:12px;"></i></span>
+    <span class="pm-pill" style="padding:6px 12px;font-size:13px;background:none;border:1px dashed var(--color-border);color:var(--color-text-secondary);text-decoration:line-through;">Dec</span>
+    <span style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;">
+      <span class="pm-sub">projected</span>
+      <span style="font-size:16px;font-weight:500;">$2,880</span>
+    </span>
+  </div>
+  <div class="pm-sub" style="margin-top:8px;">Teal = current month · purple = your custom amount · dashed = dropped</div>
+</div>
+
+</div>
+</body>
+</html>

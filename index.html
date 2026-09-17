@@ -5721,6 +5721,7 @@ function viewToggleWrap(leads) {
 var acSelectedMonth = null;   // "YYYY-MM" — month the dashboard + table are scoped to
 var acView = 'current';       // 'current' (dashboard+table) | 'projections' (forecast planner)
 var acProjMonths = 6;         // how many FUTURE months the projections planner shows (3 or 6)
+var acProjExpanded = {};      // which client rows are expanded in the projections dashboard (name → true)
 var acExpandedRows = {};      // transient: { clientName: true } for expanded service-line panels
 
 function renderActiveClientsV2() {
@@ -6204,18 +6205,18 @@ function renderProjMiniPlanner(L) {
 
 // ---- Projections planner: editable per-client, per-month forecast grid ----
 function buildProjectionsSection() {
+  // ====== OPTION B: chart-first dashboard with expandable client rows ======
+  // Same data + writers as the old grid (projectedForClientMonth / projectedRevenueForMonth,
+  // .proj-amt / .proj-toggle / .proj-range) — only the presentation changed.
   var clients = sortLeads(activeClients());
   var months = projectionMonths(acProjMonths);
   var curKey = currentMonthKey();
-  var col = 'grid-template-columns:180px repeat(' + months.length + ',minmax(104px,1fr));';
-  var minW = 180 + months.length * 104;
 
-  // Months-ahead control (3 / 6)
-  var rangeCtrl = '<div style="display:inline-flex;gap:6px;align-items:center;">' +
-    '<span style="font-size:12px;color:var(--muted);">Months ahead:</span>' +
+  // Months-ahead control (3 / 6) — segmented pill
+  var rangeCtrl = '<div style="display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden;flex-shrink:0;">' +
     ['3','6'].map(function(n){
       var on = String(acProjMonths) === n;
-      return '<button class="proj-range" data-n="' + n + '" style="padding:5px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;background:' + (on ? 'var(--accent)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--text)') + ';">' + n + '</button>';
+      return '<button class="proj-range" data-n="' + n + '" style="padding:6px 14px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:' + (on ? 'var(--accent)' : 'transparent') + ';color:' + (on ? '#fff' : 'var(--muted)') + ';">' + n + ' mo</button>';
     }).join('') +
   '</div>';
 
@@ -6226,73 +6227,105 @@ function buildProjectionsSection() {
       'Set up an active client first (mark a lead Closed Won, then toggle Active Client in Billing), then plan future months here.</div>';
   }
 
-  // Header row
-  var head = '<div style="display:grid;' + col + 'gap:8px;padding:11px 14px;border-bottom:1px solid var(--border);">' +
-    '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;">Client</div>' +
-    months.map(function(m){
-      var isCur = m.mk === curKey;
-      return '<div style="text-align:right;font-size:11px;font-weight:600;color:' + (isCur ? 'var(--accent)' : 'var(--text)') + ';">' + escapeHtml(m.label) + (isCur ? ' <span style="color:var(--muted);font-weight:400;">now</span>' : '') + '</div>';
-    }).join('') +
-  '</div>';
+  // A month is "custom" when the trainer authored an amount for it (same test
+  // projectedForClientMonth uses to decide an authored value wins).
+  function isAuthoredMonth(L, mk) {
+    var p = (L.billing && L.billing.projections) ? L.billing.projections[mk] : null;
+    return !!(p && p.active !== false && p.amount != null && p.amount !== '' && !isNaN(Number(p.amount)));
+  }
 
-  // One row per active client
-  var body = clients.map(function(L){
-    var nm = L.name || '(no name)';
-    return '<div style="display:grid;' + col + 'gap:8px;padding:11px 14px;border-bottom:1px solid var(--border);align-items:center;">' +
-      '<div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
-      months.map(function(m){
-        var amt = projectedForClientMonth(L, m.mk);
-        // The current month is now EDITABLE too (its authored plan drives the Active Clients
-        // "Projected" KPI). Unset months default to the client's package pace.
-        if (!isProjectedActive(L, m.mk)) {
-          return '<div style="text-align:right;">' +
-            '<button class="proj-toggle" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" data-act="on" title="Add back for this month" style="background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;white-space:nowrap;">— add</button>' +
-          '</div>';
-        }
-        return '<div style="display:flex;align-items:center;gap:3px;justify-content:flex-end;">' +
-          '<span style="color:var(--muted);font-size:12px;">$</span>' +
-          '<input type="number" class="proj-amt" name="proj-' + m.mk + '" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" value="' + amt + '" min="0" step="1" style="width:66px;text-align:right;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:5px 6px;color:var(--text);font-size:12px;" />' +
-          '<button class="proj-toggle" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" data-act="off" title="Drop this month" style="background:transparent;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;padding:0 2px;">&times;</button>' +
-        '</div>';
-      }).join('') +
-    '</div>';
-  }).join('');
-
-  // Totals row (all via projectedRevenueForMonth)
+  // Monthly totals + forecast (all via projectedRevenueForMonth — single source of truth)
   var totalsArr = months.map(function(m){ return projectedRevenueForMonth(m.mk); });
-  var totals = '<div style="display:grid;' + col + 'gap:8px;padding:13px 14px;border-top:2px solid var(--border);align-items:center;background:var(--panel-2);border-radius:0 0 12px 12px;">' +
-    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);">Projected total</div>' +
-    months.map(function(m, idx){
-      return '<div style="text-align:right;font-size:14px;font-weight:800;color:' + (m.mk === curKey ? 'var(--accent)' : 'var(--won)') + ';">' + fmt$(totalsArr[idx]) + '</div>';
-    }).join('') +
-  '</div>';
-
-  // Sparkline of monthly totals (plain divs, no chart lib)
+  var forecastTotal = totalsArr.reduce(function(s, v){ return s + v; }, 0);
   var maxT = Math.max.apply(null, totalsArr.concat([1]));
-  var spark = '<div style="display:flex;align-items:flex-end;gap:8px;height:84px;padding:12px 14px;margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:12px;">' +
+
+  // ---- Header card: forecast KPI + bar chart lead the page ----
+  var chart = '<div style="display:flex;align-items:flex-end;gap:10px;height:112px;margin-top:16px;">' +
     months.map(function(m, idx){
       var t = totalsArr[idx];
-      var h = Math.max(4, Math.round((t / maxT) * 56));
-      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;">' +
-        '<div style="width:100%;background:' + (m.mk === curKey ? 'var(--accent)' : 'var(--won)') + ';height:' + h + 'px;border-radius:4px 4px 0 0;opacity:0.85;" title="' + escapeAttr(m.full + ': ' + fmt$(t)) + '"></div>' +
-        '<div style="font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;">' + escapeHtml(m.label.split(" ")[0]) + '</div>' +
+      var h = Math.max(4, Math.round((t / maxT) * 62));
+      var isCur = m.mk === curKey;
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;min-width:0;">' +
+        '<div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">' + fmt$(t) + '</div>' +
+        '<div style="width:100%;max-width:48px;background:' + (isCur ? 'var(--accent)' : 'var(--won)') + ';height:' + h + 'px;border-radius:4px 4px 0 0;opacity:0.85;" title="' + escapeAttr(m.full + ': ' + fmt$(t)) + '"></div>' +
+        '<div style="font-size:10px;font-weight:' + (isCur ? '700' : '400') + ';color:' + (isCur ? 'var(--accent)' : 'var(--muted)') + ';white-space:nowrap;">' + escapeHtml(m.label.split(' ')[0]) + (isCur ? ' · now' : '') + '</div>' +
       '</div>';
     }).join('') +
   '</div>';
 
-  var forecastTotal = totalsArr.reduce(function(s, v){ return s + v; }, 0);
-
-  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;">' +
-      '<div style="font-size:13px;color:var(--muted);">' + months.length + '-month forecast total: <b style="color:var(--won);">' + fmt$(forecastTotal) + '</b> · edit any future cell to override, × to drop a client for a month.</div>' +
+  var headerCard = '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;">' +
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
+      '<div>' +
+        '<div style="font-size:12px;color:var(--muted);">Projected revenue · next ' + months.length + ' months</div>' +
+        '<div style="font-size:26px;font-weight:800;color:var(--won);letter-spacing:-0.5px;">' + fmt$(forecastTotal) + '</div>' +
+      '</div>' +
       rangeCtrl +
     '</div>' +
-    '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow-x:auto;"><div style="min-width:' + minW + 'px;">' + head + body + totals + '</div></div>' +
-    spark;
+    chart +
+  '</div>';
+
+  // ---- Client list: compact summary rows, click to expand a month editor ----
+  var rows = clients.map(function(L){
+    var nm = L.name || '(no name)';
+    var isOpen = !!acProjExpanded[nm];
+    var cliTotal = 0, nCustom = 0, nDropped = 0;
+    months.forEach(function(m){
+      cliTotal += projectedForClientMonth(L, m.mk);
+      if (!isProjectedActive(L, m.mk)) nDropped++;
+      else if (isAuthoredMonth(L, m.mk)) nCustom++;
+    });
+
+    var badges = '';
+    if (nCustom) badges += '<span style="font-size:10px;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:2px 8px;white-space:nowrap;">' + nCustom + ' custom</span>';
+    if (nDropped) badges += '<span style="font-size:10px;font-weight:600;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:2px 8px;white-space:nowrap;">' + nDropped + ' dropped</span>';
+
+    var summary = '<div class="proj-client-row" data-name="' + escapeAttr(nm) + '" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--border);' + (isOpen ? 'background:var(--panel-2);' : '') + '">' +
+      '<div style="font-size:13px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
+      badges +
+      '<div style="font-size:13px;font-weight:700;white-space:nowrap;">' + fmt$(cliTotal) + '</div>' +
+      '<div style="color:var(--muted);font-size:11px;width:12px;text-align:center;">' + (isOpen ? '▾' : '▸') + '</div>' +
+    '</div>';
+
+    var editor = '';
+    if (isOpen) {
+      editor = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 14px;background:var(--panel-2);border-bottom:1px solid var(--border);">' +
+        months.map(function(m){
+          var isCur = m.mk === curKey;
+          if (!isProjectedActive(L, m.mk)) {
+            return '<button class="proj-toggle" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" data-act="on" title="Add back for ' + escapeAttr(m.full) + '" style="background:transparent;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:11px;padding:8px 10px;cursor:pointer;white-space:nowrap;">' + escapeHtml(m.label.split(' ')[0]) + ' — add</button>';
+          }
+          var amt = projectedForClientMonth(L, m.mk);
+          var custom = isAuthoredMonth(L, m.mk);
+          return '<div style="display:inline-flex;align-items:center;gap:5px;background:var(--panel);border:1px solid ' + (isCur ? 'var(--accent)' : (custom ? 'var(--accent)' : 'var(--border)')) + ';border-radius:8px;padding:6px 8px;">' +
+            '<span style="font-size:11px;font-weight:600;color:' + (isCur ? 'var(--accent)' : (custom ? 'var(--accent)' : 'var(--muted)')) + ';white-space:nowrap;">' + escapeHtml(m.label.split(' ')[0]) + (isCur ? ' · now' : '') + '</span>' +
+            '<span style="color:var(--muted);font-size:12px;">$</span>' +
+            '<input type="number" class="proj-amt" name="proj-' + m.mk + '" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" value="' + amt + '" min="0" step="1" style="width:60px;text-align:right;background:transparent;border:none;color:var(--text);font-size:12px;font-weight:600;outline:none;" />' +
+            (isCur ? '' : '<button class="proj-toggle" data-name="' + escapeAttr(nm) + '" data-mk="' + m.mk + '" data-act="off" title="Drop this month" style="background:transparent;border:none;color:var(--muted);font-size:14px;cursor:pointer;line-height:1;padding:0 2px;">&times;</button>') +
+          '</div>';
+        }).join('') +
+      '</div>';
+    }
+
+    return summary + editor;
+  }).join('');
+
+  var listCard = '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;">' + rows + '</div>' +
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px;">Click a client to edit months · type an amount to set your plan (custom overrides the package pace) · × drops a month, dashed chips add it back.</div>';
+
+  return headerCard + listCard;
 }
 
 function wireProjectionsSection() {
   document.querySelectorAll('.proj-range').forEach(function(b){
     b.addEventListener('click', function(){ acProjMonths = parseInt(b.dataset.n, 10) || 6; renderActiveClientsV2(); });
+  });
+  // Expand / collapse a client's month editor (state survives re-renders via acProjExpanded)
+  document.querySelectorAll('.proj-client-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      var nm = row.dataset.name;
+      acProjExpanded[nm] = !acProjExpanded[nm];
+      renderActiveClientsV2();
+    });
   });
   document.querySelectorAll('.proj-amt').forEach(function(inp){
     inp.addEventListener('change', function(){
