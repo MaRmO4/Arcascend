@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>/* Apply saved theme before first paint (default: light) */try{document.documentElement.dataset.theme=localStorage.getItem('arcascend_theme')||'light';}catch(_){document.documentElement.dataset.theme='light';}</script>
 <style>
 :root {
   --bg: #0f1419; --panel: #1a2129; --panel-2: #232c36; --panel-3: #3a4653;
@@ -20,10 +21,18 @@
   --accent: #4f9eff; --won: #22c55e; --lost: #ef4444;
   --open: #f59e0b; --warm: #fb923c; --purple: #a78bfa;
   --shadow: 0 4px 20px rgba(0,0,0,0.3);
+  color-scheme: dark;
+}
+/* Light theme — same accent colors, inverted surfaces. Toggle in Settings, saved per device. */
+html[data-theme="light"] {
+  --bg: #f2f5f8; --panel: #ffffff; --panel-2: #e9eef3; --panel-3: #cfd9e2;
+  --border: #d6dee6; --text: #17202a; --muted: #5f6c7a;
+  --shadow: 0 4px 20px rgba(20,40,70,0.12);
+  color-scheme: light;
 }
 /* Create Form — segmented steps (Phase 1) */
 .cf-subnav{display:flex;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px;margin:16px 0 18px;flex-wrap:wrap}
-.cf-subnav button{flex:1;min-width:120px;background:transparent;border:0;color:#8b95a1;font:inherit;font-weight:600;padding:10px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.cf-subnav button{flex:1;min-width:120px;background:transparent;border:0;color:var(--muted);font:inherit;font-weight:600;padding:10px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
 .cf-subnav button.cf-on{background:var(--panel-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--border)}
 .cf-stepn{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:11px;background:var(--panel-2);border:1px solid var(--border)}
 .cf-subnav button.cf-on .cf-stepn{background:var(--accent);color:#fff;border-color:transparent}
@@ -40,8 +49,8 @@
 .cf-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px}
 .cf-card + .cf-card{margin-top:14px}
 .cf-stitle{font-size:15px;font-weight:700;margin:0 0 4px;color:var(--text)}
-.cf-sub{color:#8b95a1;font-size:12.5px;margin:0 0 14px;line-height:1.5}
-.cf-lbl{display:block;font-size:12.5px;font-weight:600;color:#8b95a1;margin:0 0 6px}
+.cf-sub{color:var(--muted);font-size:12.5px;margin:0 0 14px;line-height:1.5}
+.cf-lbl{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 6px}
 .cf-inp{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font:inherit}
 .cf-inp:focus{outline:none;border-color:var(--accent)}
 .cf-textarea{min-height:64px;resize:vertical}
@@ -51,7 +60,7 @@
 .cf-row{display:flex;gap:10px;flex-wrap:wrap}
 .cf-g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:640px){.cf-g2{grid-template-columns:1fr}}
-.cf-chip{font-size:11.5px;font-weight:700;color:#8b95a1;background:var(--panel-2);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
+.cf-chip{font-size:11.5px;font-weight:700;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
 .cf-qrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);padding:11px 12px}
 .cf-qrow input[type=text], .cf-qrow input:not([type]), .cf-qrow select, .cf-qrow textarea{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 10px;font:inherit}
 .cf-qrow textarea{width:100%;min-height:44px;resize:vertical}
@@ -62,7 +71,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-s
 
 /* Header */
 header { position:sticky; top:0; z-index:100;
-  background: linear-gradient(135deg, #1a2129 0%, #232c36 100%);
+  background: linear-gradient(135deg, var(--panel) 0%, var(--panel-2) 100%);
   padding: 16px 24px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
   flex-wrap: wrap; gap: 14px;
@@ -1133,16 +1142,16 @@ main { flex: 1; padding: 20px 24px; }
     <button class="btn-settings" id="admin-header-btn" style="display:none;" title="Open the admin portal" onclick="window.location.href='admin.html'">🛡 Admin</button>
     <div class="profile-menu-wrap" style="position:relative;display:inline-block;">
   <button class="btn-settings" id="profile-btn" style="background:linear-gradient(135deg,#4f9eff,#a78bfa);color:white;border:none;width:36px;height:36px;border-radius:50%;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Profile">👤</button>
-  <div id="profile-dropdown" style="display:none;position:absolute;right:0;top:44px;background:#1a2129;border:1px solid #2d3742;border-radius:12px;min-width:200px;box-shadow:0 8px 32px rgba(0,0,0,0.4);z-index:9999;overflow:hidden;">
-    <div style="padding:14px 16px;border-bottom:1px solid #2d3742;">
-      <div style="font-size:12px;color:#8b95a1;">Logged in as</div>
-      <div id="profile-email" style="font-size:13px;color:#e6e9ed;font-weight:600;margin-top:2px;">trainer@arcascend.com</div>
+  <div id="profile-dropdown" style="display:none;position:absolute;right:0;top:44px;background:var(--panel);border:1px solid var(--border);border-radius:12px;min-width:200px;box-shadow:0 8px 32px rgba(0,0,0,0.4);z-index:9999;overflow:hidden;">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);">
+      <div style="font-size:12px;color:var(--muted);">Logged in as</div>
+      <div id="profile-email" style="font-size:13px;color:var(--text);font-weight:600;margin-top:2px;">trainer@arcascend.com</div>
     </div>
-    <div onclick="openProfileModal()" style="padding:12px 16px;cursor:pointer;color:#e6e9ed;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">👤 Profile Settings</div>
-    <div onclick="openSettings()" style="padding:12px 16px;cursor:pointer;color:#e6e9ed;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">⚙️ Settings</div>
-    <div onclick="showAbout()" style="padding:12px 16px;cursor:pointer;color:#e6e9ed;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">ℹ️ About ArcAscend</div>
-    <div style="border-top:1px solid #2d3742;"></div>
-    <div onclick="logOut()" style="padding:12px 16px;cursor:pointer;color:#ef4444;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='#232c36'" onmouseout="this.style.background='transparent'">🚪 Log Out</div>
+    <div onclick="openProfileModal()" style="padding:12px 16px;cursor:pointer;color:var(--text);font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='var(--panel-2)'" onmouseout="this.style.background='transparent'">👤 Profile Settings</div>
+    <div onclick="openSettings()" style="padding:12px 16px;cursor:pointer;color:var(--text);font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='var(--panel-2)'" onmouseout="this.style.background='transparent'">⚙️ Settings</div>
+    <div onclick="showAbout()" style="padding:12px 16px;cursor:pointer;color:var(--text);font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='var(--panel-2)'" onmouseout="this.style.background='transparent'">ℹ️ About ArcAscend</div>
+    <div style="border-top:1px solid var(--border);"></div>
+    <div onclick="logOut()" style="padding:12px 16px;cursor:pointer;color:#ef4444;font-size:13px;display:flex;align-items:center;gap:10px;transition:background 0.15s;" onmouseover="this.style.background='var(--panel-2)'" onmouseout="this.style.background='transparent'">🚪 Log Out</div>
   </div>
 </div>
   </div>
@@ -1186,10 +1195,10 @@ main { flex: 1; padding: 20px 24px; }
 </div>
 <div id="bulk-actions-bar" style="display:none;align-items:center;gap:8px;padding:8px 24px;background:rgba(239,68,68,0.08);border-bottom:1px solid rgba(239,68,68,0.2);">
   <input type="checkbox" id="select-all-cb" style="width:16px;height:16px;cursor:pointer;accent-color:#ef4444;" title="Select All">
-  <label for="select-all-cb" style="font-size:13px;color:#e6e9ed;cursor:pointer;user-select:none;">Select All</label>
-  <span id="selected-count" style="font-size:12px;color:#8b95a1;margin-left:4px;">0 selected</span>
+  <label for="select-all-cb" style="font-size:13px;color:var(--text);cursor:pointer;user-select:none;">Select All</label>
+  <span id="selected-count" style="font-size:12px;color:var(--muted);margin-left:4px;">0 selected</span>
   <button onclick="deleteSelected()" style="margin-left:auto;background:#ef4444;color:white;border:none;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;"> Delete Selected</button>
-  <button onclick="cancelSelection()" style="background:#232c36;color:#e6e9ed;border:1px solid #2d3742;padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;">Cancel</button>
+  <button onclick="cancelSelection()" style="background:var(--panel-2);color:var(--text);border:1px solid var(--border);padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;">Cancel</button>
 </div>
 <div id="home-panel" style="display:none;padding:24px;"></div>
 <div class="filter-panel" id="filter-panel">
@@ -1227,7 +1236,7 @@ main { flex: 1; padding: 20px 24px; }
     <div style="max-width:720px;margin:0 auto;display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1;min-width:200px">
         <h1 style="font-size:22px;font-weight:800;color:#fff;margin:0 0 6px">📋 Your Intake Form</h1>
-        <p style="font-size:14px;color:#8b95a1;margin:0">Share your link, collect leads automatically, and manage your questions — all in one place.</p>
+        <p style="font-size:14px;color:var(--muted);margin:0">Share your link, collect leads automatically, and manage your questions — all in one place.</p>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px;min-width:240px">
         <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#c9d0da">
@@ -1257,7 +1266,7 @@ main { flex: 1; padding: 20px 24px; }
       <div style="font-size:14px;color:var(--text-primary);font-weight:600;flex:1 1 auto">✏️ Editing: <span id="forms-editing-name" style="color:var(--purple)"></span></div>
       <button onclick="formsUpdateForm()" class="cf-btn cf-sm">Update Form</button>
       <button onclick="formsCancelEdit()" class="cf-btn cf-g cf-sm">Cancel</button>
-      <span id="forms-update-status" style="font-size:13px;color:#8b95a1;flex:0 0 auto"></span>
+      <span id="forms-update-status" style="font-size:13px;color:var(--muted);flex:0 0 auto"></span>
     </div>
 
     <div class="cf-wrap">
@@ -1279,9 +1288,9 @@ main { flex: 1; padding: 20px 24px; }
         <div class="cf-row" style="align-items:center">
           <input id="forms-import-code" placeholder="ARC-XXXX-XXXX" class="cf-inp" style="flex:1;min-width:180px;font-family:monospace" />
           <button onclick="formsImportSharedForm(document.getElementById('forms-import-code').value)" class="cf-btn" style="white-space:nowrap">Import</button>
-          <span id="forms-import-status" style="font-size:13px;color:#8b95a1"></span>
+          <span id="forms-import-status" style="font-size:13px;color:var(--muted)"></span>
         </div>
-        <p style="font-size:12px;color:#8b95a1;margin-top:10px;line-height:1.5">Imported forms bring <b>questions only</b> — you set your own Internal Label and get your own link/QR on save.</p>
+        <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5">Imported forms bring <b>questions only</b> — you set your own Internal Label and get your own link/QR on save.</p>
       </div>
 
       <!-- Write questions with AI -->
@@ -1321,8 +1330,8 @@ main { flex: 1; padding: 20px 24px; }
         </div>
         <div class="cf-g2">
           <div><label class="cf-lbl">Gym / Business Name</label><input id="forms-gym-name" placeholder="e.g. Fit Club" class="cf-inp" /></div>
-          <div><label class="cf-lbl">Form Title <span style="color:#8b95a1;font-weight:400">(clients see this on the form)</span></label><input id="forms-form-title" placeholder="e.g. Client Intake Form" class="cf-inp" /></div>
-          <div><label class="cf-lbl">Internal Label <span style="color:#8b95a1;font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" class="cf-inp" /><div id="forms-label-lock-note" style="display:none;font-size:11px;color:#8b95a1;margin-top:5px">🔒 Label can't be changed after creation.</div></div>
+          <div><label class="cf-lbl">Form Title <span style="color:var(--muted);font-weight:400">(clients see this on the form)</span></label><input id="forms-form-title" placeholder="e.g. Client Intake Form" class="cf-inp" /></div>
+          <div><label class="cf-lbl">Internal Label <span style="color:var(--muted);font-weight:400">(only you see this — names the form &amp; its bucket)</span></label><input id="forms-internal-label" placeholder="e.g. Online Text Marketing Form" class="cf-inp" /><div id="forms-label-lock-note" style="display:none;font-size:11px;color:var(--muted);margin-top:5px">🔒 Label can't be changed after creation.</div></div>
         </div>
         <div style="margin-top:14px"><label class="cf-lbl">Form Description</label><textarea id="forms-form-desc" rows="2" placeholder="e.g. Fill out the form and we will be in touch shortly." class="cf-inp cf-textarea"></textarea></div>
         <div style="margin-top:14px">
@@ -1330,7 +1339,7 @@ main { flex: 1; padding: 20px 24px; }
           <input type="hidden" id="forms-logo-url" />
           <div id="forms-drop-zone" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s;background:var(--panel-2)">
             <div style="font-size:13px;color:var(--text)">Drag & drop an image here, or click to browse</div>
-            <div style="font-size:11px;color:#8b95a1;margin-top:4px">Recommended: wide image, at least 1200x300px</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Recommended: wide image, at least 1200x300px</div>
           </div>
           <input type="file" id="forms-file-input" accept="image/*" style="display:none" />
           <div id="forms-logo-preview" style="margin-top:8px;display:none">
@@ -1344,13 +1353,13 @@ main { flex: 1; padding: 20px 24px; }
             <option value="guided">Guided — welcome screen, then one question at a time</option>
             <option value="classic">Classic — all questions on one page</option>
           </select>
-          <div style="font-size:11px;color:#8b95a1;margin-top:5px">Guided shows a branded welcome, groups name/phone/email, then asks the rest one at a time.</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:5px">Guided shows a branded welcome, groups name/phone/email, then asks the rest one at a time.</div>
         </div>
         <div id="forms-default-actions" style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button onclick="formsSaveSettings()" class="cf-btn">Save Settings</button>
           <button onclick="formsSaveAs()" class="cf-btn cf-g">Save as New Form</button>
-          <span id="forms-save-status" style="font-size:13px;color:#8b95a1"></span>
-          <span id="forms-saveas-status" style="font-size:13px;color:#8b95a1"></span>
+          <span id="forms-save-status" style="font-size:13px;color:var(--muted)"></span>
+          <span id="forms-saveas-status" style="font-size:13px;color:var(--muted)"></span>
         </div>
       </div>
 
@@ -1379,7 +1388,7 @@ main { flex: 1; padding: 20px 24px; }
           </div>
         </div>
         <div id="forms-questions-list" style="display:flex;flex-direction:column;gap:10px"></div>
-        <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button onclick="formsResetQuestions()" class="cf-btn cf-g cf-sm">Reset to Defaults</button><button id="forms-save-questions-btn" onclick="formsSaveAs()" class="cf-btn cf-sm">Save as New Form</button><span id="forms-q-save-status" style="font-size:12px;color:#8b95a1"></span></div>
+        <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button onclick="formsResetQuestions()" class="cf-btn cf-g cf-sm">Reset to Defaults</button><button id="forms-save-questions-btn" onclick="formsSaveAs()" class="cf-btn cf-sm">Save as New Form</button><span id="forms-q-save-status" style="font-size:12px;color:var(--muted)"></span></div>
       </div>
 
     </div><!-- /cf-step 2 -->
@@ -1434,6 +1443,13 @@ main { flex: 1; padding: 20px 24px; }
       <button class="modal-close" onclick="closeSettings()">✕</button>
     </div>
     <div class="modal-body">
+      <div class="section-title">🎨 Appearance</div>
+      <div class="help-box">Switch between light and dark mode. Your choice is saved on this device.</div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <button class="btn" id="theme-light-btn" onclick="setTheme('light')">☀️ Light</button>
+        <button class="btn" id="theme-dark-btn" onclick="setTheme('dark')">🌙 Dark</button>
+      </div>
+
       <div class="section-title">💰 Monthly Goal</div>
       <div class="help-box">Set your target monthly revenue. Progress shows in the top banner.</div>
       <div class="form-field">
@@ -7928,9 +7944,27 @@ function openAdd() {
 function closeAdd() { $("add-modal").classList.remove("show"); }
 function openSettings() {
   $("monthly-goal").value = monthlyGoal || "";
+  themeButtons();
   $("settings-modal").classList.add("show");
 }
 function closeSettings() { $("settings-modal").classList.remove("show"); }
+// Light/dark theme: swaps CSS vars via html[data-theme], persisted per device.
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('arcascend_theme', t); } catch(_){}
+  themeButtons();
+}
+function themeButtons() {
+  var t = document.documentElement.dataset.theme || 'light';
+  var lb = $("theme-light-btn"), db = $("theme-dark-btn");
+  if (!lb || !db) return;
+  lb.style.background = (t === 'light') ? 'var(--accent)' : 'var(--panel-2)';
+  lb.style.color = (t === 'light') ? '#fff' : 'var(--text)';
+  lb.style.border = '1px solid ' + ((t === 'light') ? 'var(--accent)' : 'var(--border)');
+  db.style.background = (t === 'dark') ? 'var(--accent)' : 'var(--panel-2)';
+  db.style.color = (t === 'dark') ? '#fff' : 'var(--text)';
+  db.style.border = '1px solid ' + ((t === 'dark') ? 'var(--accent)' : 'var(--border)');
+}
 
 // ==========================================================
 // PROFILE SETTINGS MODAL (profile fields / account / organization)
@@ -9257,7 +9291,7 @@ async function renderFormsLibrary() {
         '<div style="font-size:15px;font-weight:700;color:var(--text-primary)">' + escapeHtml(defaultTitle) + '</div>' +
         '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);background:rgba(79,158,255,0.14);border:1px solid rgba(79,158,255,0.4);border-radius:999px;padding:2px 8px">Default</span>' +
       '</div>' +
-      '<div style="font-size:12px;color:#8b95a1;margin-top:2px">Your main form</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-top:2px">Your main form</div>' +
     '</div>' +
     '<input readonly value="' + escapeAttr(defaultLink) + '" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text-primary);font-size:12px;font-family:monospace;box-sizing:border-box" />' +
     '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
@@ -9288,7 +9322,7 @@ async function renderFormsLibrary() {
     '</div>';
   }).join("");
 
-  var savedNote = forms.length ? "" : '<div style="grid-column:1/-1;padding:6px 2px;color:#8b95a1;font-size:13px">No saved forms yet. Use “Save as New Form” on the Create Form tab to add more.</div>';
+  var savedNote = forms.length ? "" : '<div style="grid-column:1/-1;padding:6px 2px;color:var(--muted);font-size:13px">No saved forms yet. Use “Save as New Form” on the Create Form tab to add more.</div>';
 
   listEl.innerHTML = '<div class="lead-grid">' + defaultCard + savedCards + savedNote + '</div>';
 
