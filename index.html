@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script>/* Apply saved theme before first paint (default: light) */try{document.documentElement.dataset.theme=localStorage.getItem('arcascend_theme')||'light';}catch(_){document.documentElement.dataset.theme='light';}</script>
+<script>/* Apply saved theme before first paint (default: dark) */try{document.documentElement.dataset.theme=localStorage.getItem('arcascend_theme')||'dark';}catch(_){document.documentElement.dataset.theme='dark';}</script>
 <style>
 :root {
   --bg: #0f1419; --panel: #1a2129; --panel-2: #232c36; --panel-3: #3a4653;
@@ -7955,7 +7955,7 @@ function setTheme(t) {
   themeButtons();
 }
 function themeButtons() {
-  var t = document.documentElement.dataset.theme || 'light';
+  var t = document.documentElement.dataset.theme || 'dark';
   var lb = $("theme-light-btn"), db = $("theme-dark-btn");
   if (!lb || !db) return;
   lb.style.background = (t === 'light') ? 'var(--accent)' : 'var(--panel-2)';
