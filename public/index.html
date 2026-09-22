@@ -5802,16 +5802,38 @@ function renderDynamicProfile(L) {
     return '<div class="form-field"'+(full?' style="grid-column:1/-1;"':'')+'><label>'+escapeHtml(labelFor(cid))+'</label>'+input+'</div>';
   }
 
+  // Intake-form leads render ONLY their form's questions (in the form's order,
+  // answered ones only) — no empty stock scaffold slots, no duplicate name field.
+  // Detection: submitted by intake.html (data.source === 'Intake Form', or the
+  // newer __core marker). CSV imports also carry __labels (custom columns only),
+  // so source alone — not __labels — decides. Manual/imported leads keep the
+  // stock scaffold below, unchanged.
+  var isFormLead = (src.__core && typeof src.__core === 'object') ||
+                   (src.source === 'Intake Form' && Object.keys(leadLabels).length > 0);
+
   var html = '';
-  html += '<div class="dyn-profile-hint">Click any field to edit -- auto-saves on blur. Labels sync from your Create Form questions.</div>';
+  html += '<div class="dyn-profile-hint">' + (isFormLead
+    ? 'Showing this client’s intake form answers. Click any field to edit -- auto-saves on blur.'
+    : 'Click any field to edit -- auto-saves on blur. Labels sync from your Create Form questions.') + '</div>';
   html += '<div class="field-grid">';
-  // 1) Standard scaffold fields, dedup'd across the two naming schemes (q_goal == goal).
-  PROFILE_ORDER.forEach(function(cid){
-    var friendly = INTAKE_TO_LEAD_FIELD[cid];
-    var val = firstNonEmpty(src[cid], friendly ? src[friendly] : undefined);
-    html += fieldHtml(cid, val);
-  });
-  // 2) Any additional answers the lead actually has (e.g. custom shared-form questions).
+  if (isFormLead) {
+    // 1) The form's own questions, in the order the client saw them; skip unanswered.
+    Object.keys(leadLabels).forEach(function(cid){
+      var friendly = INTAKE_TO_LEAD_FIELD[cid];
+      var val = firstNonEmpty(src[cid], friendly ? src[friendly] : undefined);
+      if (String(val) === '') { rendered[cid] = true; return; }   // answered only — no empty slots
+      html += fieldHtml(cid, val);
+    });
+  } else {
+    // 1) Standard scaffold fields, dedup'd across the two naming schemes (q_goal == goal).
+    PROFILE_ORDER.forEach(function(cid){
+      var friendly = INTAKE_TO_LEAD_FIELD[cid];
+      var val = firstNonEmpty(src[cid], friendly ? src[friendly] : undefined);
+      html += fieldHtml(cid, val);
+    });
+  }
+  // 2) Any additional answers the lead actually has (e.g. custom shared-form questions,
+  //    or answers merged in later from another form/import).
   Object.keys(src).forEach(function(k){
     if (k.indexOf('__') === 0) return;   // internal keys (e.g. __labels) are never fields
     if (k.indexOf('q_') !== 0 || rendered[k]) return;
@@ -5865,6 +5887,17 @@ function wireDynamicProfile(L) {
         L[qid] = newVal;
         var mapped = INTAKE_TO_LEAD_FIELD[qid];
         if (mapped) L[mapped] = newVal;
+        // Custom-id forms: __core (written by intake.html) says which question ids
+        // hold name/phone/email/goal — keep the top-level lead fields in sync so
+        // search/filters/kanban stay fresh.
+        var coreSrc = profileAnswers(L);
+        var core = (coreSrc.__core && typeof coreSrc.__core === 'object') ? coreSrc.__core : null;
+        if (core) {
+          if (qid === core.name && newVal.trim()) L.name = newVal.trim();
+          if (qid === core.phone) L.phone = newVal;
+          if (qid === core.email) L.email = newVal;
+          if (qid === core.goal) L.goal = newVal;
+        }
         saveState();
         // re-render lists so name/phone/etc. update outside the modal
         if (typeof renderAll === 'function') renderAll();

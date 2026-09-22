@@ -268,7 +268,10 @@ function submitLead(fields) {
     submittedAt: new Date().toISOString(),
     tasks: [],
     billing: { active: false, sessions: 0, rate: 0, package: '', paid: false },
-    __labels: __labels
+    __labels: __labels,
+    // Which question ids hold the core fields on THIS form — lets the app sync
+    // profile edits back to the top-level lead fields even with custom ids.
+    __core: { name: CORE_MAP.name || '', phone: CORE_MAP.phone || '', email: CORE_MAP.email || '', goal: CORE_MAP.goal || '' }
   });
   var lead = {
     user_id: TRAINER_ID,
