@@ -186,8 +186,55 @@ function renderFields() {
   }).join('');
 }
 
+// ===== Core-field resolution =====
+// Forms built in the app can carry custom/imported question ids (q_custom_*,
+// q_<timestamp>_<i>) instead of the standard q_name/q_phone/q_email/q_goal.
+// The old code read fields['q_name'] by hardcoded id, so any form without that
+// exact id silently failed the name guard and never submitted. Resolve which
+// question holds each core field: exact id → input type → label match → fallback.
+var CORE_MAP = {};   // { name: qid, phone: qid, email: qid, goal: qid }
+function resolveCoreFields() {
+  var qs = loadedQuestions || [];
+  var used = {};
+  function grab(pred) {
+    for (var i = 0; i < qs.length; i++) {
+      var q = qs[i];
+      if (!q || !q.id || used[q.id]) continue;
+      if (pred(q)) { used[q.id] = 1; return q.id; }
+    }
+    return null;
+  }
+  function lbl(q) { return String(q.label || '').toLowerCase(); }
+  var m = {};
+  // 1) Standard ids always win.
+  m.name  = grab(function(q){ return q.id === 'q_name'; });
+  m.phone = grab(function(q){ return q.id === 'q_phone'; });
+  m.email = grab(function(q){ return q.id === 'q_email'; });
+  m.goal  = grab(function(q){ return q.id === 'q_goal'; });
+  // 2) Unambiguous input types.
+  if (!m.email) m.email = grab(function(q){ return q.type === 'email'; });
+  if (!m.phone) m.phone = grab(function(q){ return q.type === 'tel'; });
+  // 3) Label matching.
+  if (!m.name)  m.name  = grab(function(q){ return (q.type === 'text' || q.type === 'textarea') && /\bname\b/.test(lbl(q)) && !/gym|business|company|brand|nick|user ?name/.test(lbl(q)); });
+  if (!m.phone) m.phone = grab(function(q){ return /phone|mobile|cell/.test(lbl(q)); });
+  if (!m.email) m.email = grab(function(q){ return /e-?mail/.test(lbl(q)); });
+  if (!m.goal)  m.goal  = grab(function(q){ return /goal|objective/.test(lbl(q)); });
+  // 4) Name last resort: first required text question, else first text question
+  //    (a form with no name-like question at all still needs SOMETHING for the
+  //    server's block_nameless_intake — the first short-text answer is the best bet).
+  if (!m.name) m.name = grab(function(q){ return q.type === 'text' && q.required; });
+  if (!m.name) m.name = grab(function(q){ return q.type === 'text'; });
+  CORE_MAP = m;
+}
+function coreVal(fields, key) {
+  var id = CORE_MAP[key];
+  var v = id != null && fields[id] != null ? fields[id] : '';
+  return String(v);
+}
+
 // Dispatch: guided one-at-a-time flow, or the classic all-at-once form (unchanged).
 function renderForm() {
+  resolveCoreFields();
   if (loadedMode === 'guided') renderGuided();
   else renderFields();
 }
@@ -201,12 +248,13 @@ function submitLead(fields) {
   var hp = document.getElementById('hp-website');
   if (hp && hp.value) { if (window.console && console.log) console.log('intake: honeypot tripped — submission dropped'); return Promise.resolve({ dropped: true }); }
   // ---- Spam guard 2: require a non-empty name (server block_nameless_intake backstops replays) ----
-  if (!((fields['q_name'] || '').trim())) { return Promise.resolve({ error: 'name' }); }
+  // Read core fields through CORE_MAP so forms with custom question ids still map.
+  var fullName = coreVal(fields, 'name').trim();
+  if (!fullName) { return Promise.resolve({ error: 'name' }); }
 
-  var fullName = fields['q_name'] || '';
-  var phoneVal = fields['q_phone'] || '';
-  var emailVal = fields['q_email'] || '';
-  var goalVal = fields['q_goal'] || '';
+  var phoneVal = coreVal(fields, 'phone');
+  var emailVal = coreVal(fields, 'email');
+  var goalVal = coreVal(fields, 'goal');
   // Snapshot this form's question labels (id -> label AS SHOWN ON THIS FORM).
   var __labels = {};
   loadedQuestions.forEach(function(q){ if (q && q.id) __labels[q.id] = q.label || ''; });
@@ -269,7 +317,7 @@ function submitForm() {
     if (!r || r.dropped) return;   // honeypot: silent
     if (r.error === 'name') {
       if (errEl) { errEl.textContent = 'Please enter your name to submit.'; errEl.style.display = 'block'; }
-      var nameEl = document.getElementById('q_name'); if (nameEl) nameEl.focus();
+      var nameEl = document.getElementById(CORE_MAP.name || 'q_name'); if (nameEl) nameEl.focus();
       btn.disabled = false; btn.textContent = 'Submit & Get Started';
       return;
     }
@@ -283,11 +331,16 @@ function submitForm() {
 }
 
 // ===== GUIDED (welcome → grouped contact → one question at a time → submit) =====
-var GUIDED_CONTACT_IDS = ['q_name','q_phone','q_email'];
+// Contact step ids come from CORE_MAP so custom-id forms group name/phone/email too.
+function guidedContactIds() {
+  return [CORE_MAP.name, CORE_MAP.phone, CORE_MAP.email].filter(function(id){ return !!id; });
+}
+function guidedIsNameQ(q) { return !!q && q.id === CORE_MAP.name; }
 function guidedBuildSteps() {
-  var contactQs = loadedQuestions.filter(function(q){ return GUIDED_CONTACT_IDS.indexOf(q.id) >= 0; })
-    .sort(function(a,b){ return GUIDED_CONTACT_IDS.indexOf(a.id) - GUIDED_CONTACT_IDS.indexOf(b.id); });
-  var restQs = loadedQuestions.filter(function(q){ return GUIDED_CONTACT_IDS.indexOf(q.id) < 0; });
+  var cids = guidedContactIds();
+  var contactQs = loadedQuestions.filter(function(q){ return cids.indexOf(q.id) >= 0; })
+    .sort(function(a,b){ return cids.indexOf(a.id) - cids.indexOf(b.id); });
+  var restQs = loadedQuestions.filter(function(q){ return cids.indexOf(q.id) < 0; });
   var steps = [{ type:'welcome' }];
   if (contactQs.length) steps.push({ type:'contact', qs:contactQs });
   restQs.forEach(function(q){ steps.push({ type:'question', q:q }); });
@@ -330,7 +383,7 @@ function guidedCollect() {
 function guidedStepValid() {
   var s = gState.steps[gState.step];
   if (s.type === 'welcome') return true;
-  if (s.type === 'contact') return s.qs.every(function(q){ return (q.required || q.id === 'q_name') ? (gState.answers[q.id] || '').trim() !== '' : true; });
+  if (s.type === 'contact') return s.qs.every(function(q){ return (q.required || guidedIsNameQ(q)) ? (gState.answers[q.id] || '').trim() !== '' : true; });
   if (s.type === 'question') return s.q.required ? (gState.answers[s.q.id] || '').trim() !== '' : true;
   return true;
 }
@@ -354,7 +407,7 @@ function renderGuidedStep() {
   } else if (s.type === 'contact') {
     html = '<div class="g-card">' + guidedProgress() +
       '<h2 class="g-q">Your contact details</h2>' +
-      s.qs.map(function(q){ return '<div class="field"><label>' + esc(q.label) + ((q.required || q.id === 'q_name') ? '<span class="req">*</span>' : '') + '</label>' + guidedInput(q) + '</div>'; }).join('') +
+      s.qs.map(function(q){ return '<div class="field"><label>' + esc(q.label) + ((q.required || guidedIsNameQ(q)) ? '<span class="req">*</span>' : '') + '</label>' + guidedInput(q) + '</div>'; }).join('') +
       '<div class="g-err" id="g-err"></div>' +
       '<div class="g-nav"><button class="g-back" type="button">← Back</button><button class="submit-btn g-ok" type="button">OK</button></div>' +
     '</div>';
@@ -416,6 +469,21 @@ function guidedBack() {
   guidedCollect();
   if (gState.step > 0) { gState.step--; renderGuidedStep(); }
 }
+// Always-visible error: uses the step's #g-err if present, otherwise injects one
+// into the current card — so no failure is ever silent (the old code could land on
+// the welcome card, which has no #g-err, and the client saw nothing).
+function guidedShowErr(msg) {
+  var e = document.getElementById('g-err');
+  if (!e) {
+    e = document.createElement('div');
+    e.className = 'g-err';
+    e.id = 'g-err';
+    var card = document.querySelector('#guided-wrap .g-card') || document.getElementById('guided-wrap');
+    if (card) card.appendChild(e);
+  }
+  e.textContent = msg;
+  e.style.display = 'block';
+}
 function guidedSubmit() {
   guidedCollect();
   // Build the SAME fields map classic produces (every question id → its answer string).
@@ -426,18 +494,20 @@ function guidedSubmit() {
   submitLead(fields).then(function(r){
     if (!r || r.dropped) return;   // honeypot: silent
     if (r.error === 'name') {
-      // Jump back to the contact step so the client can add their name.
+      // Jump back to the step that holds the name question — contact step first,
+      // then the name question's own step; NEVER silently reset to the welcome card.
       var ci = gState.steps.findIndex(function(st){ return st.type === 'contact'; });
-      gState.step = ci >= 0 ? ci : 0;
-      renderGuidedStep();
-      var e = document.getElementById('g-err'); if (e) { e.textContent = 'Please enter your name to submit.'; e.style.display = 'block'; }
+      if (ci < 0) ci = gState.steps.findIndex(function(st){ return st.type === 'question' && st.q && st.q.id === CORE_MAP.name; });
+      if (ci >= 0) { gState.step = ci; renderGuidedStep(); }
+      else if (okBtn) { okBtn.disabled = false; okBtn.textContent = 'Submit'; }
+      guidedShowErr('Please enter your name to submit.');
       return;
     }
     if (r.ok) {
       document.getElementById('guided-wrap').innerHTML = '<div class="g-card success"><div class="success-icon">✅</div><h2>Thanks, ' + esc(r.firstName) + '!</h2><p>Your information has been received. We’ll be in touch with you soon.</p></div>';
     } else {
       if (okBtn) { okBtn.disabled = false; okBtn.textContent = 'Submit'; }
-      var e2 = document.getElementById('g-err'); if (e2) { e2.textContent = 'Something went wrong. Please try again.'; e2.style.display = 'block'; }
+      guidedShowErr('Something went wrong. Please try again.');
     }
   });
 }
