@@ -2547,16 +2547,55 @@ async function verifySession() {
 // New accounts never see it — they're auto-acked on first load.
 // ==========================================================
 var BILLING_NOTICE_CUTOFF = '2026-09-16T00:00:00Z';   // the update's ship date
+// Account-level acknowledgements (trainer_settings.tab_prefs.notice_acks).
+// localStorage alone was NOT enough: logging out wipes every arcascend* key
+// (clearSessionAndLogin), so the notice re-appeared on every sign-in. The cloud
+// copy survives logout and other devices; localStorage is just a fast path.
+var __cloudNoticeAcks = null;
+function saveNoticeAckToCloud(tp) {
+  // Upsert ONLY the tab_prefs column (merge-duplicates leaves other columns alone),
+  // carrying over hidden_tabs/tab_order from the fetched copy so nothing is lost.
+  var token = localStorage.getItem('arcascend_token');
+  if (!token || !currentUser || !currentUser.id) return;
+  var merged = Object.assign({}, (tp && typeof tp === 'object') ? tp : {}, { notice_acks: __cloudNoticeAcks || {} });
+  fetch(SUPABASE_URL + '/rest/v1/trainer_settings?on_conflict=user_id', {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    },
+    body: JSON.stringify({ user_id: currentUser.id, tab_prefs: merged })
+  }).catch(function(e){ console.warn('saveNoticeAckToCloud failed:', e); });
+}
 function maybeShowBillingResetNotice() {
   try {
     if (!currentUser || !currentUser.id) return;
     var ackKey = 'arcascend_billing_reset_ack_' + currentUser.id;
-    if (localStorage.getItem(ackKey)) return;                        // already acknowledged
+    if (localStorage.getItem(ackKey)) return;                        // already acknowledged (fast path)
     var created = localStorage.getItem('arcascend_account_created');
     var isNewUser = created
       ? (new Date(created).getTime() >= new Date(BILLING_NOTICE_CUTOFF).getTime())
       : !(window.LEADS && LEADS.length);                             // fallback: empty account = new signup
     if (isNewUser) { localStorage.setItem(ackKey, 'skipped-new-user'); return; }
+    if (document.getElementById('billing-reset-notice')) return;     // never double-mount
+
+    // Check the ACCOUNT-level ack before showing (localStorage is wiped on logout).
+    var token = localStorage.getItem('arcascend_token');
+    fetch(SUPABASE_URL + '/rest/v1/trainer_settings?user_id=eq.' + currentUser.id + '&select=tab_prefs', {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + token }
+    }).then(function(r){ return r.ok ? r.json() : []; }).then(function(rows){
+      var tp = (rows && rows[0] && rows[0].tab_prefs) || {};
+      var acks = (tp.notice_acks && typeof tp.notice_acks === 'object') ? tp.notice_acks : {};
+      __cloudNoticeAcks = acks;
+      if (acks.billing_reset) { localStorage.setItem(ackKey, acks.billing_reset); return; }   // acked on this account
+      showBillingResetNotice(ackKey, tp);
+    }).catch(function(){ showBillingResetNotice(ackKey, null); });   // cloud unreachable → still show (ack saves locally)
+  } catch(e) {}
+}
+function showBillingResetNotice(ackKey, tp) {
+  try {
     if (document.getElementById('billing-reset-notice')) return;     // never double-mount
 
     var wrap = document.createElement('div');
@@ -2591,7 +2630,11 @@ function maybeShowBillingResetNotice() {
       [goBtn, laterBtn].forEach(function(b){ b.disabled = !on; b.style.opacity = on ? '1' : '0.5'; });
     });
     function ackAndClose() {
-      localStorage.setItem(ackKey, new Date().toISOString());
+      var when = new Date().toISOString();
+      localStorage.setItem(ackKey, when);
+      // Persist to the ACCOUNT so it never shows again — any device, any login.
+      __cloudNoticeAcks = Object.assign({}, __cloudNoticeAcks || {}, { billing_reset: when });
+      if (tp !== null) saveNoticeAckToCloud(tp);   // tp === null means the pre-check fetch failed; don't risk clobbering
       wrap.remove();
     }
     laterBtn.addEventListener('click', function(){ if (check.checked) ackAndClose(); });
@@ -4292,6 +4335,9 @@ function saveTabPrefsToCloud() {
       hidden_tabs: hiddenTabs || [],
       tab_order: Array.isArray(tabOrder) ? tabOrder : null
     };
+    // tab_prefs is written wholesale — carry the account-level notice acks along
+    // so saving tab prefs never erases them.
+    if (__cloudNoticeAcks && Object.keys(__cloudNoticeAcks).length) payload.notice_acks = __cloudNoticeAcks;
     fetch(SUPABASE_URL + '/rest/v1/trainer_settings?user_id=eq.' + uid, {
       method: 'PATCH',
       headers: {
@@ -4314,6 +4360,11 @@ function loadTabPrefsFromCloud() {
       headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + token }
     }).then(function(r){ return r.ok ? r.json() : []; }).then(function(rows){
       var prefs = (rows && rows[0] && rows[0].tab_prefs) || null;
+      // Stash account-level notice acks (and mirror to localStorage as the fast path).
+      if (prefs && prefs.notice_acks && typeof prefs.notice_acks === 'object') {
+        __cloudNoticeAcks = prefs.notice_acks;
+        if (prefs.notice_acks.billing_reset) localStorage.setItem('arcascend_billing_reset_ack_' + uid, prefs.notice_acks.billing_reset);
+      }
       if (!prefs) { resolve(false); return; }
       if (Array.isArray(prefs.hidden_tabs)) {
         hiddenTabs = prefs.hidden_tabs;
