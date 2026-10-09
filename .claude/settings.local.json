@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -Ei \"\\\\.\\(html|js\\)$\")",
+      "Bash(git --no-pager diff -- public/index.html)",
+      "Bash(python3 -m http.server 8765)",
+      "Bash(echo \"server started pid $!\")",
+      "Bash(curl -s -o /dev/null -w \"check: HTTP %{http_code}\\\\n\" http://localhost:8765/index.html)"
+    ]
+  }
+}

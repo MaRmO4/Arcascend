@@ -1927,6 +1927,26 @@ function purchaseDateToISO(ymd) {
 function sessionsPurchasedTotal(line) { return ensureLinePurchases(line).reduce(function(s, p){ return s + (parseInt(p.sessions, 10) || 0); }, 0); }
 function sessionsRemaining(line) { return sessionsPurchasedTotal(line) - (typeof countCompletedForLine === 'function' ? countCompletedForLine(line.id) : 0); }
 function revenuePaid(line) { return ensureLinePurchases(line).reduce(function(s, p){ return s + (p.paid !== false ? (Number(p.amount) || 0) : 0); }, 0); }
+// ---- PACKS: every purchase with sessions > 0 is its own dated pack. Completed sessions
+// fill packs FIFO (oldest purchase first), so only one pack is ever partially used.
+// Returns { packs: [{ p, total, used, left }], overflow } — overflow = completed sessions
+// beyond everything purchased (the client "owes" that many).
+function linePacks(line) {
+  var packs = ensureLinePurchases(line).filter(function(p){ return (parseInt(p.sessions, 10) || 0) > 0; })
+    .slice().sort(function(a, b){
+      var ta = purchaseDateObj(a) ? purchaseDateObj(a).getTime() : 0;
+      var tb = purchaseDateObj(b) ? purchaseDateObj(b).getTime() : 0;
+      return ta - tb || String(a.id).localeCompare(String(b.id));
+    });
+  var pool = (typeof countCompletedForLine === 'function') ? countCompletedForLine(line.id) : 0;
+  var out = packs.map(function(p){
+    var total = parseInt(p.sessions, 10) || 0;
+    var used = Math.min(pool, total);
+    pool -= used;
+    return { p: p, total: total, used: used, left: total - used };
+  });
+  return { packs: out, overflow: pool };
+}
 function clientPaidTotal(L) { return clientLines(L).reduce(function(s, ln){ return s + revenuePaid(ln); }, 0); }
 function clientPaidForMonth(L, mk) {
   return clientLines(L).reduce(function(s, ln){
@@ -2804,7 +2824,7 @@ async function loadSessions() {
       window.SESSIONS = await res.json();
       // One-time data repair: heal clients whose purchases + sessions got split across
       // duplicate lines of the same package (fire-and-forget; re-renders when done).
-      Promise.resolve(typeof mergeDuplicateServiceLines === 'function' ? mergeDuplicateServiceLines() : null).then(function(){ if (typeof restoreLegacyConfirmations === 'function') restoreLegacyConfirmations(); });
+      Promise.resolve(typeof mergeDuplicateServiceLines === 'function' ? mergeDuplicateServiceLines() : null).then(function(){ if (typeof restoreLegacyConfirmations === 'function') restoreLegacyConfirmations(); if (typeof repairPackLedgers === 'function') repairPackLedgers(); });
     }
     else if (!window.SESSIONS) window.SESSIONS = [];
   } catch(e) { if (!window.SESSIONS) window.SESSIONS = []; }
@@ -2836,6 +2856,43 @@ async function logSession(L, line, whenAt) {
     if (!window.SESSIONS) window.SESSIONS = [];
     if (row) window.SESSIONS.unshift(row);
     return row;
+  } catch(e) { return null; }
+}
+// Bulk-log N completed sessions in ONE insert (the per-pack "Mark rest used" catch-up).
+// Timestamps step back one minute each so ordering stays stable in the Sessions tab.
+async function logSessionsBulk(L, line, count) {
+  count = Math.max(0, parseInt(count, 10) || 0);
+  if (!count) return [];
+  var token = localStorage.getItem('arcascend_token');
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : localStorage.getItem('arcascend_user_id');
+  var now = Date.now();
+  var rows = [];
+  for (var i = 0; i < count; i++) {
+    var whenAt = new Date(now - i * 60000).toISOString();
+    rows.push({
+      user_id: uid,
+      client_id: L.id || null,
+      client_name: L.name || '',
+      service_line_id: line.id,
+      service_type: line.type || '',
+      when_at: whenAt,
+      status: 'completed',
+      pay_source: (line.billingStyle === 'package' ? 'package' : line.billingStyle),
+      charge_amount: line.rate || 0,
+      completed_at: whenAt
+    });
+  }
+  try {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/sessions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify(rows)
+    });
+    if (!res.ok) return null;
+    var got = await res.json();
+    if (!window.SESSIONS) window.SESSIONS = [];
+    (Array.isArray(got) ? got : [got]).forEach(function(r){ if (r) window.SESSIONS.unshift(r); });
+    return got;
   } catch(e) { return null; }
 }
 async function setSessionStatus(id, status) {
@@ -3075,6 +3132,71 @@ function restoreLegacyConfirmations() {
     saveState();
     if (typeof refreshView === 'function') refreshView();
     console.log('[ArcAscend] legacy revenue restore: ' + restoredCount + ' month-record(s), $' + restoredTotal.toLocaleString() + ' total');
+  }
+}
+
+// ==========================================================
+// ONE-TIME PACK-LEDGER REPAIR — clients migrated before the ledger (or restored as
+// revenue-only records with sessions:0) have a plan pack size on the line but ZERO
+// sessions in the purchase ledger, so Remaining ran off 0 and went negative/zero.
+// For each active package line where the ledger has NO session purchases but the
+// plan has a pack size:
+//   • attach the pack size to the OLDEST revenue-only purchase (keeps its real $ + date)
+//   • or, with an empty ledger, seed one $0 record (dated at the line's earliest
+//     completed session so the pack predates its sessions; $0 → no revenue impact)
+// Lines that already have real session purchases are NEVER touched. Stamped
+// billing.packLedgerRepaired per lead → exactly once per account, across devices,
+// and never re-runs after the user edits/deletes a repaired record.
+// ==========================================================
+function repairPackLedgers() {
+  if (window.__packRepairRan) return;
+  if (!Array.isArray(window.LEADS || LEADS) || !LEADS.length || !Array.isArray(window.SESSIONS)) return;
+  window.__packRepairRan = true;
+  var changed = false, repaired = 0;
+  LEADS.forEach(function(L){
+    var b = L.billing;
+    if (!b || b.packLedgerRepaired) return;
+    clientLines(L).forEach(function(ln){
+      if (!ln || (ln.billingStyle || 'package') !== 'package') return;
+      var plan = parseInt(ln.sessions, 10) || 0;
+      if (plan <= 0) return;
+      if (sessionsPurchasedTotal(ln) > 0) return;   // real session purchases exist — hands off
+      var purch = ensureLinePurchases(ln);
+      var target = purch.slice().sort(function(a, c){
+        var ta = purchaseDateObj(a) ? purchaseDateObj(a).getTime() : 0;
+        var tc = purchaseDateObj(c) ? purchaseDateObj(c).getTime() : 0;
+        return ta - tc;
+      })[0];
+      if (target) {
+        target.sessions = plan;
+        target.note = ((target.note || '') + ' · pack size repaired from plan (' + plan + ')').replace(/^ · /, '');
+      } else {
+        var when = null;
+        (window.SESSIONS || []).forEach(function(s){
+          if (s.service_line_id !== ln.id || s.status !== 'completed') return;
+          var d = new Date(s.when_at || s.completed_at || 0);
+          if (!isNaN(d.getTime()) && (!when || d < when)) when = d;
+        });
+        purch.push({
+          id: (typeof uuid === 'function' ? uuid() : 'pur_' + Math.random().toString(36).slice(2)),
+          date: (when || new Date()).toISOString(),
+          sessions: plan,
+          amount: 0,
+          service_type: ln.type || '',
+          paid: true, method: 'manual',
+          note: 'Repaired: seeded ' + plan + '-session pack from plan'
+        });
+      }
+      repaired++;
+      console.log('[ArcAscend] pack ledger repaired for ' + (L.name || '(no name)') + ' — ' + plan + ' sessions');
+    });
+    b.packLedgerRepaired = true;   // stamp: exactly-once per account
+    changed = true;
+  });
+  if (changed) {
+    saveState();
+    if (typeof refreshView === 'function') refreshView();
+    if (repaired) console.log('[ArcAscend] pack ledger repair: ' + repaired + ' line(s) healed');
   }
 }
 
@@ -5179,17 +5301,40 @@ function billingPanelHTML(L){
     kpi('Rate', fmt$(rate) + (isPkg ? ' <span style="font-size:12px;font-weight:500;color:var(--muted);">/session</span>' : ''), '') +
   '</div>';
 
-  // Progress bar + renew/used-up warnings (package lines only).
+  // PACKS — each purchase with sessions is its own dated pack (FIFO: completed sessions
+  // fill the oldest pack first). Replaces the old pooled progress bar.
   var progress = '';
   if (isPkg) {
-    var pct = purchased > 0 ? Math.max(0, Math.min(100, Math.round((done / purchased) * 100))) : 0;
-    var barColor = rem <= 0 ? 'var(--lost)' : (rem <= 1 ? 'var(--open)' : 'var(--won)');
-    var warn = rem < 0 ? '<span style="color:var(--lost);font-weight:700;">Owes for ' + (-rem) + ' session' + (rem === -1 ? '' : 's') + ' — collect &amp; record purchase</span>'
-      : rem === 0 ? '<span style="color:var(--lost);font-weight:700;">Package used up — renew</span>'
+    var pk = linePacks(line);
+    var warn = pk.overflow > 0 ? '<span style="color:var(--lost);font-weight:700;">Owes for ' + pk.overflow + ' session' + (pk.overflow === 1 ? '' : 's') + ' — collect &amp; record purchase</span>'
+      : (pk.packs.length && rem === 0) ? '<span style="color:var(--lost);font-weight:700;">All packs used up — renew</span>'
       : (rem === 1 ? '<span style="color:var(--open);font-weight:700;">1 left — renew soon</span>' : '');
+    var activeSeen = false;
+    var packCards = pk.packs.map(function(pc){
+      var usedUp = pc.left === 0;
+      var isActive = !usedUp && !activeSeen;
+      if (isActive) activeSeen = true;
+      var st = usedUp ? { t: 'Used up', c: 'var(--muted)' } : (isActive ? { t: 'Active', c: 'var(--won)' } : { t: 'Up next', c: 'var(--accent)' });
+      var d = purchaseDateObj(pc.p);
+      var dLabel = d ? (MONTHS_ABBR[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear()) : '—';
+      var pct = pc.total > 0 ? Math.round((pc.used / pc.total) * 100) : 0;
+      var barColor = usedUp ? 'var(--muted)' : (pc.left <= 1 ? 'var(--open)' : 'var(--won)');
+      var markBtn = (isActive && pc.left > 0) ? '<button class="billing-pack-markused" data-left="' + pc.left + '" title="Log the remaining ' + pc.left + ' session' + (pc.left === 1 ? '' : 's') + ' as completed and close out this pack" style="background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">Mark rest used</button>' : '';
+      return '<div style="background:var(--panel-2);border:1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)') + ';border-radius:10px;padding:11px 13px;margin-top:8px;' + (usedUp ? 'opacity:0.6;' : '') + '">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          '<span style="font-size:13px;font-weight:700;">' + pc.total + '-session pack</span>' +
+          '<span style="font-size:11px;color:var(--muted);">' + dLabel + (pc.p.amount ? ' · ' + fmt$(pc.p.amount) : '') + '</span>' +
+          '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;padding:2px 8px;border-radius:20px;color:' + st.c + ';border:1px solid ' + st.c + ';">' + st.t + '</span>' +
+          '<span style="flex:1;"></span>' + markBtn +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:7px 0 4px;"><span>' + pc.used + ' used · <b style="color:' + (usedUp ? 'var(--muted)' : barColor) + ';">' + pc.left + ' left</b> of ' + pc.total + '</span></div>' +
+        '<div style="height:6px;background:var(--panel);border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';"></div></div>' +
+      '</div>';
+    }).join('');
+    if (!pk.packs.length) packCards = '<div style="font-size:12px;color:var(--muted);padding:10px 2px;">No session packs yet — Process Purchase to start one.</div>';
     progress = '<div style="margin-top:14px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px;"><span>' + done + ' / ' + purchased + ' completed</span>' + (warn ? '<span>' + warn + '</span>' : '') + '</div>' +
-      '<div style="height:8px;background:var(--panel-2);border-radius:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';"></div></div></div>';
+      '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;"><span style="text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;">Packs</span>' + (warn ? '<span>' + warn + '</span>' : '') + '</div>' +
+      packCards + '</div>';
   }
 
   // Recurring collect reminder (written by the POS when a sale is marked Recurring).
@@ -5301,6 +5446,21 @@ function billingWire(){
       showToast('✓ Session logged for ' + (L.name || 'client'));
       if (typeof renderTabCounts === 'function') renderTabCounts();
       if (activeTab === 'billing') renderBillingTab();   // refresh panel + list badge live
+    });
+  });
+  main.querySelectorAll('.billing-pack-markused').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var L = activeClients().filter(function(x){ return String(x.id) === String(billingSelectedId); })[0]; if (!L) return;
+      var line = billingGetSelectedLine(L); if (!line) return;
+      var left = parseInt(btn.dataset.left, 10) || 0; if (!left) return;
+      if (!confirm('Log ' + left + ' session' + (left === 1 ? '' : 's') + ' as completed and close out this pack?')) return;
+      btn.disabled = true;
+      logSessionsBulk(L, line, left).then(function(rows){
+        if (!rows) { showToast('Could not log sessions', 'error'); btn.disabled = false; return; }
+        showToast('✓ Pack closed out — ' + left + ' session' + (left === 1 ? '' : 's') + ' logged');
+        if (typeof renderTabCounts === 'function') renderTabCounts();
+        if (activeTab === 'billing') renderBillingTab();
+      });
     });
   });
   var posBtn = main.querySelector('.billing-process-purchase');
