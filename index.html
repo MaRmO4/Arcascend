@@ -1947,6 +1947,54 @@ function linePacks(line) {
   });
   return { packs: out, overflow: pool };
 }
+// The pack currently being worked through (first with sessions left) + what's queued behind it.
+function lineActivePack(line) {
+  var pk = linePacks(line);
+  var act = null, queuedN = 0, queuedSessions = 0;
+  for (var i = 0; i < pk.packs.length; i++) {
+    if (pk.packs[i].left > 0) {
+      if (!act) { act = pk.packs[i]; }
+      else { queuedN++; queuedSessions += pk.packs[i].total; }
+    }
+  }
+  return { active: act, queuedN: queuedN, queuedSessions: queuedSessions, overflow: pk.overflow, packs: pk.packs };
+}
+// SHARED pack-cards section (Billing panel + session-tracking modal render the identical
+// cards from this one function so the two views can never drift). "Mark rest used"
+// buttons carry class .pack-markused + data-lid/data-left; each surface wires its own click.
+function packCardsSectionHTML(line) {
+  var pk = linePacks(line);
+  var rem = sessionsRemaining(line);
+  var warn = pk.overflow > 0 ? '<span style="color:var(--lost);font-weight:700;">Owes for ' + pk.overflow + ' session' + (pk.overflow === 1 ? '' : 's') + ' — collect &amp; record purchase</span>'
+    : (pk.packs.length && rem === 0) ? '<span style="color:var(--lost);font-weight:700;">All packs used up — renew</span>'
+    : (rem === 1 ? '<span style="color:var(--open);font-weight:700;">1 left — renew soon</span>' : '');
+  var activeSeen = false;
+  var packCards = pk.packs.map(function(pc){
+    var usedUp = pc.left === 0;
+    var isActive = !usedUp && !activeSeen;
+    if (isActive) activeSeen = true;
+    var st = usedUp ? { t: 'Used up', c: 'var(--muted)' } : (isActive ? { t: 'Active', c: 'var(--won)' } : { t: 'Up next', c: 'var(--accent)' });
+    var d = purchaseDateObj(pc.p);
+    var dLabel = d ? (MONTHS_ABBR[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear()) : '—';
+    var pct = pc.total > 0 ? Math.round((pc.used / pc.total) * 100) : 0;
+    var barColor = usedUp ? 'var(--muted)' : (pc.left <= 1 ? 'var(--open)' : 'var(--won)');
+    var markBtn = (isActive && pc.left > 0) ? '<button class="pack-markused" data-lid="' + escapeAttr(line.id) + '" data-left="' + pc.left + '" title="Log the remaining ' + pc.left + ' session' + (pc.left === 1 ? '' : 's') + ' as completed and close out this pack" style="background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">Mark rest used</button>' : '';
+    return '<div style="background:var(--panel-2);border:1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)') + ';border-radius:10px;padding:11px 13px;margin-top:8px;' + (usedUp ? 'opacity:0.6;' : '') + '">' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<span style="font-size:13px;font-weight:700;">' + pc.total + '-session pack</span>' +
+        '<span style="font-size:11px;color:var(--muted);">' + dLabel + (pc.p.amount ? ' · ' + fmt$(pc.p.amount) : '') + '</span>' +
+        '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;padding:2px 8px;border-radius:20px;color:' + st.c + ';border:1px solid ' + st.c + ';">' + st.t + '</span>' +
+        '<span style="flex:1;"></span>' + markBtn +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:7px 0 4px;"><span>' + pc.used + ' used · <b style="color:' + (usedUp ? 'var(--muted)' : barColor) + ';">' + pc.left + ' left</b> of ' + pc.total + '</span></div>' +
+      '<div style="height:6px;background:var(--panel);border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';"></div></div>' +
+    '</div>';
+  }).join('');
+  if (!pk.packs.length) packCards = '<div style="font-size:12px;color:var(--muted);padding:10px 2px;">No session packs yet — Process Purchase to start one.</div>';
+  return '<div style="margin-top:14px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;"><span style="text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;">Packs</span>' + (warn ? '<span>' + warn + '</span>' : '') + '</div>' +
+    packCards + '</div>';
+}
 function clientPaidTotal(L) { return clientLines(L).reduce(function(s, ln){ return s + revenuePaid(ln); }, 0); }
 function clientPaidForMonth(L, mk) {
   return clientLines(L).reduce(function(s, ln){
@@ -3889,10 +3937,11 @@ function renderSessionsTab() {
       naItems.map(function(r){
         var owes = r.rem < 0;
         var finished = !owes && r.rem === 0;
-        var situ = owes ? 'Owes ' + (-r.rem) + ' — collect payment' : finished ? 'Renew / new package' : 'Only 1 left — re-sell';
+        var situ = owes ? 'Owes ' + (-r.rem) + ' — collect & record purchase' : finished ? 'All packs used — renew' : 'Last pack almost done — re-sell';
+        var cnt = owes ? 'owes ' + (-r.rem) : (finished ? '0 left' : r.rem + ' left (last pack)');
         return '<div style="flex:0 0 230px;background:var(--panel);border:1px solid ' + ((owes || finished) ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)') + ';border-radius:10px;padding:12px;">' +
           '<div style="font-weight:700;font-size:13px;">' + escapeHtml(r.L.name || '(no name)') + '</div>' +
-          '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px;">' + escapeHtml(r.line.type || '') + ' · ' + r.done + '/' + r.total + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px;">' + escapeHtml(r.line.type || '') + ' · ' + cnt + '</div>' +
           '<div style="margin-bottom:10px;"><span class="badge ' + ((owes || finished) ? 'lost' : 'open') + '">' + situ + '</span></div>' +
           '<button class="na-open" data-name="' + escapeAttr(r.L.name) + '" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;padding:7px;cursor:pointer;">Open client</button>' +
         '</div>';
@@ -3902,10 +3951,28 @@ function renderSessionsTab() {
   var listRows = listRowsData.map(function(r){
     var nm = r.L.name || '(no name)';
     var initials = (nm.trim().split(/\s+/).map(function(w){ return w.charAt(0); }).join('').slice(0, 2) || '?').toUpperCase();
-    var pct = r.total > 0 ? Math.min(100, Math.round((r.done / r.total) * 100)) : 0;
-    var fill = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
-    var low = r.total > 0 && r.rem >= 0 && r.rem <= 1;
+    // PACK-AWARE row: the bar tracks the CURRENT pack (first with sessions left), with a
+    // chip for queued packs behind it — never a pooled 3-of-24 bar across purchases.
+    var ap = lineActivePack(r.line);
+    var low = r.total > 0 && r.rem >= 0 && r.rem <= 1;   // total remaining (incl. queued packs)
     var owes = r.rem < 0;
+    var pct, packTxt;
+    if (owes) {
+      pct = 100;
+      packTxt = r.done + ' done · owes ' + (-r.rem) + ' 🔴';
+    } else if (ap.active) {
+      pct = ap.active.total > 0 ? Math.min(100, Math.round((ap.active.used / ap.active.total) * 100)) : 0;
+      packTxt = ap.active.left + ' left on current ' + ap.active.total + '-pack' +
+        (ap.queuedN ? ' · +' + ap.queuedN + ' pack' + (ap.queuedN === 1 ? '' : 's') + ' queued (' + ap.queuedSessions + ')' : '') +
+        (low ? ' ⚠️' : '');
+    } else if (r.total > 0) {
+      pct = 100;
+      packTxt = 'All packs used — renew';
+    } else {
+      pct = 0;
+      packTxt = 'No packs yet';
+    }
+    var fill = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
     // Logging is ALWAYS allowed — clients often train first and pay later, so the count
     // goes negative ("owes N") until a purchase is recorded in the Billing tab.
     var canLog = true;
@@ -3916,7 +3983,7 @@ function renderSessionsTab() {
         '<div style="min-width:0;"><div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
           '<div style="font-size:11px;color:var(--muted);">' + escapeHtml(r.line.type || '') + ' · ' + fmt$(r.line.rate || 0) + '/session</div></div>' +
         '<div><div class="session-bar" style="margin-bottom:4px;"><div class="session-bar-fill ' + fill + '" style="width:' + pct + '%"></div></div>' +
-          '<div style="font-size:11px;color:' + (owes ? 'var(--lost)' : (low ? 'var(--open)' : 'var(--muted)')) + ';">' + r.done + ' of ' + r.total + (owes ? ' · owes ' + (-r.rem) + ' 🔴' : ' · ' + r.rem + ' left' + (low ? ' ⚠️' : '')) + '</div></div>' +
+          '<div style="font-size:11px;color:' + (owes ? 'var(--lost)' : (low ? 'var(--open)' : 'var(--muted)')) + ';">' + packTxt + '</div></div>' +
         '<div style="display:flex;gap:6px;align-items:center;white-space:nowrap;">' +
           '<button class="sess-complete" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(r.line.id) + '"' + (canLog ? '' : ' disabled') + ' style="background:' + (canLog ? 'var(--won)' : 'var(--panel-2)') + ';color:' + (canLog ? '#fff' : 'var(--muted)') + ';border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 14px;cursor:' + (canLog ? 'pointer' : 'not-allowed') + ';">' + (canLog ? '✓ Complete' : 'Done') + '</button>' +
           '<button class="sess-backdate-toggle" title="Backdate" style="background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;font-size:12.5px;padding:8px 10px;cursor:pointer;">⤺</button>' +
@@ -4092,8 +4159,8 @@ function renderSessionDetail(L) {
   // ---- Header status pills (per package line; no contact info) ----
   var pills = perLine.map(function(p){
     var cls = p.rem < 0 ? 'lost' : (p.total > 0 && p.rem === 0) ? 'lost' : (p.rem === 1 ? 'open' : 'won');
-    var tag = p.rem < 0 ? ' · owes ' + (-p.rem) : (p.total > 0 && p.rem === 0 ? ' ✓' : '');
-    return '<span class="badge ' + cls + '" style="margin:0 6px 4px 0;display:inline-block;">' + escapeHtml(p.ln.type || 'Package') + ' ' + p.done + '/' + p.total + tag + '</span>';
+    var tag = p.rem < 0 ? 'owes ' + (-p.rem) : (p.total > 0 && p.rem === 0 ? 'all packs used ✓' : p.rem + ' left');
+    return '<span class="badge ' + cls + '" style="margin:0 6px 4px 0;display:inline-block;">' + escapeHtml(p.ln.type || 'Package') + ' · ' + tag + '</span>';
   }).join('');
 
   // ---- Totals summary bar ----
@@ -4112,17 +4179,13 @@ function renderSessionDetail(L) {
   // ---- Per-line progress + log/backdate actions ----
   var lineRows = perLine.map(function(p){
     var ln = p.ln, st = sdu(ln.id);
-    var pct = p.total > 0 ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
-    var fill = pct >= 90 ? 'danger' : pct >= 70 ? 'warning' : '';
     var canLog = true;   // always allowed — negative remaining means "owes N" until paid
     return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--panel-2);">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
         '<div style="font-weight:700;font-size:13px;">' + escapeHtml(ln.type || 'Package') + ' <span style="color:var(--muted);font-weight:400;">· ' + fmt$(ln.rate || 0) + '/session</span></div>' +
-        '<div style="font-size:12px;color:' + (p.rem < 0 ? 'var(--lost)' : p.rem <= 1 ? 'var(--open)' : 'var(--muted)') + ';">' + p.done + ' of ' + p.total + (p.rem < 0 ? ' · owes ' + (-p.rem) + ' 🔴' : ' · ' + p.rem + ' left' + (p.rem <= 1 && p.total > 0 ? ' ⚠️' : '')) + '</div>' +
+        '<div style="font-size:12px;color:' + (p.rem < 0 ? 'var(--lost)' : p.rem <= 1 ? 'var(--open)' : 'var(--muted)') + ';">' + (p.rem < 0 ? 'owes ' + (-p.rem) + ' 🔴' : p.rem + ' left total' + (p.rem <= 1 && p.total > 0 ? ' ⚠️' : '')) + '</div>' +
       '</div>' +
-      '<div class="session-bar"><div class="session-bar-fill ' + fill + '" style="width:' + pct + '%"></div></div>' +
-      (p.rem < 0 ? '<div style="margin-top:8px;font-size:11.5px;color:var(--lost);background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.35);border-radius:6px;padding:7px 9px;">🔴 Owes for ' + (-p.rem) + ' session' + (p.rem === -1 ? '' : 's') + ' — collect &amp; record the purchase in Billing.</div>'
-        : p.rem === 1 ? '<div style="margin-top:8px;font-size:11.5px;color:var(--open);background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:6px;padding:7px 9px;">⚠️ Only 1 session left — renew / session-to-session / auto-pay.</div>' : '') +
+      packCardsSectionHTML(ln) +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
         '<button class="sd-complete" data-name="' + escapeAttr(nm) + '" data-lid="' + escapeAttr(ln.id) + '"' + (canLog ? '' : ' disabled') + ' style="background:' + (canLog ? 'var(--won)' : 'var(--panel)') + ';color:' + (canLog ? '#fff' : 'var(--muted)') + ';border:none;border-radius:7px;font-size:12.5px;font-weight:600;padding:8px 12px;cursor:' + (canLog ? 'pointer' : 'not-allowed') + ';">' + (canLog ? '✓ Complete session' : 'Package complete') + '</button>' +
         '<button class="sd-backdate-toggle" data-lid="' + escapeAttr(ln.id) + '" style="background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;font-size:12.5px;padding:8px 12px;cursor:pointer;">⤺ Backdate</button>' +
@@ -4189,6 +4252,21 @@ function wireSessionDetail(L) {
       var dt = new Date(+dp[0], (+dp[1]) - 1, +dp[2], (+tp[0] || 0), (+tp[1] || 0));
       sdu(lid).backdate = false;
       sessDoLog(btn.dataset.name, lid, dt.toISOString(), btn);
+    });
+  });
+  // Per-pack catch-up (same shared cards as the Billing tab).
+  content.querySelectorAll('.pack-markused').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var line = clientLines(L).find(function(ln){ return String(ln.id) === String(btn.dataset.lid); }); if (!line) return;
+      var left = parseInt(btn.dataset.left, 10) || 0; if (!left) return;
+      if (!confirm('Log ' + left + ' session' + (left === 1 ? '' : 's') + ' as completed and close out this pack?')) return;
+      btn.disabled = true;
+      logSessionsBulk(L, line, left).then(function(rows){
+        if (!rows) { showToast('Could not log sessions', 'error'); btn.disabled = false; return; }
+        showToast('✓ Pack closed out — ' + left + ' session' + (left === 1 ? '' : 's') + ' logged');
+        if (typeof renderTabCounts === 'function') renderTabCounts();
+        sessRefreshLive(L);
+      });
     });
   });
   content.querySelectorAll('.sd-void').forEach(function(btn){
@@ -5302,40 +5380,8 @@ function billingPanelHTML(L){
   '</div>';
 
   // PACKS — each purchase with sessions is its own dated pack (FIFO: completed sessions
-  // fill the oldest pack first). Replaces the old pooled progress bar.
-  var progress = '';
-  if (isPkg) {
-    var pk = linePacks(line);
-    var warn = pk.overflow > 0 ? '<span style="color:var(--lost);font-weight:700;">Owes for ' + pk.overflow + ' session' + (pk.overflow === 1 ? '' : 's') + ' — collect &amp; record purchase</span>'
-      : (pk.packs.length && rem === 0) ? '<span style="color:var(--lost);font-weight:700;">All packs used up — renew</span>'
-      : (rem === 1 ? '<span style="color:var(--open);font-weight:700;">1 left — renew soon</span>' : '');
-    var activeSeen = false;
-    var packCards = pk.packs.map(function(pc){
-      var usedUp = pc.left === 0;
-      var isActive = !usedUp && !activeSeen;
-      if (isActive) activeSeen = true;
-      var st = usedUp ? { t: 'Used up', c: 'var(--muted)' } : (isActive ? { t: 'Active', c: 'var(--won)' } : { t: 'Up next', c: 'var(--accent)' });
-      var d = purchaseDateObj(pc.p);
-      var dLabel = d ? (MONTHS_ABBR[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear()) : '—';
-      var pct = pc.total > 0 ? Math.round((pc.used / pc.total) * 100) : 0;
-      var barColor = usedUp ? 'var(--muted)' : (pc.left <= 1 ? 'var(--open)' : 'var(--won)');
-      var markBtn = (isActive && pc.left > 0) ? '<button class="billing-pack-markused" data-left="' + pc.left + '" title="Log the remaining ' + pc.left + ' session' + (pc.left === 1 ? '' : 's') + ' as completed and close out this pack" style="background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">Mark rest used</button>' : '';
-      return '<div style="background:var(--panel-2);border:1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)') + ';border-radius:10px;padding:11px 13px;margin-top:8px;' + (usedUp ? 'opacity:0.6;' : '') + '">' +
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-          '<span style="font-size:13px;font-weight:700;">' + pc.total + '-session pack</span>' +
-          '<span style="font-size:11px;color:var(--muted);">' + dLabel + (pc.p.amount ? ' · ' + fmt$(pc.p.amount) : '') + '</span>' +
-          '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;padding:2px 8px;border-radius:20px;color:' + st.c + ';border:1px solid ' + st.c + ';">' + st.t + '</span>' +
-          '<span style="flex:1;"></span>' + markBtn +
-        '</div>' +
-        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:7px 0 4px;"><span>' + pc.used + ' used · <b style="color:' + (usedUp ? 'var(--muted)' : barColor) + ';">' + pc.left + ' left</b> of ' + pc.total + '</span></div>' +
-        '<div style="height:6px;background:var(--panel);border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';"></div></div>' +
-      '</div>';
-    }).join('');
-    if (!pk.packs.length) packCards = '<div style="font-size:12px;color:var(--muted);padding:10px 2px;">No session packs yet — Process Purchase to start one.</div>';
-    progress = '<div style="margin-top:14px;">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;"><span style="text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;">Packs</span>' + (warn ? '<span>' + warn + '</span>' : '') + '</div>' +
-      packCards + '</div>';
-  }
+  // fill the oldest pack first). Shared renderer with the session-tracking modal.
+  var progress = isPkg ? packCardsSectionHTML(line) : '';
 
   // Recurring collect reminder (written by the POS when a sale is marked Recurring).
   var collectChip = '';
@@ -5448,10 +5494,10 @@ function billingWire(){
       if (activeTab === 'billing') renderBillingTab();   // refresh panel + list badge live
     });
   });
-  main.querySelectorAll('.billing-pack-markused').forEach(function(btn){
+  main.querySelectorAll('.pack-markused').forEach(function(btn){
     btn.addEventListener('click', function(){
       var L = activeClients().filter(function(x){ return String(x.id) === String(billingSelectedId); })[0]; if (!L) return;
-      var line = billingGetSelectedLine(L); if (!line) return;
+      var line = clientLines(L).filter(function(ln){ return String(ln.id) === String(btn.dataset.lid); })[0]; if (!line) return;
       var left = parseInt(btn.dataset.left, 10) || 0; if (!left) return;
       if (!confirm('Log ' + left + ' session' + (left === 1 ? '' : 's') + ' as completed and close out this pack?')) return;
       btn.disabled = true;
