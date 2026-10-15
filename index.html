@@ -15,19 +15,23 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>/* Apply saved theme before first paint (default: dark) */try{document.documentElement.dataset.theme=localStorage.getItem('arcascend_theme')||'dark';}catch(_){document.documentElement.dataset.theme='dark';}</script>
 <style>
+/* ICE #bfecff + BLAZE #fd6c01 theme — shades fade light→dark.
+   Dark = "midnight ice" (deep ice-navy surfaces, blaze accent).
+   --purple var now carries the deep-ice secondary accent (name kept to avoid a mass rename). */
 :root {
-  --bg: #0f1419; --panel: #1a2129; --panel-2: #232c36; --panel-3: #3a4653;
-  --border: #2d3742; --text: #e6e9ed; --muted: #8b95a1;
-  --accent: #4f9eff; --won: #22c55e; --lost: #ef4444;
-  --open: #f59e0b; --warm: #fb923c; --purple: #a78bfa;
+  --bg: #0a141c; --panel: #122230; --panel-2: #1a3040; --panel-3: #2b4a60;
+  --border: #25404f; --text: #e8f4fb; --muted: #8fa9bb;
+  --accent: #fd6c01; --won: #22c55e; --lost: #ef4444;
+  --open: #eab308; --warm: #ff9c4a; --purple: #38a8dd;
   --shadow: 0 4px 20px rgba(0,0,0,0.3);
   color-scheme: dark;
 }
-/* Light theme — same accent colors, inverted surfaces. Toggle in Settings, saved per device. */
+/* Light theme — ice surfaces fading white → #bfecff, same blaze accent. Toggle in Settings, saved per device. */
 html[data-theme="light"] {
-  --bg: #f2f5f8; --panel: #ffffff; --panel-2: #e9eef3; --panel-3: #cfd9e2;
-  --border: #d6dee6; --text: #17202a; --muted: #5f6c7a;
-  --shadow: 0 4px 20px rgba(20,40,70,0.12);
+  --bg: #eaf7ff; --panel: #ffffff; --panel-2: #ddf1fd; --panel-3: #bfecff;
+  --border: #a9d9ef; --text: #0e2433; --muted: #4d6b7e;
+  --open: #ca8a04;
+  --shadow: 0 4px 20px rgba(17,80,120,0.12);
   color-scheme: light;
 }
 /* Create Form — segmented steps (Phase 1) */
@@ -98,8 +102,8 @@ header { position:sticky; top:0; z-index:100;
   border-color: rgba(34,197,94,0.4);
 }
 .rev-stat.projection {
-  background: linear-gradient(135deg, rgba(79,158,255,0.15), rgba(79,158,255,0.05));
-  border-color: rgba(79,158,255,0.4);
+  background: linear-gradient(135deg, rgba(253,108,1,0.15), rgba(253,108,1,0.05));
+  border-color: rgba(253,108,1,0.4);
 }
 .rev-stat-label {
   color: var(--muted); font-size: 9px; text-transform: uppercase;
@@ -144,10 +148,10 @@ nav.tabs { position:sticky; top:0; z-index:99;
 }
 .tab.active .count { background: var(--accent); color: #fff; }
 .tab.custom-tab {
-  background: rgba(79,158,255,0.08); border: 1px solid rgba(79,158,255,0.25);
+  background: rgba(253,108,1,0.08); border: 1px solid rgba(253,108,1,0.25);
   border-radius: 18px; padding: 8px 12px; margin: 6px 4px 6px 0; font-size: 12px;
 }
-.tab.custom-tab:hover { background: rgba(79,158,255,0.15); }
+.tab.custom-tab:hover { background: rgba(253,108,1,0.15); }
 .tab.custom-tab.active { background: var(--accent); color: white; }
 .tab-close {
   background: transparent; border: none; color: inherit; cursor: pointer;
@@ -177,7 +181,7 @@ nav.tabs { position:sticky; top:0; z-index:99;
 }
 .filter-toggle:hover { border-color: var(--accent); }
 .filter-toggle.has-filters {
-  background: rgba(79,158,255,0.12); border-color: var(--accent); color: var(--accent);
+  background: rgba(253,108,1,0.12); border-color: var(--accent); color: var(--accent);
 }
 .filter-badge {
   background: var(--accent); color: white; font-size: 10px; font-weight: 700;
@@ -222,8 +226,8 @@ nav.tabs { position:sticky; top:0; z-index:99;
 }
 .active-filter-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
 .chip {
-  background: rgba(79,158,255,0.15); color: var(--accent);
-  border: 1px solid rgba(79,158,255,0.3); padding: 4px 10px;
+  background: rgba(253,108,1,0.15); color: var(--accent);
+  border: 1px solid rgba(253,108,1,0.3); padding: 4px 10px;
   border-radius: 14px; font-size: 11px;
   display: inline-flex; align-items: center; gap: 6px;
 }
@@ -269,10 +273,10 @@ main { flex: 1; padding: 20px 24px; }
 }
 .badge.won { background: rgba(34,197,94,0.15); color: var(--won); border: 1px solid rgba(34,197,94,0.3); }
 .badge.lost { background: rgba(239,68,68,0.15); color: var(--lost); border: 1px solid rgba(239,68,68,0.3); }
-.badge.open, .badge.pending { background: rgba(245,158,11,0.15); color: var(--open); border: 1px solid rgba(245,158,11,0.3); }
-.badge.new { background: rgba(79,158,255,0.15); color: var(--accent); border: 1px solid rgba(79,158,255,0.3); }
+.badge.open, .badge.pending { background: rgba(234,179,8,0.15); color: var(--open); border: 1px solid rgba(234,179,8,0.3); }
+.badge.new { background: rgba(253,108,1,0.15); color: var(--accent); border: 1px solid rgba(253,108,1,0.3); }
 .badge.active-client {
-  background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(167,139,250,0.2));
+  background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(56,168,221,0.2));
   color: var(--won); border: 1px solid rgba(34,197,94,0.4);
 }
 .lead-body { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.5; }
@@ -302,8 +306,8 @@ main { flex: 1; padding: 20px 24px; }
   font-size: 14px; display: inline-flex; align-items: center; justify-content: center;
   transition: all 0.15s; flex-shrink: 0;
 }
-.star-btn:hover { border-color: #fbbf24; color: #fbbf24; transform: scale(1.1); }
-.star-btn.active { background: rgba(251, 191, 36, 0.15); border-color: #fbbf24; color: #fbbf24; }
+.star-btn:hover { border-color: #f5ce3e; color: #f5ce3e; transform: scale(1.1); }
+.star-btn.active { background: rgba(251, 191, 36, 0.15); border-color: #f5ce3e; color: #f5ce3e; }
 .task-pip {
   position: absolute; top: 12px; right: 14px; background: var(--accent);
   color: white; font-size: 10px; font-weight: 700; min-width: 18px; height: 18px;
@@ -383,12 +387,12 @@ main { flex: 1; padding: 20px 24px; }
 }
 .status-btn[data-s="Closed Won"].active { border-color: var(--won); background: rgba(34,197,94,0.15); color: var(--won); }
 .status-btn[data-s="Closed Lost"].active { border-color: var(--lost); background: rgba(239,68,68,0.15); color: var(--lost); }
-.status-btn[data-s="Open"].active, .status-btn[data-s="Pending"].active { border-color: var(--open); background: rgba(245,158,11,0.15); color: var(--open); }
-.status-btn[data-s="New"].active { border-color: var(--accent); background: rgba(79,158,255,0.15); color: var(--accent); }
+.status-btn[data-s="Open"].active, .status-btn[data-s="Pending"].active { border-color: var(--open); background: rgba(234,179,8,0.15); color: var(--open); }
+.status-btn[data-s="New"].active { border-color: var(--accent); background: rgba(253,108,1,0.15); color: var(--accent); }
 
 /* Billing section in modal */
 .billing-box {
-  background: linear-gradient(135deg, rgba(34,197,94,0.05), rgba(167,139,250,0.05));
+  background: linear-gradient(135deg, rgba(34,197,94,0.05), rgba(56,168,221,0.05));
   border: 1px solid rgba(34,197,94,0.3); border-radius: 10px; padding: 14px;
 }
 .billing-toggle {
@@ -451,10 +455,10 @@ main { flex: 1; padding: 20px 24px; }
   font-size: 18px; background: var(--panel); border: 1px solid var(--border);
 }
 .reach-btn.call .ricon { background: rgba(34,197,94,0.15); color: var(--won); }
-.reach-btn.text .ricon { background: rgba(79,158,255,0.15); color: var(--accent); }
-.reach-btn.email .ricon { background: rgba(167,139,250,0.15); color: var(--purple); }
-.reach-btn.video .ricon { background: rgba(251,146,60,0.15); color: var(--warm); }
-.reach-btn.voicemail .ricon { background: rgba(245,158,11,0.15); color: var(--open); }
+.reach-btn.text .ricon { background: rgba(253,108,1,0.15); color: var(--accent); }
+.reach-btn.email .ricon { background: rgba(56,168,221,0.15); color: var(--purple); }
+.reach-btn.video .ricon { background: rgba(255,156,74,0.15); color: var(--warm); }
+.reach-btn.voicemail .ricon { background: rgba(234,179,8,0.15); color: var(--open); }
 
 .activity-log {
   background: var(--panel-2); border: 1px solid var(--border);
@@ -474,10 +478,10 @@ main { flex: 1; padding: 20px 24px; }
   align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
 }
 .activity-icon.call { background: rgba(34,197,94,0.15); color: var(--won); }
-.activity-icon.text { background: rgba(79,158,255,0.15); color: var(--accent); }
-.activity-icon.email { background: rgba(167,139,250,0.15); color: var(--purple); }
-.activity-icon.voicemail { background: rgba(245,158,11,0.15); color: var(--open); }
-.activity-icon.video { background: rgba(251,146,60,0.15); color: var(--warm); }
+.activity-icon.text { background: rgba(253,108,1,0.15); color: var(--accent); }
+.activity-icon.email { background: rgba(56,168,221,0.15); color: var(--purple); }
+.activity-icon.voicemail { background: rgba(234,179,8,0.15); color: var(--open); }
+.activity-icon.video { background: rgba(255,156,74,0.15); color: var(--warm); }
 .activity-body { flex: 1; }
 .activity-meta { color: var(--muted); font-size: 11px; }
 
@@ -517,7 +521,7 @@ main { flex: 1; padding: 20px 24px; }
   flex-direction: column; align-items: center; gap: 4px;
 }
 .dialer-ctrl:hover { border-color: var(--accent); }
-.dialer-ctrl.active { background: rgba(79,158,255,0.15); border-color: var(--accent); color: var(--accent); }
+.dialer-ctrl.active { background: rgba(253,108,1,0.15); border-color: var(--accent); color: var(--accent); }
 .dialer-end {
   width: 70px; height: 70px; border-radius: 50%; background: var(--lost);
   color: white; border: none; font-size: 28px; cursor: pointer;
@@ -565,7 +569,7 @@ main { flex: 1; padding: 20px 24px; }
 .email-form .label-row label { font-size: 11px; color: var(--muted); width: 60px; text-transform: uppercase; letter-spacing: 0.5px; }
 .email-form .label-row input, .email-form .label-row select { flex: 1; }
 .demo-banner {
-  background: rgba(251,146,60,0.1); border: 1px solid rgba(251,146,60,0.3);
+  background: rgba(255,156,74,0.1); border: 1px solid rgba(255,156,74,0.3);
   color: var(--warm); padding: 8px 12px; border-radius: 8px;
   font-size: 11px; margin-top: 14px;
 }
@@ -599,15 +603,15 @@ main { flex: 1; padding: 20px 24px; }
   font-size: 10px; text-transform: uppercase;
 }
 .task-due.overdue { background: rgba(239,68,68,0.15); color: var(--lost); }
-.task-due.today { background: rgba(245,158,11,0.15); color: var(--open); }
-.task-due.tomorrow { background: rgba(79,158,255,0.15); color: var(--accent); }
+.task-due.today { background: rgba(234,179,8,0.15); color: var(--open); }
+.task-due.tomorrow { background: rgba(253,108,1,0.15); color: var(--accent); }
 .task-presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .task-preset {
   background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
   padding: 8px 12px; border-radius: 8px; cursor: pointer;
   font-size: 12px; font-weight: 500;
 }
-.task-preset:hover { border-color: var(--accent); background: rgba(79,158,255,0.08); }
+.task-preset:hover { border-color: var(--accent); background: rgba(253,108,1,0.08); }
 .task-form { display: grid; grid-template-columns: 1fr 130px auto; gap: 8px; margin-top: 8px; }
 .task-form input {
   background: var(--panel-2); border: 1px solid var(--border);
@@ -637,8 +641,8 @@ main { flex: 1; padding: 20px 24px; }
 .page-title { font-size: 20px; font-weight: 700; }
 .page-subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .demo-pill {
-  display: inline-block; background: rgba(251,146,60,0.15);
-  color: var(--warm); border: 1px solid rgba(251,146,60,0.3);
+  display: inline-block; background: rgba(255,156,74,0.15);
+  color: var(--warm); border: 1px solid rgba(255,156,74,0.3);
   padding: 3px 10px; border-radius: 12px; font-size: 10px;
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
   margin-left: 8px;
@@ -755,9 +759,9 @@ main { flex: 1; padding: 20px 24px; }
   transition: all 0.2s; background: var(--panel); margin-bottom: 18px;
 }
 .drop-zone:hover, .drop-zone.dragover {
-  border-color: var(--accent); background: rgba(79,158,255,0.05); transform: scale(1.01);
+  border-color: var(--accent); background: rgba(253,108,1,0.05); transform: scale(1.01);
 }
-.drop-zone.dragover { background: rgba(79,158,255,0.12); }
+.drop-zone.dragover { background: rgba(253,108,1,0.12); }
 .drop-zone-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.7; }
 .drop-zone-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
 .drop-zone-sub { color: var(--muted); font-size: 13px; }
@@ -806,7 +810,7 @@ main { flex: 1; padding: 20px 24px; }
 .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
 .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
 .help-box {
-  background: rgba(79,158,255,0.08); border: 1px solid rgba(79,158,255,0.3);
+  background: rgba(253,108,1,0.08); border: 1px solid rgba(253,108,1,0.3);
   padding: 12px 14px; border-radius: 8px; font-size: 12px;
   line-height: 1.6; margin-bottom: 12px;
 }
@@ -909,8 +913,8 @@ main { flex: 1; padding: 20px 24px; }
 .hm-mut{font-size:11.5px;color:var(--muted);}
 .hm-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 9px;border-radius:999px;line-height:1.7;white-space:nowrap;}
 .hm-red{background:rgba(239,68,68,.15);color:var(--lost);}
-.hm-amb{background:rgba(245,158,11,.15);color:var(--open);}
-.hm-pur{background:rgba(167,139,250,.15);color:var(--purple);}
+.hm-amb{background:rgba(234,179,8,.15);color:var(--open);}
+.hm-pur{background:rgba(56,168,221,.15);color:var(--purple);}
 .hm-grn{background:rgba(34,197,94,.15);color:var(--won);}
 .hm-btn{font-size:11.5px;font-weight:600;color:var(--accent);border:1px solid var(--border);border-radius:7px;padding:4px 10px;background:var(--panel-2);margin-left:auto;cursor:pointer;white-space:nowrap;font-family:inherit;}
 .hm-btn:hover{border-color:var(--accent);}
@@ -1035,7 +1039,7 @@ main { flex: 1; padding: 20px 24px; }
   background: var(--accent);
   transition: width 0.3s;
 }
-.session-bar-fill.warning { background: #f59e0b; }
+.session-bar-fill.warning { background: #eab308; }
 .session-bar-fill.danger { background: #ef4444; }
 .session-counter {
   display: flex;
@@ -1079,13 +1083,13 @@ main { flex: 1; padding: 20px 24px; }
   padding: 10px 12px;
   background: var(--panel-2);
   border-radius: 8px;
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid #eab308;
   cursor: pointer;
   transition: background 0.15s;
 }
 .reminder-row:hover { background: var(--border); }
 .reminder-row.urgent { border-left-color: #ef4444; }
-.reminder-row.new-lead { border-left-color: #60a5fa; }
+.reminder-row.new-lead { border-left-color: #ff8a3d; }
 .reminder-name { font-size: 13px; font-weight: 600; color: var(--text); }
 .reminder-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
 .reminder-badge {
@@ -1093,8 +1097,8 @@ main { flex: 1; padding: 20px 24px; }
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 99px;
-  background: rgba(245,158,11,0.15);
-  color: #f59e0b;
+  background: rgba(234,179,8,0.15);
+  color: #eab308;
   white-space: nowrap;
 }
 .reminder-badge.urgent {
@@ -1102,8 +1106,8 @@ main { flex: 1; padding: 20px 24px; }
   color: #ef4444;
 }
 .reminder-badge.new-lead {
-  background: rgba(96,165,250,0.15);
-  color: #60a5fa;
+  background: rgba(255,138,61,0.15);
+  color: #ff8a3d;
 }
 .view-toggle { display:inline-flex;gap:4px;background:var(--panel-2);border-radius:8px;padding:4px;margin-left:12px; }
 .view-toggle button { background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;padding:6px 14px;border-radius:6px;cursor:pointer;transition:all 0.15s; }
@@ -1141,7 +1145,7 @@ main { flex: 1; padding: 20px 24px; }
     <button class="btn-settings" id="settings-btn">⚙ Settings</button>
     <button class="btn-settings" id="admin-header-btn" style="display:none;" title="Open the admin portal" onclick="window.location.href='admin.html'">🛡 Admin</button>
     <div class="profile-menu-wrap" style="position:relative;display:inline-block;">
-  <button class="btn-settings" id="profile-btn" style="background:linear-gradient(135deg,#4f9eff,#a78bfa);color:white;border:none;width:36px;height:36px;border-radius:50%;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Profile">👤</button>
+  <button class="btn-settings" id="profile-btn" style="background:linear-gradient(135deg,#fd6c01,#38a8dd);color:white;border:none;width:36px;height:36px;border-radius:50%;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Profile">👤</button>
   <div id="profile-dropdown" style="display:none;position:absolute;right:0;top:44px;background:var(--panel);border:1px solid var(--border);border-radius:12px;min-width:200px;box-shadow:0 8px 32px rgba(0,0,0,0.4);z-index:9999;overflow:hidden;">
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);">
       <div style="font-size:12px;color:var(--muted);">Logged in as</div>
@@ -1232,7 +1236,7 @@ main { flex: 1; padding: 20px 24px; }
 <div id="tab-forms" class="tab-panel" style="display:none">
 
   <!-- Hero header — unchanged -->
-  <div style="background:linear-gradient(135deg,#1e2235,#252a40);border-bottom:1px solid var(--border);padding:28px 32px">
+  <div style="background:linear-gradient(135deg,var(--panel-2),var(--panel));border-bottom:1px solid var(--border);padding:28px 32px">
     <div style="max-width:720px;margin:0 auto;display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1;min-width:200px">
         <h1 style="font-size:22px;font-weight:800;color:#fff;margin:0 0 6px">📋 Your Intake Form</h1>
@@ -1262,7 +1266,7 @@ main { flex: 1; padding: 20px 24px; }
   <div style="padding:24px 16px">
 
     <!-- Editing banner — above sub-nav so Update Form is always reachable -->
-    <div id="forms-editing-banner" style="display:none;background:linear-gradient(135deg,rgba(139,92,246,0.14),rgba(139,92,246,0.05));border:1px solid rgba(139,92,246,0.4);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:none;align-items:center;gap:14px;flex-wrap:wrap;max-width:900px;margin-left:auto;margin-right:auto">
+    <div id="forms-editing-banner" style="display:none;background:linear-gradient(135deg,rgba(56,168,221,0.14),rgba(56,168,221,0.05));border:1px solid rgba(56,168,221,0.4);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:none;align-items:center;gap:14px;flex-wrap:wrap;max-width:900px;margin-left:auto;margin-right:auto">
       <div style="font-size:14px;color:var(--text-primary);font-weight:600;flex:1 1 auto">✏️ Editing: <span id="forms-editing-name" style="color:var(--purple)"></span></div>
       <button onclick="formsUpdateForm()" class="cf-btn cf-sm">Update Form</button>
       <button onclick="formsCancelEdit()" class="cf-btn cf-g cf-sm">Cancel</button>
@@ -1473,7 +1477,7 @@ main { flex: 1; padding: 20px 24px; }
           <input type="file" id="import-data-file" accept=".json,application/json" style="display:none;">
         </label>
       </div>
-      <div class="help-box" style="background:rgba(251,146,60,0.06);border-color:rgba(251,146,60,0.25);color:var(--text);">
+      <div class="help-box" style="background:rgba(255,156,74,0.06);border-color:rgba(255,156,74,0.25);color:var(--text);">
         <b style="color:var(--warm);">⚠ Important:</b> Sharing the Netlify URL alone does NOT share your data. The URL shares the app; data lives in each user's browser. For true live multi-user sharing (everyone sees the same data in real-time), you need the Supabase backend setup — see <i>Supabase_Migration_Guide.pdf</i>.
       </div>
 
@@ -1558,7 +1562,7 @@ main { flex: 1; padding: 20px 24px; }
         <li>Copy the questions it generates.</li>
         <li>Paste them here and click Parse.</li>
       </ol>
-      <div style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:var(--text-secondary);line-height:1.5">
+      <div style="background:rgba(255,156,74,0.08);border:1px solid rgba(255,156,74,0.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:var(--text-secondary);line-height:1.5">
         <b style="color:var(--warm)">⚠ Heads up:</b> parsed questions are <b>ADDED</b> to your current list — they don't replace it. Delete your existing questions first (or use “Reset to Defaults”) if you want a fully fresh set.
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
@@ -2509,9 +2513,9 @@ function renderCalendarTab(){
     html += '<button id="cal-next" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;cursor:pointer;">Next ›</button>';
     html += '</div>';
     html += '<div style="display:flex;gap:14px;margin-bottom:12px;font-size:12px;color:var(--text-muted);align-items:center;">';
-    html += '<span><span style="'+dotStyle+'background:#3b82f6;"></span>Tasks / Follow-ups</span>';
+    html += '<span><span style="'+dotStyle+'background:#e85f00;"></span>Tasks / Follow-ups</span>';
     html += '<span><span style="'+dotStyle+'background:#22c55e;"></span>New Leads</span>';
-    html += '<span><span style="'+dotStyle+'background:#f59e0b;"></span>Intake / Consultation</span>';
+    html += '<span><span style="'+dotStyle+'background:#eab308;"></span>Intake / Consultation</span>';
     html += '</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">';
     ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(function(d){ html += '<div style="text-align:center;font-size:11px;color:var(--text-muted);font-weight:600;padding:4px 0;">'+d+'</div>'; });
@@ -2521,12 +2525,12 @@ function renderCalendarTab(){
       var key = ymd(dcell);
       var info = dayMap[key] || { tasks:[], newleads:[], intakes:[] };
       var isToday = key === todayKey;
-      html += '<div data-cal-day="'+key+'" style="min-height:64px;border:1px solid '+(isToday?'var(--accent)':'var(--border)')+';border-radius:8px;padding:6px;cursor:pointer;background:'+(isToday?'rgba(79,158,255,0.08)':'var(--panel)')+';">';
+      html += '<div data-cal-day="'+key+'" style="min-height:64px;border:1px solid '+(isToday?'var(--accent)':'var(--border)')+';border-radius:8px;padding:6px;cursor:pointer;background:'+(isToday?'rgba(253,108,1,0.08)':'var(--panel)')+';">';
       html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">'+day+'</div>';
       html += '<div>';
-      if (info.tasks.length) html += '<span style="'+dotStyle+'background:#3b82f6;" title="'+info.tasks.length+' task(s)"></span>';
+      if (info.tasks.length) html += '<span style="'+dotStyle+'background:#e85f00;" title="'+info.tasks.length+' task(s)"></span>';
       if (info.newleads.length) html += '<span style="'+dotStyle+'background:#22c55e;" title="'+info.newleads.length+' new lead(s)"></span>';
-      if (info.intakes.length) html += '<span style="'+dotStyle+'background:#f59e0b;" title="'+info.intakes.length+' intake(s)"></span>';
+      if (info.intakes.length) html += '<span style="'+dotStyle+'background:#eab308;" title="'+info.intakes.length+' intake(s)"></span>';
       html += '</div></div>';
     }
     html += '</div>';
@@ -3400,7 +3404,7 @@ async function renderScheduleTab() {
   if (schedArmed) {
     var isC = schedArmed.type === 'consult', isM = schedArmed.type === 'move';
     var aClr = isC ? 'var(--purple)' : (isM ? 'var(--open)' : 'var(--accent)');
-    var aBg = isC ? 'rgba(167,139,250,0.15)' : (isM ? 'rgba(245,158,11,0.15)' : 'rgba(79,158,255,0.15)');
+    var aBg = isC ? 'rgba(56,168,221,0.15)' : (isM ? 'rgba(234,179,8,0.15)' : 'rgba(253,108,1,0.15)');
     var aHint = isM ? 'click a new slot to re-place' : 'click a slot to place';
     consultChip = '<span id="sched-armed-chip" draggable="true" style="display:inline-flex;align-items:center;gap:6px;background:' + aBg + ';border:1px ' + ((isC || isM) ? 'dashed' : 'solid') + ' ' + aClr + ';color:' + aClr + ';border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:grab;">▶ ' + escapeHtml(schedArmed.name) + (isC ? ' — consult' : (isM ? ' — moving' : '')) + ' <span style="color:var(--muted);font-weight:400;">' + aHint + '</span><button id="sched-armed-x" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;margin-left:2px;">✕</button></span>';
   }
@@ -3436,7 +3440,7 @@ async function renderScheduleTab() {
       var payload = { type:'client', name:L.name||'', clientId:L.id||'', lineId: line ? line.id : '', serviceType: line ? (line.type||'') : '', rate: line ? (line.rate||0) : 0 };
       var armed = schedArmed && schedArmed.type === 'client' && String(schedArmed.clientId) === String(L.id||'');
       var chipStyle = armed
-        ? 'background:rgba(79,158,255,0.18);border:1px solid var(--accent);color:var(--accent);'
+        ? 'background:rgba(253,108,1,0.18);border:1px solid var(--accent);color:var(--accent);'
         : 'background:var(--panel-2);border:1px solid var(--border);';
       return '<div class="sched-chip" draggable="true" data-client-id="' + escapeAttr(L.id||'') + '" data-payload="' + escapeAttr(JSON.stringify(payload)) + '" style="' + chipStyle + 'border-radius:8px;padding:8px 10px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;">' + (armed ? '▶ ' : '') + escapeHtml(L.name || '(no name)') + '</div>';
     }).join('') : '<div style="font-size:12px;color:var(--muted);">No active clients yet.</div>') +
@@ -3468,7 +3472,7 @@ async function renderScheduleTab() {
     for (var si = 0; si < SCHED_SLOTS; si++) {
       slots += '<div class="sched-slot" data-day="' + di + '" data-slot="' + si + '" style="position:relative;height:' + rowH + 'px;border-top:1px solid ' + (si % 2 === 0 ? 'var(--border)' : 'rgba(45,55,66,0.4)') + ';"></div>';
     }
-    return '<div class="sched-day" data-day="' + di + '" style="flex:1;position:relative;height:' + (SCHED_SLOTS * rowH) + 'px;border-left:1px solid var(--border);' + (isToday ? 'background:rgba(79,158,255,0.05);' : '') + '">' + slots + '</div>';
+    return '<div class="sched-day" data-day="' + di + '" style="flex:1;position:relative;height:' + (SCHED_SLOTS * rowH) + 'px;border-left:1px solid var(--border);' + (isToday ? 'background:rgba(253,108,1,0.05);' : '') + '">' + slots + '</div>';
   }).join('');
 
   var gridInner = '<div style="display:flex;">' + gutter + dayCols + '</div>';
@@ -3557,9 +3561,9 @@ function schedBlockDiv(s, span, rowH, beyond) {
   var color, bg, beyondBooked = false;
   if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(34,197,94,0.15)'; }
   else if (cancelled) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.12)'; }
-  else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(167,139,250,0.22)'; }   // distinct purple
+  else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(56,168,221,0.22)'; }   // distinct purple
   else if (beyond) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.15)'; beyondBooked = true; }   // booked BEYOND package → light red
-  else { color = 'var(--accent)'; bg = 'rgba(79,158,255,0.15)'; }                    // booked, covered → blue
+  else { color = 'var(--accent)'; bg = 'rgba(253,108,1,0.15)'; }                    // booked, covered → blue
   var h = span * rowH - 3;
   var nm = ((s.client_name || '').split(/\s+/)[0]) || s.client_name || '(client)';
   var timeStr = schedTimeLabel(new Date(s.when_at));
@@ -3569,7 +3573,7 @@ function schedBlockDiv(s, span, rowH, beyond) {
   var moving = movable && schedArmed && schedArmed.type === 'move' && String(schedArmed.sid) === String(s.id);
   var border = moving ? '2px dashed var(--open)' : '1px solid ' + color;
   var moveBtn = movable ? '<span class="sched-move-btn" title="Move — click, then click a new slot" style="position:absolute;top:0;right:0;z-index:3;font-size:11px;line-height:1;padding:2px 4px 3px;color:' + color + ';opacity:0.65;cursor:pointer;">↔</span>' : '';
-  return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '"' + (movable ? ' draggable="true"' : '') + (beyondBooked ? ' title="Beyond package — unpaid"' : '') + ' style="position:absolute;z-index:2;left:2px;right:2px;top:0;height:' + h + 'px;background:' + (moving ? 'rgba(245,158,11,0.15)' : bg) + ';border:' + border + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:' + (movable ? 'grab' : 'pointer') + ';line-height:1.25;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' + moveBtn +
+  return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '"' + (movable ? ' draggable="true"' : '') + (beyondBooked ? ' title="Beyond package — unpaid"' : '') + ' style="position:absolute;z-index:2;left:2px;right:2px;top:0;height:' + h + 'px;background:' + (moving ? 'rgba(234,179,8,0.15)' : bg) + ';border:' + border + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:' + (movable ? 'grab' : 'pointer') + ';line-height:1.25;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' + moveBtn +
     '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' + (movable ? 'padding-right:12px;' : '') + '">' + escapeHtml(nm) + (isConsult ? ' · consult' : '') + (beyondBooked ? ' · over' : '') + '</div>' +
     '<div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(timeStr) + '</div>' +
   '</div>';
@@ -3585,8 +3589,8 @@ function schedBlockHTML(s, rowH) {
   var color, bg;
   if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(34,197,94,0.15)'; }
   else if (cancelled) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.12)'; }
-  else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(167,139,250,0.15)'; }
-  else { color = 'var(--accent)'; bg = 'rgba(79,158,255,0.15)'; }
+  else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(56,168,221,0.15)'; }
+  else { color = 'var(--accent)'; bg = 'rgba(253,108,1,0.15)'; }
   var top = p.slotIndex * rowH, h = p.span * rowH - 3;
   var nm = ((s.client_name || '').split(/\s+/)[0]) || s.client_name || '(client)';
   return '<div class="sched-block" data-sid="' + escapeAttr(s.id) + '" style="position:absolute;z-index:2;left:3px;right:3px;top:' + top + 'px;height:' + h + 'px;background:' + bg + ';border:1px solid ' + color + ';border-radius:6px;padding:2px 6px;overflow:hidden;cursor:pointer;' + (cancelled ? 'text-decoration:line-through;opacity:0.65;' : '') + '">' +
@@ -3939,7 +3943,7 @@ function renderSessionsTab() {
         var finished = !owes && r.rem === 0;
         var situ = owes ? 'Owes ' + (-r.rem) + ' — collect & record purchase' : finished ? 'All packs used — renew' : 'Last pack almost done — re-sell';
         var cnt = owes ? 'owes ' + (-r.rem) : (finished ? '0 left' : r.rem + ' left (last pack)');
-        return '<div style="flex:0 0 230px;background:var(--panel);border:1px solid ' + ((owes || finished) ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)') + ';border-radius:10px;padding:12px;">' +
+        return '<div style="flex:0 0 230px;background:var(--panel);border:1px solid ' + ((owes || finished) ? 'rgba(239,68,68,0.4)' : 'rgba(234,179,8,0.4)') + ';border-radius:10px;padding:12px;">' +
           '<div style="font-weight:700;font-size:13px;">' + escapeHtml(r.L.name || '(no name)') + '</div>' +
           '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px;">' + escapeHtml(r.line.type || '') + ' · ' + cnt + '</div>' +
           '<div style="margin-bottom:10px;"><span class="badge ' + ((owes || finished) ? 'lost' : 'open') + '">' + situ + '</span></div>' +
@@ -4169,7 +4173,7 @@ function renderSessionDetail(L) {
       '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);">' + label + '</div>' +
       '<div style="font-size:20px;font-weight:800;' + (color ? 'color:' + color + ';' : '') + '">' + val + '</div></div>';
   }
-  var summary = '<div style="display:flex;gap:10px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(79,158,255,0.10),rgba(167,139,250,0.06));border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;">' +
+  var summary = '<div style="display:flex;gap:10px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(253,108,1,0.10),rgba(56,168,221,0.06));border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;">' +
     stat('Completed', tCompleted, 'var(--won)') +
     stat('Remaining', tRemaining, 'var(--open)') +
     stat('Earned', fmt$(tEarned), 'var(--won)') +
@@ -4222,7 +4226,7 @@ function renderSessionDetail(L) {
   var logSection = '<div style="margin-top:4px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--muted);font-weight:600;margin-bottom:6px;">Session Log (' + allDone.length + ')</div>' + logHead + logBody + voidedBlock + '</div>';
 
   content.innerHTML =
-    '<div class="modal-head" style="background:linear-gradient(135deg,#1e2235,#252a40);">' +
+    '<div class="modal-head" style="background:linear-gradient(135deg,var(--panel-2),var(--panel));">' +
       '<div style="min-width:0;"><div class="modal-title">📆 Session Tracking</div>' +
         '<div style="font-size:14px;font-weight:600;margin-top:4px;">' + escapeHtml(nm) + '</div>' +
         '<div style="margin-top:8px;">' + (pills || '<span style="font-size:12px;color:var(--muted);">No package lines</span>') + '</div></div>' +
@@ -4916,7 +4920,7 @@ function renderRevenueBanner() {
       '<div class="rev-stat-label">' + currentMonthLabel() + ' Paid</div>' +
       '<div class="rev-stat-value won">' + fmt$(paid) + '</div>' +
     '</div>' +
-    '<div class="rev-stat" style="' + (outstanding > 0 ? 'border-color:rgba(245,158,11,0.4);' : '') + '">' +
+    '<div class="rev-stat" style="' + (outstanding > 0 ? 'border-color:rgba(234,179,8,0.4);' : '') + '">' +
       '<div class="rev-stat-label">Outstanding</div>' +
       '<div class="rev-stat-value" style="color:' + (outstanding > 0 ? 'var(--open)' : 'var(--muted)') + ';">' + fmt$(outstanding) + '</div>' +
     '</div>' +
@@ -4997,8 +5001,8 @@ function leadCard(L) {
       (L.level ? '<span class="meta-chip">' + L.level + '</span>' : '') +
       (L.timeline ? '<span class="meta-chip">' + L.timeline + '</span>' : '') +
       (b.active && b.package ? '<span class="meta-chip">' + b.package + '</span>' : '') +
-      (b.active ? '<span class="meta-chip" style="' + (b.paid ? 'background:rgba(34,197,94,0.15);color:var(--won);' : 'background:rgba(245,158,11,0.15);color:var(--open);') + '">' + (b.paid ? '✓ Paid' : '○ Unpaid') + '</span>' : '') +
-      (L.consultStatus ? '<span class="meta-chip" style="background:rgba(167,139,250,0.15);color:var(--purple);">' + consultIcon(L.consultStatus) + ' ' + L.consultStatus + '</span>' : '') +
+      (b.active ? '<span class="meta-chip" style="' + (b.paid ? 'background:rgba(34,197,94,0.15);color:var(--won);' : 'background:rgba(234,179,8,0.15);color:var(--open);') + '">' + (b.paid ? '✓ Paid' : '○ Unpaid') + '</span>' : '') +
+      (L.consultStatus ? '<span class="meta-chip" style="background:rgba(56,168,221,0.15);color:var(--purple);">' + consultIcon(L.consultStatus) + ' ' + L.consultStatus + '</span>' : '') +
     '</div>' +
    billingBlock +
 '<div class="quick-actions">' +
@@ -5070,7 +5074,7 @@ function showQaPopup(action, L, btnEl) {
       '<div class="qa-popup-title">🔄 Change Status — ' + L.name + '</div>' +
       statuses.map(function(s) {
         var isActive = s.value === current;
-        return '<div class="qa-status-option" style="' + (isActive ? 'background:rgba(79,158,255,0.15);color:var(--accent);' : '') + '" onclick="qaConfirmStatus(\'' + L.name.replace(/'/g,"\\'") + '\',\'' + s.value + '\')">' +
+        return '<div class="qa-status-option" style="' + (isActive ? 'background:rgba(253,108,1,0.15);color:var(--accent);' : '') + '" onclick="qaConfirmStatus(\'' + L.name.replace(/'/g,"\\'") + '\',\'' + s.value + '\')">' +
           s.label + (isActive ? ' ✓' : '') +
         '</div>';
       }).join('') +
@@ -5266,7 +5270,7 @@ function billingInitials(nm){ return ((nm || '').trim().split(/\s+/).map(functio
 // Color-coded remaining: >1 green (ok) · ==1 amber (renew soon) · <=0 red (used up / owes).
 function billingRemColor(rem){
   if (rem <= 0) return { c: 'var(--lost)', bg: 'rgba(239,68,68,0.15)' };
-  if (rem <= 1) return { c: 'var(--open)', bg: 'rgba(245,158,11,0.15)' };
+  if (rem <= 1) return { c: 'var(--open)', bg: 'rgba(234,179,8,0.15)' };
   return { c: 'var(--won)', bg: 'rgba(34,197,94,0.15)' };
 }
 function billingIsPkg(ln){ return (ln.billingStyle || 'package') === 'package'; }
@@ -5324,7 +5328,7 @@ function renderBillingTab(){
     if (rem === null) { badge = '<span style="font-size:11px;color:var(--muted);">—</span>'; }
     else { var col = billingRemColor(rem); badge = '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:' + col.c + ';background:' + col.bg + ';white-space:nowrap;">' + rem + ' left</span>'; }
     if (billingClientOverdue(L)) badge = '<span title="Recurring collection overdue" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:var(--lost);background:rgba(239,68,68,0.15);white-space:nowrap;margin-right:4px;">$ due</span>' + badge;
-    return '<div class="billing-client-row" data-id="' + escapeAttr(L.id) + '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:4px;' + (sel ? 'background:rgba(79,158,255,0.15);border:1px solid var(--accent);' : 'border:1px solid transparent;') + '">' +
+    return '<div class="billing-client-row" data-id="' + escapeAttr(L.id) + '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:4px;' + (sel ? 'background:rgba(253,108,1,0.15);border:1px solid var(--accent);' : 'border:1px solid transparent;') + '">' +
         '<div style="width:30px;height:30px;border-radius:50%;background:var(--panel-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;">' + escapeHtml(billingInitials(nm)) + '</div>' +
         '<div style="flex:1;min-width:0;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(nm) + '</div>' +
         badge +
@@ -5363,7 +5367,7 @@ function billingPanelHTML(L){
   var lineSelector = lines.length > 1 ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 4px;">' +
     lines.map(function(ln){
       var on = String(ln.id) === String(line.id);
-      return '<button class="billing-line-chip" data-lineid="' + escapeAttr(ln.id) + '" style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border)') + ';background:' + (on ? 'rgba(79,158,255,0.15)' : 'var(--panel-2)') + ';color:' + (on ? 'var(--accent)' : 'var(--text)') + ';">' + escapeHtml(ln.type || 'Line') + ' · ' + (billingIsPkg(ln) ? 'package' : (ln.billingStyle || '')) + '</button>';
+      return '<button class="billing-line-chip" data-lineid="' + escapeAttr(ln.id) + '" style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border)') + ';background:' + (on ? 'rgba(253,108,1,0.15)' : 'var(--panel-2)') + ';color:' + (on ? 'var(--accent)' : 'var(--text)') + ';">' + escapeHtml(ln.type || 'Line') + ' · ' + (billingIsPkg(ln) ? 'package' : (ln.billingStyle || '')) + '</button>';
     }).join('') + '</div>' : '';
 
   // KPI tiles
@@ -5620,7 +5624,7 @@ function billingRenderPOS(){
   if (it.mode === 'sessions') {
     var quick = [1, 4, 8].map(function(n){
       var on = billingPos.qty === n;
-      return '<button class="pos-quick" data-qty="' + n + '" style="flex:1;min-width:70px;padding:9px;border-radius:8px;cursor:pointer;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border)') + ';background:' + (on ? 'rgba(79,158,255,0.15)' : 'var(--panel-2)') + ';color:var(--text);font-size:12px;font-weight:700;">' + n + (n === 1 ? ' session' : ' sessions') + '</button>';
+      return '<button class="pos-quick" data-qty="' + n + '" style="flex:1;min-width:70px;padding:9px;border-radius:8px;cursor:pointer;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border)') + ';background:' + (on ? 'rgba(253,108,1,0.15)' : 'var(--panel-2)') + ';color:var(--text);font-size:12px;font-weight:700;">' + n + (n === 1 ? ' session' : ' sessions') + '</button>';
     }).join('');
     body = '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + quick + '</div>' +
       '<div class="billing-grid" style="grid-template-columns:1fr 1fr;margin-top:10px;">' +
@@ -5656,7 +5660,7 @@ function billingRenderPOS(){
 
   // 5) Cart summary (spans updated live by posSyncCart — no re-render, keeps focus).
   var ok = posValid();
-  var cart = '<div id="pos-cart" style="margin-top:14px;padding:12px;border:1px solid ' + (ok ? 'var(--accent)' : 'var(--border)') + ';border-radius:8px;background:' + (ok ? 'rgba(79,158,255,0.08)' : 'var(--panel-2)') + ';">' +
+  var cart = '<div id="pos-cart" style="margin-top:14px;padding:12px;border:1px solid ' + (ok ? 'var(--accent)' : 'var(--border)') + ';border-radius:8px;background:' + (ok ? 'rgba(253,108,1,0.08)' : 'var(--panel-2)') + ';">' +
       '<div style="font-size:13px;font-weight:600;" id="pos-cart-line">' + posCartLine(it, line) + '</div>' +
       (it.mode === 'sessions' ? '<div style="font-size:12px;color:var(--muted);margin-top:2px;" id="pos-cart-rem">' + posCartRemaining(line, purchased) + '</div>' : '') +
       '<div style="font-size:20px;font-weight:800;color:var(--won);margin-top:6px;" id="pos-cart-total">' + fmt$(posTotal()) + '</div>' +
@@ -5715,7 +5719,7 @@ function billingWirePOS(L, line){
       chargeBtn.style.cursor = ok ? 'pointer' : 'not-allowed';
     }
     var cartBox = content.querySelector('#pos-cart');
-    if (cartBox) { cartBox.style.border = '1px solid ' + (ok ? 'var(--accent)' : 'var(--border)'); cartBox.style.background = ok ? 'rgba(79,158,255,0.08)' : 'var(--panel-2)'; }
+    if (cartBox) { cartBox.style.border = '1px solid ' + (ok ? 'var(--accent)' : 'var(--border)'); cartBox.style.background = ok ? 'rgba(253,108,1,0.08)' : 'var(--panel-2)'; }
     var lineEl = content.querySelector('#pos-cart-line'); if (lineEl) lineEl.innerHTML = posCartLine(it, line);
     var remEl = content.querySelector('#pos-cart-rem'); if (remEl) remEl.textContent = posCartRemaining(line, purchased);
     var totalEl = content.querySelector('#pos-cart-total'); if (totalEl) totalEl.textContent = fmt$(posTotal());
@@ -5796,9 +5800,9 @@ var leadView = localStorage.getItem('arcascend_lead_view') || 'board';
 function renderKanban() {
   var main = $("main");
   var cols = [
-    { key: 'New', color: '#60a5fa' },
-    { key: 'Open', color: '#f59e0b' },
-    { key: 'Pending', color: '#a78bfa' },
+    { key: 'New', color: '#ff8a3d' },
+    { key: 'Open', color: '#eab308' },
+    { key: 'Pending', color: '#38a8dd' },
     { key: 'Closed Won', color: '#22c55e' },
     { key: 'Closed Lost', color: '#ef4444' }
   ];
@@ -5829,7 +5833,7 @@ function renderKanban() {
 }
 function kanbanTipHTML() {
   if (localStorage.getItem('arcascend_hide_kanban_tip') === '1') return '';
-  return '<div id="kanban-tip" style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;">' +
+  return '<div id="kanban-tip" style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,138,61,0.1);border:1px solid rgba(255,138,61,0.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;">' +
     '<div style="display:flex;align-items:center;gap:10px;">' +
     '<span style="font-size:18px;">💡</span>' +
     '<span style="font-size:13px;color:var(--text);">Tip: Drag any lead card between columns to instantly update their status. Changes save automatically.</span>' +
@@ -6574,7 +6578,7 @@ function renderServiceLinesEditor(L) {
         '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap;"><input type="checkbox" class="svc-active" data-i="' + i + '" ' + (ln.active ? 'checked' : '') + '> Active</label>' +
       '</div>' +
       '<div class="billing-grid">' + fields + '</div>' +
-      (isDupEmpty ? '<div style="font-size:11px;color:var(--open);background:rgba(245,158,11,0.12);border:1px solid var(--open);border-radius:6px;padding:6px 9px;margin-top:8px;">⚠ Empty duplicate of another ' + escapeHtml(ln.type || 'line') + ' line — no purchases or sessions. Safe to remove.</div>' : '') +
+      (isDupEmpty ? '<div style="font-size:11px;color:var(--open);background:rgba(234,179,8,0.12);border:1px solid var(--open);border-radius:6px;padding:6px 9px;margin-top:8px;">⚠ Empty duplicate of another ' + escapeHtml(ln.type || 'line') + ' line — no purchases or sessions. Safe to remove.</div>' : '') +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">' +
         '<span style="font-size:12px;color:var(--muted);">Line total: <b style="color:var(--text);">' + fmt$(lineTotal(ln)) + '</b></span>' +
         '<button class="svc-remove" data-i="' + i + '" style="background:transparent;border:1px solid ' + (isDupEmpty ? 'var(--open)' : 'var(--border)') + ';border-radius:6px;color:var(--lost);font-size:12px;padding:5px 10px;cursor:pointer;">Remove</button>' +
@@ -6945,7 +6949,7 @@ function renderClientsTab() {
     '</div></div>' +
 
     // Hero revenue panel
-    '<div style="background:linear-gradient(135deg,rgba(34,197,94,0.1),rgba(167,139,250,0.05));border:1px solid rgba(34,197,94,0.4);border-radius:14px;padding:24px;margin-bottom:24px;">' +
+    '<div style="background:linear-gradient(135deg,rgba(34,197,94,0.1),rgba(56,168,221,0.05));border:1px solid rgba(34,197,94,0.4);border-radius:14px;padding:24px;margin-bottom:24px;">' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px;">' +
         '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">' + currentMonthLabel() + ' Projection</div>' +
           '<div style="font-size:36px;font-weight:800;color:var(--accent);">' + fmt$(totalRev) + '</div></div>' +
@@ -7085,7 +7089,7 @@ function openCampaign(id) {
   var c = CAMPAIGNS.find(function(x){ return x.id === id; });
   if (!c) return;
   var steps = (c.sequence || []).map(function(s, i){
-    var body = s.body.replace(/\{\{(\w+)\}\}/g, '<span style="background:rgba(79,158,255,0.15);color:var(--accent);padding:1px 6px;border-radius:4px;font-size:12px;">{{$1}}</span>');
+    var body = s.body.replace(/\{\{(\w+)\}\}/g, '<span style="background:rgba(253,108,1,0.15);color:var(--accent);padding:1px 6px;border-radius:4px;font-size:12px;">{{$1}}</span>');
     return '<div style="display:flex;gap:14px;padding:14px 0;border-left:2px solid var(--border);margin-left:16px;padding-left:20px;position:relative;">' +
       '<div style="position:absolute;left:-14px;top:14px;background:var(--panel);border:2px solid var(--accent);color:var(--accent);width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">' + (i+1) + '</div>' +
       '<div style="flex:1;"><div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">' + s.channel + ' · ' + s.when + (s.subject?' · Subject: <b style="color:var(--text);">'+s.subject+'</b>':'') + '</div>' +
@@ -7249,11 +7253,11 @@ function renderSyncTab() {
     '</div>' +
 
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">' +
-      '<span class="service-pill" style="background:' + (sheetUrl?"rgba(34,197,94,0.12)":"rgba(245,158,11,0.12)") + ';color:' + (sheetUrl?"var(--won)":"var(--open)") + ';border-color:' + (sheetUrl?"rgba(34,197,94,0.3)":"rgba(245,158,11,0.3)") + ';padding:8px 14px;font-size:13px;">' +
+      '<span class="service-pill" style="background:' + (sheetUrl?"rgba(34,197,94,0.12)":"rgba(234,179,8,0.12)") + ';color:' + (sheetUrl?"var(--won)":"var(--open)") + ';border-color:' + (sheetUrl?"rgba(34,197,94,0.3)":"rgba(234,179,8,0.3)") + ';padding:8px 14px;font-size:13px;">' +
         '📊 Google Sheets · ' + (sheetUrl ? (autoOn ? "Auto-syncing" : "Connected") : "Not connected") +
       '</span>' +
       '<span class="service-pill" style="background:rgba(34,197,94,0.12);color:var(--won);border-color:rgba(34,197,94,0.3);padding:8px 14px;font-size:13px;">📊 Excel (.xlsx) · Ready</span>' +
-      '<span class="service-pill" style="background:rgba(167,139,250,0.12);color:var(--purple);border-color:rgba(167,139,250,0.3);padding:8px 14px;font-size:13px;">📝 Google Forms · Via Sheets</span>' +
+      '<span class="service-pill" style="background:rgba(56,168,221,0.12);color:var(--purple);border-color:rgba(56,168,221,0.3);padding:8px 14px;font-size:13px;">📝 Google Forms · Via Sheets</span>' +
     '</div>' +
 
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;">' +
@@ -7298,7 +7302,7 @@ function renderSyncTab() {
       '<div id="sync-status"><div style="color:var(--muted);font-size:13px;">Drop a file above, paste data, or set up live Google Sheets sync.</div></div>' +
     '</div>' +
 
-    '<div style="margin-top:18px;background:rgba(79,158,255,0.06);border:1px solid rgba(79,158,255,0.3);border-radius:8px;padding:14px;font-size:12px;line-height:1.6;">' +
+    '<div style="margin-top:18px;background:rgba(253,108,1,0.06);border:1px solid rgba(253,108,1,0.3);border-radius:8px;padding:14px;font-size:12px;line-height:1.6;">' +
       '<b style="color:var(--accent);">💡 Only Name is required</b><br>' +
       'Drop a CSV or Excel with any columns — as long as there\'s a name, the lead imports. Phone, goal, level, timeline, etc. are all optional. Any column the importer doesn\'t recognize gets appended to that lead\'s Consultation Notes as <code>Column Name: value</code>. Auto-mapped fields:<br><br>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;font-size:11px;">' +
@@ -8156,7 +8160,7 @@ function doVideo(L) {
   showReach(
     '<div class="modal-head"><div class="modal-title">🎥 Video Call</div><button class="modal-close" onclick="closeReach()">✕</button></div>' +
     '<div class="modal-body" style="text-align:center;">' +
-    '<div class="dialer-avatar" style="background:linear-gradient(135deg,#fb923c,#a78bfa);">' + L.name.charAt(0).toUpperCase() + '</div>' +
+    '<div class="dialer-avatar" style="background:linear-gradient(135deg,#ff9c4a,#38a8dd);">' + L.name.charAt(0).toUpperCase() + '</div>' +
     '<div style="font-size:18px;font-weight:600;margin-top:14px;">' + L.name + '</div>' +
     '<div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Ready to start?</div>' +
     '<button class="btn" id="v-go">Start Video Call</button>' +
@@ -8776,12 +8780,12 @@ function renderHomeTab() {
       '<span class="hm-nm" style="color:var(--won);">All intake forms handled</span>' +
       '<span class="hm-mut">new submissions appear here the moment they arrive</span></div></div>';
   } else {
-    intakeHtml = '<div class="hm-panel" style="border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.05);margin-bottom:14px;">' +
-      '<div class="hm-hdr" style="color:var(--open);border-color:rgba(245,158,11,.25);">📝 ' + intakes.length +
+    intakeHtml = '<div class="hm-panel" style="border-color:rgba(234,179,8,.5);background:rgba(234,179,8,.05);margin-bottom:14px;">' +
+      '<div class="hm-hdr" style="color:var(--open);border-color:rgba(234,179,8,.25);">📝 ' + intakes.length +
       ' new intake form' + (intakes.length > 1 ? 's' : '') + ' — no consult or status set yet</div>' +
       intakes.slice(0, 6).map(function(L){
         var ago = L.date ? timeAgo(L.date) : '';
-        return '<div class="hm-row" style="border-color:rgba(245,158,11,.15);">' +
+        return '<div class="hm-row" style="border-color:rgba(234,179,8,.15);">' +
           '<span class="hm-nm">' + escapeHtml(L.name || '(no name)') + '</span>' +
           '<span class="hm-mut">' + escapeHtml([ago, L.goal || 'no goal listed'].filter(Boolean).join(' · ')) + '</span>' +
           '<button class="hm-btn" data-hm="open" data-name="' + escapeAttr(L.name || '') + '">Review →</button></div>';
@@ -9579,7 +9583,7 @@ async function renderFormsLibrary() {
     '<div>' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
         '<div style="font-size:15px;font-weight:700;color:var(--text-primary)">' + escapeHtml(defaultTitle) + '</div>' +
-        '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);background:rgba(79,158,255,0.14);border:1px solid rgba(79,158,255,0.4);border-radius:999px;padding:2px 8px">Default</span>' +
+        '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);background:rgba(253,108,1,0.14);border:1px solid rgba(253,108,1,0.4);border-radius:999px;padding:2px 8px">Default</span>' +
       '</div>' +
       '<div style="font-size:12px;color:var(--muted);margin-top:2px">Your main form</div>' +
     '</div>' +
@@ -9847,7 +9851,7 @@ function renderImportPreview() {
     + '</div>';
   var rows = formsImportPending.questions.map(function(q){
     var opts = (q.options && q.options.length) ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">Options: ' + escapeHtml(q.options.join(', ')) + '</div>' : '';
-    var req = q.required ? badge('required', 'rgba(59,130,246,0.15)', 'var(--accent)') : badge('optional', 'var(--bg-secondary)', 'var(--muted)');
+    var req = q.required ? badge('required', 'rgba(232,95,0,0.15)', 'var(--accent)') : badge('optional', 'var(--bg-secondary)', 'var(--muted)');
     return '<div style="padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">'
       + '<div style="font-size:13px;font-weight:600;color:var(--text-primary)">' + escapeHtml(q.label || '') + '</div>'
       + '<div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' + badge(q.type || 'text', 'rgba(34,197,94,0.14)', 'var(--won)') + req + '</div>' + opts
@@ -10430,7 +10434,7 @@ function autoBackupReminder() {
   var now = Date.now();
   if (!lastBackup || (now - parseInt(lastBackup)) > 7 * 24 * 60 * 60 * 1000) {
     var reminder = document.createElement('div');
-    reminder.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#f59e0b;color:#000;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;cursor:pointer;';
+    reminder.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#eab308;color:#000;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;cursor:pointer;';
     reminder.textContent = '⚠️ Weekly reminder: Export your data backup (Settings → Export All Data)';
     reminder.onclick = function() { 
       localStorage.setItem('arcascend_last_backup', Date.now().toString());
@@ -10724,7 +10728,7 @@ function renderPastePreview() {
   var badge = function(txt, bg, col){ return '<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;background:' + bg + ';color:' + col + '">' + escapeHtml(txt) + '</span>'; };
   var rows = pasteParsedList.map(function(q, i){
     var opts = (q.options && q.options.length) ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">Options: ' + escapeHtml(q.options.join(', ')) + '</div>' : '';
-    var req = q.required ? badge('required', 'rgba(59,130,246,0.15)', 'var(--accent)') : badge('optional', 'var(--bg-secondary)', 'var(--muted)');
+    var req = q.required ? badge('required', 'rgba(232,95,0,0.15)', 'var(--accent)') : badge('optional', 'var(--bg-secondary)', 'var(--muted)');
     return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">'
       + '<div style="min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text-primary)">' + escapeHtml(q.label) + '</div>'
       + '<div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' + badge(q.type, 'rgba(34,197,94,0.14)', 'var(--won)') + req + '</div>' + opts + '</div>'
@@ -10732,7 +10736,7 @@ function renderPastePreview() {
       + '</div>';
   }).join('');
   var skipNote = pasteSkippedList.length
-    ? '<div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;font-size:12px;color:var(--open)">Skipped ' + pasteSkippedList.length + ' unrecognized chunk' + (pasteSkippedList.length === 1 ? '' : 's') + ': ' + escapeHtml(pasteSkippedList.map(function(s){ return '“' + s + '”'; }).join('   ·   ')) + '</div>'
+    ? '<div style="margin-top:8px;padding:8px 10px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:8px;font-size:12px;color:var(--open)">Skipped ' + pasteSkippedList.length + ' unrecognized chunk' + (pasteSkippedList.length === 1 ? '' : 's') + ': ' + escapeHtml(pasteSkippedList.map(function(s){ return '“' + s + '”'; }).join('   ·   ')) + '</div>'
     : '';
   var head = pasteParsedList.length
     ? '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Preview — remove any you don\'t want, then add:</div>'
@@ -11436,7 +11440,7 @@ function repDrawLineChart(canvasId, label, labels, data, color) {
     if (__REPORTS_CHART) { try { __REPORTS_CHART.destroy(); } catch(_){} }
     __REPORTS_CHART = new Chart(ctx, {
       type: 'line',
-      data: { labels: labels, datasets: [{ label: label, data: data, borderColor: color || '#4f9eff', backgroundColor: (color || '#4f9eff') + '33', tension: 0.3, fill: true }] },
+      data: { labels: labels, datasets: [{ label: label, data: data, borderColor: color || '#fd6c01', backgroundColor: (color || '#fd6c01') + '33', tension: 0.3, fill: true }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { ticks: { color: '#888' }, grid: { color: '#333' } }, y: { ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
     });
   });
@@ -11449,7 +11453,7 @@ function repDrawBarChart(canvasId, label, labels, data, color) {
     if (__REPORTS_CHART) { try { __REPORTS_CHART.destroy(); } catch(_){} }
     __REPORTS_CHART = new Chart(ctx, {
       type: 'bar',
-      data: { labels: labels, datasets: [{ label: label, data: data, backgroundColor: color || '#4f9eff' }] },
+      data: { labels: labels, datasets: [{ label: label, data: data, backgroundColor: color || '#fd6c01' }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { ticks: { color: '#888' }, grid: { color: '#333' } }, y: { ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
     });
   });
@@ -11518,8 +11522,8 @@ function renderRepLeads(body) {
 
   var html = '';
   html += repStatsGrid([
-    { label:'Leads Added', value: created.length, color:'#4f9eff' },
-    { label:'Intake Forms', value: intake.length, color:'#a78bfa' },
+    { label:'Leads Added', value: created.length, color:'#fd6c01' },
+    { label:'Intake Forms', value: intake.length, color:'#38a8dd' },
     { label:'New Active Clients', value: newActiveEv.length, color:'#22c55e' },
     { label:'Closed Won', value: wonEv.length, color:'#22c55e' },
     { label:'Closed Lost', value: lostEv.length, color:'#ef4444' }
@@ -11546,7 +11550,7 @@ function renderRepLeads(body) {
       type: 'line',
       data: { labels: buckets, datasets: [
         { label: 'New Active Clients', data: buckets.map(function(b){ return activeMap[b]; }), borderColor: '#22c55e', backgroundColor: '#22c55e22', tension: 0.3, fill: false },
-        { label: 'Closed Won', data: buckets.map(function(b){ return wonMap[b]; }), borderColor: '#4f9eff', backgroundColor: '#4f9eff22', tension: 0.3, fill: false },
+        { label: 'Closed Won', data: buckets.map(function(b){ return wonMap[b]; }), borderColor: '#fd6c01', backgroundColor: '#fd6c0122', tension: 0.3, fill: false },
         { label: 'Closed Lost', data: buckets.map(function(b){ return lostMap[b]; }), borderColor: '#ef4444', backgroundColor: '#ef444422', tension: 0.3, fill: false }
       ]},
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { ticks: { color: '#888' }, grid: { color: '#333' } }, y: { ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
@@ -11596,9 +11600,9 @@ function renderRepRevenue(body) {
 
   var html = '';
   html += repStatsGrid([
-    { label: currentMonthLabel() + ' Projection', value: '$' + projection.toLocaleString(), color:'#4f9eff' },
+    { label: currentMonthLabel() + ' Projection', value: '$' + projection.toLocaleString(), color:'#fd6c01' },
     { label: currentMonthLabel() + ' Paid', value: '$' + paidNow.toLocaleString(), color:'#22c55e' },
-    { label: 'Outstanding', value: '$' + outstanding.toLocaleString(), color:'#f59e0b' },
+    { label: 'Outstanding', value: '$' + outstanding.toLocaleString(), color:'#eab308' },
     { label: 'Payments Logged (range)', value: '$' + rangeTotal.toLocaleString() },
     { label: 'Clients Paid', value: clientsPaid + ' / ' + activeC.length }
   ]);
@@ -11628,10 +11632,10 @@ function renderRepConversions(body) {
 
   var html = '';
   html += repStatsGrid([
-    { label: 'Consultations Completed', value: consultsDone.length, color:'#4f9eff' },
+    { label: 'Consultations Completed', value: consultsDone.length, color:'#fd6c01' },
     { label: 'Closed Won', value: won.length, color:'#22c55e' },
     { label: 'Closed Lost', value: lost.length, color:'#ef4444' },
-    { label: 'Win Rate', value: winRate + '%', color: winRate >= 50 ? '#22c55e' : '#f59e0b' },
+    { label: 'Win Rate', value: winRate + '%', color: winRate >= 50 ? '#22c55e' : '#eab308' },
     { label: 'New Active Clients', value: newActive.length }
   ]);
   html += repCard('Closed Won vs Lost (over range)', '<div style="height:260px;"><canvas id="rep-chart-conv"></canvas></div>');
@@ -11667,7 +11671,7 @@ function renderRepActivity(body) {
   ev.forEach(function(e){ byType[e.event_type] = (byType[e.event_type]||0) + 1; });
 
   var statHtml = repStatsGrid([
-    { label: 'Total Events', value: ev.length, color: '#4f9eff' },
+    { label: 'Total Events', value: ev.length, color: '#fd6c01' },
     { label: 'Lead Activity', value: (byType.lead_created||0) + (byType.status_changed||0) },
     { label: 'New Active Clients', value: byType.active_client_marked || 0, color: '#22c55e' },
     { label: 'Consultations', value: byType.consultation_completed || 0 }
