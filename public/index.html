@@ -13,25 +13,31 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script>/* Apply saved theme before first paint (default: dark) */try{document.documentElement.dataset.theme=localStorage.getItem('arcascend_theme')||'dark';}catch(_){document.documentElement.dataset.theme='dark';}</script>
+<script>/* Apply saved theme before first paint (default: light) */try{document.documentElement.dataset.theme=localStorage.getItem('arcascend_theme')||'light';}catch(_){document.documentElement.dataset.theme='light';}</script>
 <style>
-/* ARCTIC theme — ICE #bfecff family runs the UI, BLAZE #fd6c01 reserved for primary CTAs (--cta).
-   Dark = "midnight ice" (deep ice-navy surfaces, ice-blue accent).
-   --purple var carries the lighter-ice secondary accent (name kept to avoid a mass rename). */
+/* ARCTIC SUNSET theme — near-black text on white/ice surfaces, sunset gradient (--sunset)
+   for primary CTAs with BLACK text, ice shades for UI chrome. Light is the default.
+   Dark = "midnight sunset" (deep ice-navy surfaces, same sunset CTAs).
+   --purple var carries the ice secondary accent (name kept to avoid a mass rename). */
 :root {
   --bg: #0a1722; --panel: #11283a; --panel-2: #173349; --panel-3: #224a66;
-  --border: #1f3d52; --text: #e8f4fb; --muted: #8babbf;
-  --accent: #3eb3e8; --cta: #fd6c01; --won: #22c55e; --lost: #ef4444;
-  --open: #eab308; --warm: #ff9c4a; --purple: #6fc8ef;
+  --border: #1f3d52; --text: #e8f4fb; --muted: #8fb0c4;
+  --accent: #5fb8f0; --cta: #fd6c01; --won: #34d399; --lost: #ef4444;
+  --open: #f59e0b; --warm: #ffb84d; --purple: #8fd4ff;
+  --sunset: linear-gradient(135deg,#ffcf6b,#fd6c01 52%,#ff5e62);
+  --sunset-soft: linear-gradient(135deg,#473424,#45291f 55%,#442731);
+  --ice-wash: linear-gradient(180deg,#0e2434,#0a1722);
   --shadow: 0 4px 20px rgba(0,0,0,0.35);
   color-scheme: dark;
 }
-/* Light theme — ice surfaces fading white → #bfecff. Toggle in Settings, saved per device. */
+/* Light theme (default) — white surfaces, pale-ice fills, near-black text. */
 html[data-theme="light"] {
-  --bg: #e6f5fe; --panel: #ffffff; --panel-2: #d4edfc; --panel-3: #bfecff;
-  --border: #9ed3ec; --text: #0c2535; --muted: #48677b;
-  --accent: #1792c9; --purple: #38a8dd; --open: #ca8a04;
-  --shadow: 0 4px 20px rgba(17,80,120,0.12);
+  --bg: #ffffff; --panel: #ffffff; --panel-2: #eaf7ff; --panel-3: #bfecff;
+  --border: #dbe8f2; --text: #0a0a0a; --muted: #55636f;
+  --accent: #1b7fb0; --purple: #2aa7e0; --won: #059669; --open: #b45309;
+  --sunset-soft: linear-gradient(135deg,#fff0d6,#ffe1d3 55%,#ffdce0);
+  --ice-wash: linear-gradient(180deg,#eaf7ff,#ffffff);
+  --shadow: 0 2px 10px rgba(16,50,80,0.07);
   color-scheme: light;
 }
 /* Create Form — segmented steps (Phase 1) */
@@ -98,8 +104,8 @@ header { position:sticky; top:0; z-index:100;
   min-width: 130px;
 }
 .rev-stat.highlight {
-  background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(34,197,94,0.05));
-  border-color: rgba(34,197,94,0.4);
+  background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.05));
+  border-color: rgba(16,185,129,0.4);
 }
 .rev-stat.projection {
   background: linear-gradient(135deg, rgba(42,163,220,0.15), rgba(42,163,220,0.05));
@@ -271,13 +277,13 @@ main { flex: 1; padding: 20px 24px; }
   font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
   text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap;
 }
-.badge.won { background: rgba(34,197,94,0.15); color: var(--won); border: 1px solid rgba(34,197,94,0.3); }
+.badge.won { background: rgba(16,185,129,0.15); color: var(--won); border: 1px solid rgba(16,185,129,0.3); }
 .badge.lost { background: rgba(239,68,68,0.15); color: var(--lost); border: 1px solid rgba(239,68,68,0.3); }
 .badge.open, .badge.pending { background: rgba(234,179,8,0.15); color: var(--open); border: 1px solid rgba(234,179,8,0.3); }
 .badge.new { background: rgba(42,163,220,0.15); color: var(--accent); border: 1px solid rgba(42,163,220,0.3); }
 .badge.active-client {
-  background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(56,168,221,0.2));
-  color: var(--won); border: 1px solid rgba(34,197,94,0.4);
+  background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(56,168,221,0.2));
+  color: var(--won); border: 1px solid rgba(16,185,129,0.4);
 }
 .lead-body { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .lead-meta {
@@ -385,15 +391,15 @@ main { flex: 1; padding: 20px 24px; }
   padding: 6px 12px; border-radius: 6px; cursor: pointer;
   font-size: 12px; font-weight: 500;
 }
-.status-btn[data-s="Closed Won"].active { border-color: var(--won); background: rgba(34,197,94,0.15); color: var(--won); }
+.status-btn[data-s="Closed Won"].active { border-color: var(--won); background: rgba(16,185,129,0.15); color: var(--won); }
 .status-btn[data-s="Closed Lost"].active { border-color: var(--lost); background: rgba(239,68,68,0.15); color: var(--lost); }
 .status-btn[data-s="Open"].active, .status-btn[data-s="Pending"].active { border-color: var(--open); background: rgba(234,179,8,0.15); color: var(--open); }
 .status-btn[data-s="New"].active { border-color: var(--accent); background: rgba(42,163,220,0.15); color: var(--accent); }
 
 /* Billing section in modal */
 .billing-box {
-  background: linear-gradient(135deg, rgba(34,197,94,0.05), rgba(56,168,221,0.05));
-  border: 1px solid rgba(34,197,94,0.3); border-radius: 10px; padding: 14px;
+  background: linear-gradient(135deg, rgba(16,185,129,0.05), rgba(56,168,221,0.05));
+  border: 1px solid rgba(16,185,129,0.3); border-radius: 10px; padding: 14px;
 }
 .billing-toggle {
   display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
@@ -412,7 +418,7 @@ main { flex: 1; padding: 20px 24px; }
 .billing-total {
   margin-top: 14px; padding: 12px; background: var(--panel);
   border-radius: 8px; text-align: center;
-  border: 2px solid rgba(34,197,94,0.3);
+  border: 2px solid rgba(16,185,129,0.3);
 }
 .billing-total-label {
   font-size: 11px; color: var(--muted); text-transform: uppercase;
@@ -428,8 +434,8 @@ main { flex: 1; padding: 20px 24px; }
 }
 .service-pill {
   display: inline-flex; align-items: center; gap: 6px;
-  background: rgba(34,197,94,0.12); color: var(--won);
-  border: 1px solid rgba(34,197,94,0.3); padding: 4px 10px;
+  background: rgba(16,185,129,0.12); color: var(--won);
+  border: 1px solid rgba(16,185,129,0.3); padding: 4px 10px;
   border-radius: 14px; font-size: 11px; font-weight: 600;
 }
 .service-pill::before {
@@ -454,7 +460,7 @@ main { flex: 1; padding: 20px 24px; }
   display: flex; align-items: center; justify-content: center;
   font-size: 18px; background: var(--panel); border: 1px solid var(--border);
 }
-.reach-btn.call .ricon { background: rgba(34,197,94,0.15); color: var(--won); }
+.reach-btn.call .ricon { background: rgba(16,185,129,0.15); color: var(--won); }
 .reach-btn.text .ricon { background: rgba(42,163,220,0.15); color: var(--accent); }
 .reach-btn.email .ricon { background: rgba(56,168,221,0.15); color: var(--purple); }
 .reach-btn.video .ricon { background: rgba(255,156,74,0.15); color: var(--warm); }
@@ -477,7 +483,7 @@ main { flex: 1; padding: 20px 24px; }
   width: 28px; height: 28px; border-radius: 50%; display: flex;
   align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
 }
-.activity-icon.call { background: rgba(34,197,94,0.15); color: var(--won); }
+.activity-icon.call { background: rgba(16,185,129,0.15); color: var(--won); }
 .activity-icon.text { background: rgba(42,163,220,0.15); color: var(--accent); }
 .activity-icon.email { background: rgba(56,168,221,0.15); color: var(--purple); }
 .activity-icon.voicemail { background: rgba(234,179,8,0.15); color: var(--open); }
@@ -897,7 +903,7 @@ main { flex: 1; padding: 20px 24px; }
   flex-shrink: 0;
 }
 .home-task-dot.overdue { background: #ef4444; }
-.home-task-dot.today { background: #22c55e; }
+.home-task-dot.today { background: #10b981; }
 .home-empty {
   color: var(--muted);
   font-size: 13px;
@@ -915,7 +921,7 @@ main { flex: 1; padding: 20px 24px; }
 .hm-red{background:rgba(239,68,68,.15);color:var(--lost);}
 .hm-amb{background:rgba(234,179,8,.15);color:var(--open);}
 .hm-pur{background:rgba(56,168,221,.15);color:var(--purple);}
-.hm-grn{background:rgba(34,197,94,.15);color:var(--won);}
+.hm-grn{background:rgba(16,185,129,.15);color:var(--won);}
 .hm-btn{font-size:11.5px;font-weight:600;color:var(--accent);border:1px solid var(--border);border-radius:7px;padding:4px 10px;background:var(--panel-2);margin-left:auto;cursor:pointer;white-space:nowrap;font-family:inherit;}
 .hm-btn:hover{border-color:var(--accent);}
 .hm-btn:disabled{opacity:.5;cursor:default;}
@@ -1124,6 +1130,69 @@ main { flex: 1; padding: 20px 24px; }
 .kanban-card:hover { transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.3); }
 .kanban-card-name { font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px; }
 .kanban-card-meta { font-size:11px;color:var(--muted); }
+/* ============ ARCTIC SUNSET LAYOUT — sidebar nav + gradient topbar ============ */
+.app { display: grid; grid-template-columns: 216px minmax(0,1fr); align-content: start; }
+.app > * { grid-column: 2; min-width: 0; }
+.app > nav.tabs { grid-column: 1; grid-row: 1 / span 20; }
+
+/* Sidebar (was the horizontal tab bar) */
+nav.tabs {
+  position: sticky; top: 0; z-index: 99; height: 100vh; overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap;
+  background: var(--ice-wash); border-bottom: none; border-right: 1px solid var(--border);
+  padding: 14px 10px; gap: 2px;
+}
+.side-brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 17px; color: var(--text); padding: 4px 10px 16px; font-family: 'Archivo', -apple-system, sans-serif; }
+.side-brand .mark { width: 26px; height: 26px; border-radius: 8px; background: var(--sunset); color: #0a0a0a; font-size: 13px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tab {
+  padding: 10px 12px; border: none; border-left: 3px solid transparent; border-radius: 9px;
+  color: var(--text); font-weight: 600; justify-content: flex-start; white-space: normal;
+}
+.tab:hover { background: var(--panel-2); color: var(--text); }
+.tab.active { background: var(--panel-3); border-left-color: var(--cta); color: var(--text); font-weight: 800; }
+.tab .count { margin-left: auto; }
+.tab.custom-tab { margin: 2px 0; border-radius: 9px; font-size: 12.5px; }
+.tab-divider { border-top: 1px solid var(--border); margin: 8px 6px; }
+
+/* Gradient topbar — black lettering on the sunset, white pill chips */
+header { background: var(--sunset); border-bottom: none; }
+header .logo { display: none; } /* brand lives in the sidebar on desktop */
+header .subtitle { color: rgba(10,10,10,0.7); }
+header .save-indicator { color: rgba(10,10,10,0.78); }
+.rev-stat, .rev-stat.highlight, .rev-stat.projection {
+  background: rgba(255,255,255,0.92); border: 1px solid rgba(255,255,255,0.6);
+}
+.rev-stat-label { color: #55636f; }
+.rev-stat-value { color: #0a0a0a; }
+.rev-stat-value.won { color: #047857; }
+.rev-stat-value.accent { color: #1b7fb0; }
+header .btn-settings, header .btn, header .btn-add {
+  background: rgba(255,255,255,0.88); color: #0a0a0a; border: 1px solid rgba(255,255,255,0.55); font-weight: 700;
+}
+header .btn-settings:hover, header .btn:hover, header .btn-add:hover { background: #ffffff; border-color: #ffffff; }
+header .btn-save { background: #0a0a0a; color: #ffffff; border: none; }
+header .btn-save.saved { background: #047857; }
+header #profile-btn { background: rgba(255,255,255,0.92) !important; color: #0a0a0a !important; }
+
+/* Primary CTAs anywhere else: sunset gradient with black text */
+.btn-save { background: var(--sunset); color: #0a0a0a; }
+.cf-btn:not(.cf-g) { background: var(--sunset); color: #0a0a0a; }
+.cf-copy { background: var(--sunset); color: #0a0a0a; }
+
+/* Mobile: sidebar collapses back to a horizontal pill bar */
+@media (max-width: 760px) {
+  .app { display: flex; flex-direction: column; }
+  nav.tabs {
+    position: sticky; top: 0; height: auto; flex-direction: row; align-items: center;
+    overflow-x: auto; overflow-y: hidden; border-right: none; border-bottom: 1px solid var(--border);
+    background: var(--panel); padding: 6px 12px;
+  }
+  .side-brand { display: none; }
+  .tab { border-left: none; border-radius: 999px; padding: 8px 13px; white-space: nowrap; }
+  .tab.active { background: var(--panel-3); }
+  .tab .count { margin-left: 0; }
+  header .logo { display: flex; }
+}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
@@ -1162,6 +1231,7 @@ main { flex: 1; padding: 20px 24px; }
 </header>
 
 <nav class="tabs" id="tabs">
+  <div class="side-brand"><span class="mark">A</span>ArcAscend</div>
   <div class="tab" data-tab="home">Home</div>
   <div class="tab active" data-tab="all">All Leads <span class="count" id="c-all">0</span></div>
   <div class="tab" data-tab="clients">Active Clients <span class="count" id="c-clients">0</span></div>
@@ -1538,7 +1608,7 @@ main { flex: 1; padding: 20px 24px; }
       <div id="tabs-toggle-list"></div>
 
       <div class="section-title">➕ Create Your Own Tabs</div>
-      <div class="help-box" style="background:rgba(34,197,94,0.06);border-color:rgba(34,197,94,0.25);">
+      <div class="help-box" style="background:rgba(16,185,129,0.06);border-color:rgba(16,185,129,0.25);">
         To build a custom tab: close this, click <b>⚙ Filters</b> in the toolbar, pick your conditions (e.g. Status = Closed Won + Active Client = Yes), then click the green <b>+ Save as Tab</b> button. Name it and it appears in the nav. You can manage custom tabs from the 🎯 Buckets tab (Pin/Unpin) or click the ✕ on the tab itself.
       </div>
 
@@ -2514,7 +2584,7 @@ function renderCalendarTab(){
     html += '</div>';
     html += '<div style="display:flex;gap:14px;margin-bottom:12px;font-size:12px;color:var(--text-muted);align-items:center;">';
     html += '<span><span style="'+dotStyle+'background:#1179ab;"></span>Tasks / Follow-ups</span>';
-    html += '<span><span style="'+dotStyle+'background:#22c55e;"></span>New Leads</span>';
+    html += '<span><span style="'+dotStyle+'background:#10b981;"></span>New Leads</span>';
     html += '<span><span style="'+dotStyle+'background:#eab308;"></span>Intake / Consultation</span>';
     html += '</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">';
@@ -2529,7 +2599,7 @@ function renderCalendarTab(){
       html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">'+day+'</div>';
       html += '<div>';
       if (info.tasks.length) html += '<span style="'+dotStyle+'background:#1179ab;" title="'+info.tasks.length+' task(s)"></span>';
-      if (info.newleads.length) html += '<span style="'+dotStyle+'background:#22c55e;" title="'+info.newleads.length+' new lead(s)"></span>';
+      if (info.newleads.length) html += '<span style="'+dotStyle+'background:#10b981;" title="'+info.newleads.length+' new lead(s)"></span>';
       if (info.intakes.length) html += '<span style="'+dotStyle+'background:#eab308;" title="'+info.intakes.length+' intake(s)"></span>';
       html += '</div></div>';
     }
@@ -3559,7 +3629,7 @@ function schedBlockDiv(s, span, rowH, beyond) {
   // Priority: completed=green → cancelled=struck → consult=purple → booked (covered=blue / beyond-package=light red).
   // Consults never reach the booked branch, so they're never red. `beyond` is precomputed coverage.
   var color, bg, beyondBooked = false;
-  if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(34,197,94,0.15)'; }
+  if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(16,185,129,0.15)'; }
   else if (cancelled) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.12)'; }
   else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(56,168,221,0.22)'; }   // distinct purple
   else if (beyond) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.15)'; beyondBooked = true; }   // booked BEYOND package → light red
@@ -3587,7 +3657,7 @@ function schedBlockHTML(s, rowH) {
   var isConsult = s.pay_source === 'consult';
   var cancelled = (s.status === 'cancelled_charge' || s.status === 'cancelled_no_charge');
   var color, bg;
-  if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(34,197,94,0.15)'; }
+  if (s.status === 'completed') { color = 'var(--won)'; bg = 'rgba(16,185,129,0.15)'; }
   else if (cancelled) { color = 'var(--lost)'; bg = 'rgba(239,68,68,0.12)'; }
   else if (isConsult) { color = 'var(--purple)'; bg = 'rgba(56,168,221,0.15)'; }
   else { color = 'var(--accent)'; bg = 'rgba(42,163,220,0.15)'; }
@@ -4929,7 +4999,7 @@ function renderRevenueBanner() {
       '<div class="rev-stat-value">' + count + '</div>' +
     '</div>' +
     (goalProgress !== null ?
-      '<div class="rev-stat" style="' + (goalProgress >= 100 ? 'border-color:rgba(34,197,94,0.5);' : '') + '">' +
+      '<div class="rev-stat" style="' + (goalProgress >= 100 ? 'border-color:rgba(16,185,129,0.5);' : '') + '">' +
         '<div class="rev-stat-label">Goal Progress</div>' +
         '<div class="rev-stat-value' + (goalProgress >= 100 ? ' won' : '') + '">' + goalProgress + '%</div>' +
       '</div>'
@@ -5001,7 +5071,7 @@ function leadCard(L) {
       (L.level ? '<span class="meta-chip">' + L.level + '</span>' : '') +
       (L.timeline ? '<span class="meta-chip">' + L.timeline + '</span>' : '') +
       (b.active && b.package ? '<span class="meta-chip">' + b.package + '</span>' : '') +
-      (b.active ? '<span class="meta-chip" style="' + (b.paid ? 'background:rgba(34,197,94,0.15);color:var(--won);' : 'background:rgba(234,179,8,0.15);color:var(--open);') + '">' + (b.paid ? '✓ Paid' : '○ Unpaid') + '</span>' : '') +
+      (b.active ? '<span class="meta-chip" style="' + (b.paid ? 'background:rgba(16,185,129,0.15);color:var(--won);' : 'background:rgba(234,179,8,0.15);color:var(--open);') + '">' + (b.paid ? '✓ Paid' : '○ Unpaid') + '</span>' : '') +
       (L.consultStatus ? '<span class="meta-chip" style="background:rgba(56,168,221,0.15);color:var(--purple);">' + consultIcon(L.consultStatus) + ' ' + L.consultStatus + '</span>' : '') +
     '</div>' +
    billingBlock +
@@ -5271,7 +5341,7 @@ function billingInitials(nm){ return ((nm || '').trim().split(/\s+/).map(functio
 function billingRemColor(rem){
   if (rem <= 0) return { c: 'var(--lost)', bg: 'rgba(239,68,68,0.15)' };
   if (rem <= 1) return { c: 'var(--open)', bg: 'rgba(234,179,8,0.15)' };
-  return { c: 'var(--won)', bg: 'rgba(34,197,94,0.15)' };
+  return { c: 'var(--won)', bg: 'rgba(16,185,129,0.15)' };
 }
 function billingIsPkg(ln){ return (ln.billingStyle || 'package') === 'package'; }
 // Client-wide package remaining (sum across active package lines); null if no package lines.
@@ -5406,7 +5476,7 @@ function billingPanelHTML(L){
   // week's end, so Remaining simply goes negative ("owes for N") until a purchase is recorded.
   var actions = '<div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">' +
     '<button class="billing-log-session" style="flex:1;min-width:150px;background:var(--won);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:11px;cursor:pointer;">✓ Log Session</button>' +
-    '<button class="billing-process-purchase" style="flex:1;min-width:150px;background:var(--cta);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:11px;cursor:pointer;">💳 Process Purchase</button>' +
+    '<button class="billing-process-purchase" style="flex:1;min-width:150px;background:var(--sunset);color:#0a0a0a;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:11px;cursor:pointer;">💳 Process Purchase</button>' +
   '</div>';
 
   // Purchase history (ledger, newest first)
@@ -5803,7 +5873,7 @@ function renderKanban() {
     { key: 'New', color: '#6fc8ef' },
     { key: 'Open', color: '#eab308' },
     { key: 'Pending', color: '#38a8dd' },
-    { key: 'Closed Won', color: '#22c55e' },
+    { key: 'Closed Won', color: '#10b981' },
     { key: 'Closed Lost', color: '#ef4444' }
   ];
   var pool = sortLeads(filterLeads(LEADS));
@@ -6949,7 +7019,7 @@ function renderClientsTab() {
     '</div></div>' +
 
     // Hero revenue panel
-    '<div style="background:linear-gradient(135deg,rgba(34,197,94,0.1),rgba(56,168,221,0.05));border:1px solid rgba(34,197,94,0.4);border-radius:14px;padding:24px;margin-bottom:24px;">' +
+    '<div style="background:linear-gradient(135deg,rgba(16,185,129,0.1),rgba(56,168,221,0.05));border:1px solid rgba(16,185,129,0.4);border-radius:14px;padding:24px;margin-bottom:24px;">' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px;">' +
         '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">' + currentMonthLabel() + ' Projection</div>' +
           '<div style="font-size:36px;font-weight:800;color:var(--accent);">' + fmt$(totalRev) + '</div></div>' +
@@ -7253,10 +7323,10 @@ function renderSyncTab() {
     '</div>' +
 
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">' +
-      '<span class="service-pill" style="background:' + (sheetUrl?"rgba(34,197,94,0.12)":"rgba(234,179,8,0.12)") + ';color:' + (sheetUrl?"var(--won)":"var(--open)") + ';border-color:' + (sheetUrl?"rgba(34,197,94,0.3)":"rgba(234,179,8,0.3)") + ';padding:8px 14px;font-size:13px;">' +
+      '<span class="service-pill" style="background:' + (sheetUrl?"rgba(16,185,129,0.12)":"rgba(234,179,8,0.12)") + ';color:' + (sheetUrl?"var(--won)":"var(--open)") + ';border-color:' + (sheetUrl?"rgba(16,185,129,0.3)":"rgba(234,179,8,0.3)") + ';padding:8px 14px;font-size:13px;">' +
         '📊 Google Sheets · ' + (sheetUrl ? (autoOn ? "Auto-syncing" : "Connected") : "Not connected") +
       '</span>' +
-      '<span class="service-pill" style="background:rgba(34,197,94,0.12);color:var(--won);border-color:rgba(34,197,94,0.3);padding:8px 14px;font-size:13px;">📊 Excel (.xlsx) · Ready</span>' +
+      '<span class="service-pill" style="background:rgba(16,185,129,0.12);color:var(--won);border-color:rgba(16,185,129,0.3);padding:8px 14px;font-size:13px;">📊 Excel (.xlsx) · Ready</span>' +
       '<span class="service-pill" style="background:rgba(56,168,221,0.12);color:var(--purple);border-color:rgba(56,168,221,0.3);padding:8px 14px;font-size:13px;">📝 Google Forms · Via Sheets</span>' +
     '</div>' +
 
@@ -7844,7 +7914,7 @@ function openLead(name) {
           // Read-only ledger figure for the current month (purchases are logged in the Billing tab).
           var mk = currentMonthKey();
           var paid = confirmedAmount(L, mk);   // = clientPaidForMonth(L, mk)
-          return '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (paid>0?"rgba(34,197,94,0.12)":"var(--panel)") + ';border:1px solid ' + (paid>0?"rgba(34,197,94,0.4)":"var(--border)") + ';display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+          return '<div class="billing-toggle" id="b-paid-row" style="margin-top:14px;margin-bottom:0;padding:12px;border-radius:8px;background:' + (paid>0?"rgba(16,185,129,0.12)":"var(--panel)") + ';border:1px solid ' + (paid>0?"rgba(16,185,129,0.4)":"var(--border)") + ';display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
             '<span style="font-weight:600;color:' + (paid>0?"var(--won)":"var(--text-muted)") + ';">Paid ' + currentMonthLabel() + ' <span style="font-weight:400;font-size:11px;color:var(--muted);">(from the Billing ledger)</span></span>' +
             '<span style="display:inline-flex;align-items:center;gap:10px;">' +
               '<span id="b-paid-amount" style="font-weight:700;color:' + (paid>0?"var(--won)":"var(--text-muted)") + ';">' + fmt$(paid) + '</span>' +
@@ -8775,7 +8845,7 @@ function renderHomeTab() {
 
   var intakeHtml;
   if (!intakes.length) {
-    intakeHtml = '<div class="hm-panel" style="border-color:rgba(34,197,94,.4);margin-bottom:14px;">' +
+    intakeHtml = '<div class="hm-panel" style="border-color:rgba(16,185,129,.4);margin-bottom:14px;">' +
       '<div class="hm-row"><span style="color:var(--won);font-size:16px;">✓</span>' +
       '<span class="hm-nm" style="color:var(--won);">All intake forms handled</span>' +
       '<span class="hm-mut">new submissions appear here the moment they arrive</span></div></div>';
@@ -9854,7 +9924,7 @@ function renderImportPreview() {
     var req = q.required ? badge('required', 'rgba(17,121,171,0.15)', 'var(--accent)') : badge('optional', 'var(--bg-secondary)', 'var(--muted)');
     return '<div style="padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">'
       + '<div style="font-size:13px;font-weight:600;color:var(--text-primary)">' + escapeHtml(q.label || '') + '</div>'
-      + '<div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' + badge(q.type || 'text', 'rgba(34,197,94,0.14)', 'var(--won)') + req + '</div>' + opts
+      + '<div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' + badge(q.type || 'text', 'rgba(16,185,129,0.14)', 'var(--won)') + req + '</div>' + opts
       + '</div>';
   }).join('');
   var count = formsImportPending.questions.length;
@@ -9915,7 +9985,7 @@ function formsConfirmImport() {
   var statusEl = document.getElementById('forms-import-status');
   if (statusEl) {
     statusEl.textContent = '✓ Imported — set your Internal Label, then “Save as New Form”.';
-    statusEl.style.color = '#22c55e';
+    statusEl.style.color = '#10b981';
     setTimeout(function(){ statusEl.textContent = ''; statusEl.style.color = ''; }, 5000);
   }
 }
@@ -10058,7 +10128,7 @@ async function formsSaveAs() {
 
   if (statusEl) {
     statusEl.textContent = '✓ Saved to Forms library';
-    statusEl.style.color = '#22c55e';
+    statusEl.style.color = '#10b981';
     statusEl.style.fontWeight = '600';
     setTimeout(function(){ statusEl.textContent = ''; statusEl.style.color = ''; statusEl.style.fontWeight = ''; }, 2500);
   }
@@ -10250,7 +10320,7 @@ async function formsUpdateForm() {
   }
   if (statusEl) {
     statusEl.textContent = '✓ Updated';
-    statusEl.style.color = '#22c55e';
+    statusEl.style.color = '#10b981';
     statusEl.style.fontWeight = '600';
   }
   // Keep the stash in sync so re-saving without leaving stays consistent.
@@ -10731,7 +10801,7 @@ function renderPastePreview() {
     var req = q.required ? badge('required', 'rgba(17,121,171,0.15)', 'var(--accent)') : badge('optional', 'var(--bg-secondary)', 'var(--muted)');
     return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">'
       + '<div style="min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text-primary)">' + escapeHtml(q.label) + '</div>'
-      + '<div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' + badge(q.type, 'rgba(34,197,94,0.14)', 'var(--won)') + req + '</div>' + opts + '</div>'
+      + '<div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">' + badge(q.type, 'rgba(16,185,129,0.14)', 'var(--won)') + req + '</div>' + opts + '</div>'
       + '<button class="btn btn-ghost" data-paste-rm="' + i + '" style="flex:0 0 auto;padding:4px 9px;font-size:13px">✕</button>'
       + '</div>';
   }).join('');
@@ -10802,10 +10872,10 @@ async function formsSaveSettings() {
     });
     if (res.ok || res.status === 201 || res.status === 204) {
       statusEl.textContent = '✓ Saved';
-      statusEl.style.color = '#22c55e';
+      statusEl.style.color = '#10b981';
       statusEl.style.fontWeight = '600';
       var qStatus = document.getElementById('forms-q-save-status');
-      if (qStatus) { qStatus.textContent = '✓ Saved'; qStatus.style.color = '#22c55e'; qStatus.style.fontWeight = '600'; }
+      if (qStatus) { qStatus.textContent = '✓ Saved'; qStatus.style.color = '#10b981'; qStatus.style.fontWeight = '600'; }
       setTimeout(function(){
         statusEl.textContent = '';
         statusEl.style.color = '';
@@ -11524,8 +11594,8 @@ function renderRepLeads(body) {
   html += repStatsGrid([
     { label:'Leads Added', value: created.length, color:'#2aa3dc' },
     { label:'Intake Forms', value: intake.length, color:'#38a8dd' },
-    { label:'New Active Clients', value: newActiveEv.length, color:'#22c55e' },
-    { label:'Closed Won', value: wonEv.length, color:'#22c55e' },
+    { label:'New Active Clients', value: newActiveEv.length, color:'#10b981' },
+    { label:'Closed Won', value: wonEv.length, color:'#10b981' },
     { label:'Closed Lost', value: lostEv.length, color:'#ef4444' }
   ]);
 
@@ -11549,7 +11619,7 @@ function renderRepLeads(body) {
     __REPORTS_CHART = new Chart(ctx, {
       type: 'line',
       data: { labels: buckets, datasets: [
-        { label: 'New Active Clients', data: buckets.map(function(b){ return activeMap[b]; }), borderColor: '#22c55e', backgroundColor: '#22c55e22', tension: 0.3, fill: false },
+        { label: 'New Active Clients', data: buckets.map(function(b){ return activeMap[b]; }), borderColor: '#10b981', backgroundColor: '#10b98122', tension: 0.3, fill: false },
         { label: 'Closed Won', data: buckets.map(function(b){ return wonMap[b]; }), borderColor: '#2aa3dc', backgroundColor: '#2aa3dc22', tension: 0.3, fill: false },
         { label: 'Closed Lost', data: buckets.map(function(b){ return lostMap[b]; }), borderColor: '#ef4444', backgroundColor: '#ef444422', tension: 0.3, fill: false }
       ]},
@@ -11601,14 +11671,14 @@ function renderRepRevenue(body) {
   var html = '';
   html += repStatsGrid([
     { label: currentMonthLabel() + ' Projection', value: '$' + projection.toLocaleString(), color:'#2aa3dc' },
-    { label: currentMonthLabel() + ' Paid', value: '$' + paidNow.toLocaleString(), color:'#22c55e' },
+    { label: currentMonthLabel() + ' Paid', value: '$' + paidNow.toLocaleString(), color:'#10b981' },
     { label: 'Outstanding', value: '$' + outstanding.toLocaleString(), color:'#eab308' },
     { label: 'Payments Logged (range)', value: '$' + rangeTotal.toLocaleString() },
     { label: 'Clients Paid', value: clientsPaid + ' / ' + activeC.length }
   ]);
   html += repCard('Revenue Logged Over Time (range)', '<div style="height:260px;"><canvas id="rep-chart-revenue"></canvas></div>');
   body.innerHTML = html;
-  repDrawLineChart('rep-chart-revenue', 'Revenue ($)', months, revData, '#22c55e');
+  repDrawLineChart('rep-chart-revenue', 'Revenue ($)', months, revData, '#10b981');
 }
 
 // ===== CONVERSIONS sub-tab =====
@@ -11633,9 +11703,9 @@ function renderRepConversions(body) {
   var html = '';
   html += repStatsGrid([
     { label: 'Consultations Completed', value: consultsDone.length, color:'#2aa3dc' },
-    { label: 'Closed Won', value: won.length, color:'#22c55e' },
+    { label: 'Closed Won', value: won.length, color:'#10b981' },
     { label: 'Closed Lost', value: lost.length, color:'#ef4444' },
-    { label: 'Win Rate', value: winRate + '%', color: winRate >= 50 ? '#22c55e' : '#eab308' },
+    { label: 'Win Rate', value: winRate + '%', color: winRate >= 50 ? '#10b981' : '#eab308' },
     { label: 'New Active Clients', value: newActive.length }
   ]);
   html += repCard('Closed Won vs Lost (over range)', '<div style="height:260px;"><canvas id="rep-chart-conv"></canvas></div>');
@@ -11648,7 +11718,7 @@ function renderRepConversions(body) {
     __REPORTS_CHART = new Chart(ctx, {
       type: 'bar',
       data: { labels: buckets, datasets: [
-        { label: 'Won', data: buckets.map(function(d){ return wonMap[d]; }), backgroundColor: '#22c55e' },
+        { label: 'Won', data: buckets.map(function(d){ return wonMap[d]; }), backgroundColor: '#10b981' },
         { label: 'Lost', data: buckets.map(function(d){ return lostMap[d]; }), backgroundColor: '#ef4444' }
       ]},
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#aaa' } } }, scales: { x: { stacked: false, ticks: { color: '#888' }, grid: { color: '#333' } }, y: { stacked: false, ticks: { color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
@@ -11673,7 +11743,7 @@ function renderRepActivity(body) {
   var statHtml = repStatsGrid([
     { label: 'Total Events', value: ev.length, color: '#2aa3dc' },
     { label: 'Lead Activity', value: (byType.lead_created||0) + (byType.status_changed||0) },
-    { label: 'New Active Clients', value: byType.active_client_marked || 0, color: '#22c55e' },
+    { label: 'New Active Clients', value: byType.active_client_marked || 0, color: '#10b981' },
     { label: 'Consultations', value: byType.consultation_completed || 0 }
   ]);
 
